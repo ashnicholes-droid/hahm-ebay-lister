@@ -579,6 +579,62 @@ textarea {
   margin: 0 0 0.5rem;
 }
 
+/* ── eBay connection bar ───────────────────────────────── */
+.ebay-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.ebay-bar.connected {
+  border-color: color-mix(in oklch, var(--color-accent), white 55%);
+  background: var(--color-accent-soft);
+}
+
+.ebay-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-gold);
+  flex-shrink: 0;
+}
+
+.ebay-bar.connected .ebay-dot {
+  background: var(--color-accent);
+}
+
+.ebay-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-ink-soft);
+}
+
+.ebay-bar a.btn-ghost {
+  text-decoration: none;
+  margin-left: auto;
+}
+
+.ebay-bar .btn-ghost {
+  margin-left: auto;
+}
+
+.ebay-notice {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+  color: var(--color-accent-deep);
+}
+
+.ebay-notice.err {
+  color: var(--color-danger);
+}
+
 .spinner.small {
   width: 12px;
   height: 12px;

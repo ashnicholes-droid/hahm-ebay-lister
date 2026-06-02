@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resizeImage } from "@/lib/resize";
 import { buildSku } from "@/lib/sku";
+import { EbayConnect } from "./EbayConnect";
 import { ReviewBoard } from "./ReviewBoard";
 import { ListingsView } from "./ListingsView";
 import type {
@@ -267,6 +268,8 @@ export default function Home() {
           <p>Upload a pile of photos · auto-sort into items · write every listing.</p>
         </div>
       </header>
+
+      <EbayConnect />
 
       {step === "upload" && (
         <>
