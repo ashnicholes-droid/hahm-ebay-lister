@@ -47,6 +47,21 @@ export function EbayConnect() {
     }
   };
 
+  const startConnect = async () => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await apiPost("/api/ebay/auth", {});
+      const data = (await r.json()) as { ok: boolean; url?: string; error?: string };
+      if (!data.ok || !data.url) throw new Error(data.error || "Couldn't start eBay authorization.");
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setNotice({ ok: false, msg: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const finishConnect = async () => {
     if (!pasteValue.trim()) return;
     setBusy(true);
@@ -89,14 +104,14 @@ export function EbayConnect() {
           <span className="ebay-label">
             <strong>Step 1:</strong> authorize on eBay
           </span>
-          <a
+          <button
+            type="button"
             className="btn-ghost"
-            href="/api/ebay/auth"
-            target="_blank"
-            rel="noopener noreferrer"
+            onClick={startConnect}
+            disabled={busy}
           >
             Open eBay ↗
-          </a>
+          </button>
           <div className="ebay-paste">
             <label htmlFor="ebay-paste">
               <strong>Step 2:</strong> after you click <em>Agree</em>, copy the
