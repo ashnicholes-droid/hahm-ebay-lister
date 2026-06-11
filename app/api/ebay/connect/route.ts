@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode } from "@/lib/ebay/oauth";
+import { guardApiRequest } from "@/lib/api-guard";
 import {
   EBAY_COOKIE,
   EBAY_COOKIE_MAX_AGE,
@@ -32,6 +33,9 @@ function extractCode(input: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = guardApiRequest(req);
+  if (denied) return denied;
+
   let body: { url?: string; code?: string };
   try {
     body = await req.json();

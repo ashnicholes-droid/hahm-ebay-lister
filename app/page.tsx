@@ -298,10 +298,10 @@ export default function Home() {
         )
       );
       try {
-        const res = await fetch("/api/ebay/publish", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sku: group.sku, listing: group.listing, images }),
+        const res = await apiPost("/api/ebay/publish", {
+          sku: group.sku,
+          listing: group.listing,
+          images,
         });
         const data = (await readJson(res)) as {
           success: boolean;

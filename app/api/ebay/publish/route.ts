@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
+import { guardApiRequest } from "@/lib/api-guard";
 import { fetchAccountSetup, publishListing } from "@/lib/ebay/publish";
 import type { PublishInput } from "@/lib/ebay/publish";
 
@@ -7,6 +8,10 @@ import type { PublishInput } from "@/lib/ebay/publish";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // Check access + rate limit BEFORE parsing the (potentially large) body.
+  const denied = guardApiRequest(req);
+  if (denied) return denied;
+
   let body: PublishInput;
   try {
     body = (await req.json()) as PublishInput;

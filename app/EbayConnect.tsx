@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiPost } from "@/lib/api-client";
 
 interface Status {
   configured: boolean;
@@ -38,7 +39,7 @@ export function EbayConnect() {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await fetch("/api/ebay/disconnect", { method: "POST" });
+      await apiPost("/api/ebay/disconnect", {});
       await refresh();
       setNotice({ ok: true, msg: "Disconnected from eBay." });
     } finally {
@@ -51,11 +52,7 @@ export function EbayConnect() {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await fetch("/api/ebay/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: pasteValue.trim() }),
-      });
+      const r = await apiPost("/api/ebay/connect", { url: pasteValue.trim() });
       const data = (await r.json()) as { ok: boolean; error?: string };
       if (!data.ok) throw new Error(data.error || "Couldn't connect.");
       setPasteValue("");
