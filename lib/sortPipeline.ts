@@ -8,8 +8,8 @@ import {
 } from "@/lib/prompts";
 import { labeledContent, toImageBlock, type WireImage } from "@/lib/images";
 
-const GROUP_MODEL = "claude-fable-5";
-const CHECK_MODEL = "claude-fable-5";
+const GROUP_MODEL = "claude-sonnet-4-6";
+const CHECK_MODEL = "claude-sonnet-4-6";
 const BATCH_SIZE = 10;
 
 // Concurrency caps — keep parallel bursts gentle so we don't trip Anthropic's

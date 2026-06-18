@@ -13,8 +13,8 @@ import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 // Analysis can take 20-40s for a multi-photo item. Give it room.
 export const maxDuration = 60;
 
-const ANALYSIS_MODEL = "claude-fable-5";
-const ROUTER_MODEL = "claude-fable-5";
+const ANALYSIS_MODEL = "claude-opus-4-8";
+const ROUTER_MODEL = "claude-sonnet-4-6";
 const MAX_IMAGES = 12;
 
 function toImageBlocks(images: AnalyzeRequestBody["images"]): ImageBlock[] {
