@@ -26,6 +26,9 @@ export interface AnalyzeRequestBody {
   // Browser-resized JPEG data URLs or raw base64 strings.
   images: { mediaType: string; data: string }[];
   profile: string;
+  // Optional model overrides; server falls back to its defaults when omitted.
+  analysisModel?: string;
+  routerModel?: string;
 }
 
 export interface AnalyzeResponse {

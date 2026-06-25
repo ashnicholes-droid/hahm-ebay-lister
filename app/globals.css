@@ -941,3 +941,49 @@ textarea {
   color: var(--color-ink-faint);
   font-style: italic;
 }
+
+/* ── Model selector ────────────────────────────────────── */
+
+/* The toggle button sits inline with the Sort button in the result-actions
+   flex row. The expanded panel uses order:99 + flex-basis:100% to break
+   onto its own row below both buttons without disrupting the flex layout. */
+.model-settings-btn {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.model-settings-body {
+  flex: 0 0 100%;
+  order: 99;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.25rem;
+  padding: 1rem;
+  background: var(--color-surface-sunk);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 560px) {
+  .model-settings-body {
+    grid-template-columns: 1fr;
+    /* Reset order so the panel sits between the toggle and Sort button
+       (DOM order) rather than after the Sort button (order:99 desktop). */
+    order: 0;
+  }
+
+  .result-actions .btn-primary {
+    margin-left: 0;
+    flex: 0 0 100%;
+    justify-content: center;
+  }
+}
+
+.model-select {
+  width: 100%;
+}
+
+.model-hint {
+  font-style: italic;
+}

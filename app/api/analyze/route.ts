@@ -8,6 +8,7 @@ import {
   normalizeItemProfile,
 } from "@/lib/prompts";
 import { toImageBlock, type ImageBlock } from "@/lib/images";
+import { resolveModel } from "@/lib/models";
 import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 
 // Analysis can take 20-40s for a multi-photo item. Give it room.
@@ -30,14 +31,15 @@ function toImageBlocks(images: AnalyzeRequestBody["images"]): ImageBlock[] {
 async function routeProfile(
   client: Anthropic,
   imageBlocks: ImageBlock[],
-  requested: string
+  requested: string,
+  routerModel: string
 ): Promise<string> {
   const forced = normalizeItemProfile(requested);
   if (forced !== "auto") return forced;
 
   try {
     const resp = await client.messages.create({
-      model: ROUTER_MODEL,
+      model: routerModel,
       max_tokens: 300,
       messages: [
         {
@@ -80,6 +82,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Validate client-supplied models against the server allowlist; fall back to
+  // the trusted default on anything unknown (prevents billing an arbitrary or
+  // premium model to the owner's key).
+  const analysisModel = resolveModel(body.analysisModel, ANALYSIS_MODEL);
+  const routerModel = resolveModel(body.routerModel, ROUTER_MODEL);
+
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Please add at least one photo." },
@@ -106,7 +114,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const profile = await routeProfile(client, imageBlocks, body.profile);
+    const profile = await routeProfile(client, imageBlocks, body.profile, routerModel);
     const systemPrompt = buildProfiledAnalysisPrompt(profile);
 
     // Retry up to 3 times, mirroring the Python analyze_photos() loop.
@@ -114,7 +122,7 @@ export async function POST(req: NextRequest) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const resp = await client.messages.create({
-          model: ANALYSIS_MODEL,
+          model: analysisModel,
           max_tokens: 3000,
           // System prompt is large and identical across requests for the same
           // profile — cache it to cut cost and latency.

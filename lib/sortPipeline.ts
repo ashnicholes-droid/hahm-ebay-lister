@@ -107,7 +107,8 @@ async function claudeJson<T>(
 // batches don't need sequential context — letting us parallelize safely.
 async function groupPhotos(
   client: Anthropic,
-  images: WireImage[]
+  images: WireImage[],
+  model: string
 ): Promise<{ name: string; indices: number[] }[]> {
   const total = images.length;
   const batches: { offset: number; batch: WireImage[]; labelStart: number; labelEnd: number }[] = [];
@@ -128,7 +129,7 @@ async function groupPhotos(
     });
     const data = await claudeJson<{
       groups?: { folder_name?: string; photo_indices?: number[] }[];
-    }>(client, GROUP_MODEL, content, 2000, `group ${b.labelStart}-${b.labelEnd}`);
+    }>(client, model, content, 2000, `group ${b.labelStart}-${b.labelEnd}`);
 
     const out: { name: string; indices: number[] }[] = [];
     for (const g of data?.groups ?? []) {
@@ -158,7 +159,8 @@ async function groupPhotos(
 async function verifyGroups(
   client: Anthropic,
   images: WireImage[],
-  groups: { name: string; indices: number[] }[]
+  groups: { name: string; indices: number[] }[],
+  model: string
 ): Promise<{ groups: { name: string; indices: number[] }[]; orphans: number[] }> {
   const orphans: number[] = [];
 
@@ -168,7 +170,7 @@ async function verifyGroups(
     content.push({ type: "text", text: buildVerifyGroupPrompt(group.indices.length) });
     const result = await claudeJson<{ valid?: boolean; keep_indices?: number[] }>(
       client,
-      CHECK_MODEL,
+      model,
       content,
       300,
       `verify ${group.name}`
@@ -193,7 +195,8 @@ async function verifyGroups(
 async function mergeSplitGroups(
   client: Anthropic,
   images: WireImage[],
-  groups: { name: string; indices: number[] }[]
+  groups: { name: string; indices: number[] }[],
+  model: string
 ): Promise<{ name: string; indices: number[] }[]> {
   if (groups.length < 2) return groups;
 
@@ -213,7 +216,7 @@ async function mergeSplitGroups(
     ];
     const result = await claudeJson<{ merge?: boolean }>(
       client,
-      CHECK_MODEL,
+      model,
       content,
       100,
       `merge ${i}`
@@ -249,11 +252,13 @@ function uniqueNames(groups: { name: string; indices: number[] }[]): SortGroup[]
 
 export async function sortPhotos(
   client: Anthropic,
-  images: WireImage[]
+  images: WireImage[],
+  model?: string
 ): Promise<SortResult> {
-  const grouped = await groupPhotos(client, images);
+  const m = model ?? GROUP_MODEL;
+  const grouped = await groupPhotos(client, images, m);
   if (grouped.length === 0) return { groups: [], orphanIndices: [] };
-  const verified = await verifyGroups(client, images, grouped);
-  const merged = await mergeSplitGroups(client, images, verified.groups);
+  const verified = await verifyGroups(client, images, grouped, m);
+  const merged = await mergeSplitGroups(client, images, verified.groups, m);
   return { groups: uniqueNames(merged), orphanIndices: verified.orphans };
 }

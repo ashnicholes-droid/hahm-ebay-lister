@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiPost } from "@/lib/api-client";
+import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
 import { buildSku } from "@/lib/sku";
 import { EbayConnect } from "./EbayConnect";
+import { ModelSelector } from "./ModelSelector";
 import { ReviewBoard } from "./ReviewBoard";
 import { ListingsView } from "./ListingsView";
 import type {
@@ -143,6 +145,7 @@ export default function Home() {
           mediaType: p.mediaType,
           data: p.previewUrl.split(",")[1],
         })),
+        sortModel: getSortModel() ?? undefined,
       });
       const data = (await readJson(res)) as SortResponse;
       if (!data.ok || !data.groups) {
@@ -243,7 +246,12 @@ export default function Home() {
         )
       );
       try {
-        const res = await apiPost("/api/analyze", { profile: "auto", images: imgs });
+        const res = await apiPost("/api/analyze", {
+          profile: "auto",
+          images: imgs,
+          analysisModel: getAnalysisModel() ?? undefined,
+          routerModel: getSortModel() ?? undefined,
+        });
         const data = (await readJson(res)) as AnalyzeResponse;
         if (!data.ok || !data.listing) {
           throw new Error(data.error || "Could not write this listing.");
@@ -450,6 +458,7 @@ export default function Home() {
             )}
 
             <div className="result-actions" style={{ borderTop: "none", paddingTop: 0 }}>
+              <ModelSelector />
               <button
                 type="button"
                 className="btn btn-primary"
