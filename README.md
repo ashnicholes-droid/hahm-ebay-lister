@@ -123,16 +123,15 @@ and redeploy with `vercel --prod`.
    from eBay's confirmation page back into the app. Done (lasts ~18 months).
 
 > **"Marketplace account deletion" compliance.** When you create a production
-> keyset, eBay may flag it **"not compliant"** until you address their *Marketplace
-> account deletion/closure notification*. This app stores **no** eBay user data on
+> keyset, eBay flags it **"not compliant"** and asks for a *Marketplace account
+> deletion/closure notification endpoint*. This app stores **no** eBay user data on
 > a server — your token lives only in an encrypted cookie in your own browser — so
-> you can take eBay's **opt-out/exemption**: in the developer portal under
-> *Alerts & Notifications → Marketplace account deletion*, choose the option for
-> **"I do not store eBay user data"** and submit it.
-> Toggle ON Exempt From Marketplace Account Deletion (Describe your setup honestly;
-> eBay penalizes false exemptions.) You must do this **before** your first
-> production API call. Only if eBay won't accept the exemption do you need to host
-> a notification endpoint.
+> you don't need an endpoint. Instead, take eBay's exemption: in the developer
+> portal under *Alerts & Notifications → Marketplace account deletion*, toggle ON
+> **Exempted from Marketplace Account Deletion / Not persisting eBay data** and
+> submit it. (Describe your setup honestly — eBay penalizes false exemptions.) Do
+> this **before** your first production API call. Only if eBay won't accept the
+> exemption do you need to host an endpoint.
 
 ---
 
