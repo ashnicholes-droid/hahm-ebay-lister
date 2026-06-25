@@ -8,6 +8,7 @@ import {
   normalizeItemProfile,
 } from "@/lib/prompts";
 import { toImageBlock, type ImageBlock } from "@/lib/images";
+import { resolveModel } from "@/lib/models";
 import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 
 // Analysis can take 20-40s for a multi-photo item. Give it room.
@@ -81,14 +82,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const analysisModel =
-    typeof body.analysisModel === "string" && body.analysisModel.trim()
-      ? body.analysisModel.trim()
-      : ANALYSIS_MODEL;
-  const routerModel =
-    typeof body.routerModel === "string" && body.routerModel.trim()
-      ? body.routerModel.trim()
-      : ROUTER_MODEL;
+  // Validate client-supplied models against the server allowlist; fall back to
+  // the trusted default on anything unknown (prevents billing an arbitrary or
+  // premium model to the owner's key).
+  const analysisModel = resolveModel(body.analysisModel, ANALYSIS_MODEL);
+  const routerModel = resolveModel(body.routerModel, ROUTER_MODEL);
 
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(

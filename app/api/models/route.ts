@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getClient } from "@/lib/anthropic";
+import { isAllowedModel } from "@/lib/models";
 import type { ModelInfo } from "@anthropic-ai/sdk/resources/models.js";
-
-// Only surface modern Claude families — all of which support vision.
-const VISION_PATTERN = /^claude-(fable|opus|sonnet|haiku)/;
 
 // Haiku is excluded from the listing-generation selector: it materially worsens
 // listing quality compared to every other available model.
@@ -60,7 +58,10 @@ function toOption(m: ModelInfo): ModelOption {
 }
 
 function buildPayload(raw: ModelInfo[]): ModelsPayload {
-  const vision = raw.filter((m) => VISION_PATTERN.test(m.id));
+  // Only offer models the call routes will actually accept (lib/models.ts) — this
+  // keeps the premium "fable" tier out of the selector so the UI never shows a
+  // model the server would reject.
+  const vision = raw.filter((m) => isAllowedModel(m.id));
   if (vision.length === 0) return FALLBACK;
 
   const sortModels = vision.map((m) => ({

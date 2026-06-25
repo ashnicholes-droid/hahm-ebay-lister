@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClient, AnthropicAuthError } from "@/lib/anthropic";
 import { guardApiRequest, safeErrorResponse } from "@/lib/api-guard";
 import { sortPhotos, SortUnavailableError } from "@/lib/sortPipeline";
+import { isAllowedModel } from "@/lib/models";
 import type { WireImage } from "@/lib/images";
 
 // Sorting makes several model calls across grouping/verify/merge stages.
@@ -24,10 +25,11 @@ export async function POST(req: NextRequest) {
   }
 
   const images = Array.isArray(body.images) ? body.images.slice(0, MAX_PHOTOS) : [];
-  const sortModel =
-    typeof body.sortModel === "string" && body.sortModel.trim()
-      ? body.sortModel.trim()
-      : undefined;
+  // Validate the client-supplied model against the server allowlist — an
+  // unchecked value would let anyone past the access gate bill an arbitrary or
+  // premium model to the owner's key. Unknown → undefined (pipeline default).
+  const requestedSort = typeof body.sortModel === "string" ? body.sortModel.trim() : "";
+  const sortModel = isAllowedModel(requestedSort) ? requestedSort : undefined;
   if (images.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Please add some photos first." },
