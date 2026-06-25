@@ -128,7 +128,8 @@ and redeploy with `vercel --prod`.
 > a server — your token lives only in an encrypted cookie in your own browser — so
 > you can take eBay's **opt-out/exemption**: in the developer portal under
 > *Alerts & Notifications → Marketplace account deletion*, choose the option for
-> **"I do not store eBay user data"** and submit it. (Describe your setup honestly;
+> **"I do not store eBay user data"** and submit it.
+> Toggle ON Exempt From Marketplace Account Deletion (Describe your setup honestly;
 > eBay penalizes false exemptions.) You must do this **before** your first
 > production API call. Only if eBay won't accept the exemption do you need to host
 > a notification endpoint.
