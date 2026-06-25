@@ -29,6 +29,16 @@ export interface SortResult {
   orphanIndices: number[];
 }
 
+// Thrown when EVERY grouping batch failed (API errors / rate limits) — distinct
+// from a successful run where the model simply found no groups. Lets the route
+// tell the user to wait and retry instead of the misleading "try fewer photos."
+export class SortUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SortUnavailableError";
+  }
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function firstText(resp: Anthropic.Message): string {
@@ -129,10 +139,19 @@ async function groupPhotos(
       }
       if (indices.length) out.push({ name: slugifyFolderName(g.folder_name ?? "item"), indices });
     }
-    return out;
+    // data === null means the call failed after exhausting retries (vs. a
+    // successful call that simply returned no groups) — track it so we can tell a
+    // total outage apart from "the model found nothing to group."
+    return { out, failed: data === null };
   });
 
-  return perBatch.flat();
+  if (perBatch.length > 0 && perBatch.every((b) => b.failed)) {
+    throw new SortUnavailableError(
+      "The photo-sorting service was unavailable or rate-limited — every request failed. Wait a minute and try again; reducing the number of photos won't help."
+    );
+  }
+
+  return perBatch.flatMap((b) => b.out);
 }
 
 // Step 2 — verify each multi-photo group for accidentally mixed items.

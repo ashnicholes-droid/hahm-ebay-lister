@@ -179,6 +179,32 @@ function computeBufferedPrice(raw: number | string | undefined): number {
   return Math.round(buffered * 100) / 100;
 }
 
+// eBay's CALCULATED-shipping business policies REQUIRE package weight (and
+// dimensions) on the inventory item, or publish fails with error 25020 ("package
+// weight is not valid or is missing"). Flat-rate policies don't need it. We always
+// send a sensible default so calculated policies publish out of the box; the
+// seller can refine weight/size on the listing afterward, or tune the defaults
+// via EBAY_DEFAULT_PACKAGE_* env vars. Weight is in ounces (16 oz = 1 lb).
+function defaultPackageWeightAndSize(): Record<string, unknown> {
+  const num = (v: string | undefined, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  return {
+    weight: {
+      value: num(process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ, 16),
+      unit: "OUNCE",
+    },
+    dimensions: {
+      length: num(process.env.EBAY_DEFAULT_PACKAGE_LENGTH_IN, 12),
+      width: num(process.env.EBAY_DEFAULT_PACKAGE_WIDTH_IN, 9),
+      height: num(process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, 3),
+      unit: "INCH",
+    },
+    packageType: "PACKAGE_THICK_ENVELOPE",
+  };
+}
+
 function normalizeConditionInput(value: string | undefined): string {
   const cleaned = (value || "GOOD")
     .trim()
@@ -623,6 +649,8 @@ export async function publishListing(
     condition,
     conditionDescription: listing.condition_notes || "",
     availability: { shipToLocationAvailability: { quantity: 1 } },
+    // Default weight/size so CALCULATED-shipping policies publish (eBay 25020).
+    packageWeightAndSize: defaultPackageWeightAndSize(),
   };
 
   const putInventory = () =>

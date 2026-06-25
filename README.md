@@ -122,6 +122,17 @@ and redeploy with `vercel --prod`.
 5. On the live site, click **Connect eBay**, approve on eBay, and paste the URL
    from eBay's confirmation page back into the app. Done (lasts ~18 months).
 
+> **"Marketplace account deletion" compliance.** When you create a production
+> keyset, eBay may flag it **"not compliant"** until you address their *Marketplace
+> account deletion/closure notification*. This app stores **no** eBay user data on
+> a server — your token lives only in an encrypted cookie in your own browser — so
+> you can take eBay's **opt-out/exemption**: in the developer portal under
+> *Alerts & Notifications → Marketplace account deletion*, choose the option for
+> **"I do not store eBay user data"** and submit it. (Describe your setup honestly;
+> eBay penalizes false exemptions.) You must do this **before** your first
+> production API call. Only if eBay won't accept the exemption do you need to host
+> a notification endpoint.
+
 ---
 
 ## Environment variables
@@ -136,6 +147,8 @@ and redeploy with `vercel --prod`.
 | `SESSION_SECRET` | for posting | Random string to encrypt your eBay token. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_URL` | for posting | Your deployed URL, e.g. `https://your-app.vercel.app` |
 | `EBAY_LOCATION_POSTAL_CODE` | optional | Your ZIP (only used once to create an eBay inventory location) |
+| `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Editable per listing on eBay. |
+| `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches (defaults 12 × 9 × 3). |
 
 **Never commit real keys.** `.env.local` is gitignored; production keys live in
 Vercel only.
