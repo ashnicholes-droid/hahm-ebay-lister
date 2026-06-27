@@ -6,7 +6,7 @@ export function getClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Add it in Vercel → Settings → Environment Variables (or in .env.local for local dev)."
+      "ANTHROPIC_API_KEY is not set. Add it to your environment variables (Coolify → Environment, or .env.local for local dev)."
     );
   }
   if (!client) {

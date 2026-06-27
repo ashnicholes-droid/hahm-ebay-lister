@@ -51,8 +51,8 @@ function tokenErrorMessage(status: number, body: string): string {
       "eBay rejected your app credentials (401 invalid_client). This is the App ID / " +
       "Cert ID pair, not the authorization code you pasted. Check that EBAY_CLIENT_SECRET " +
       "(Cert ID) and EBAY_CLIENT_ID (App ID) come from the same Production keyset — sandbox " +
-      "keys won't work — have no stray spaces or line breaks, and that you redeployed in " +
-      "Vercel after setting them."
+      "keys won't work — have no stray spaces or line breaks, and that you redeployed " +
+      "after setting them."
     );
   }
   if (/invalid_request/i.test(body)) {

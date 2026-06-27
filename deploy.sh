@@ -1,53 +1,47 @@
 #!/usr/bin/env bash
-# One-shot deploy helper for the Listing Writer app.
+# Build and run the app locally with Docker.
 #
-# First time only:   vercel login        (logs into your Vercel account)
-# Then, any time:    ./deploy.sh         (deploys the current code to your live site)
+# Prerequisites:
+#   1. Install Docker (https://docs.docker.com/get-docker/)
+#   2. Copy .env.example to .env.local and fill in your secrets
+#   3. Run this script: ./deploy.sh
 #
-# It also pushes your ANTHROPIC_API_KEY from .env.local up to Vercel so the
-# live site can write listings. Your key is never committed to git.
+# For Coolify (self-hosted):
+#   - Point Coolify at this repository (GitHub source)
+#   - Set Build Pack to "Dockerfile"
+#   - Add the same environment variables from .env.example in Coolify → Environment
+#   - Set APP_URL to your public domain (e.g. https://listing-writer.example.com)
+#   - Deploy — Coolify builds and runs the Docker image automatically
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
 
-# 1. Make sure you're logged in.
-if ! vercel whoami >/dev/null 2>&1; then
+if ! command -v docker &>/dev/null; then
   echo
-  bold "You're not logged into Vercel yet."
-  echo "Run this once, follow the prompts, then re-run ./deploy.sh:"
+  bold "Docker is not installed."
+  echo "Install it from https://docs.docker.com/get-docker/ and re-run ./deploy.sh"
+  exit 1
+fi
+
+if [ ! -f .env.local ]; then
   echo
-  echo "    vercel login"
+  bold "No .env.local found."
+  echo "Copy .env.example to .env.local and fill in your secrets first:"
+  echo
+  echo "    cp .env.example .env.local"
   echo
   exit 1
 fi
-bold "✓ Logged in to Vercel as $(vercel whoami 2>/dev/null)"
 
-# 2. Link (or create) the Vercel project for this folder, using defaults.
-bold "Linking project (accepting defaults)…"
-vercel link --yes >/dev/null 2>&1 || true
+bold "Building Docker image…"
+docker compose build
 
-# 3. Push the Anthropic key from .env.local into Vercel for every environment.
-if [ -f .env.local ]; then
-  KEY="$(grep -E '^ANTHROPIC_API_KEY=' .env.local | head -1 | cut -d= -f2-)"
-  if [ -n "${KEY:-}" ]; then
-    bold "Uploading ANTHROPIC_API_KEY to Vercel…"
-    for ENVN in production preview development; do
-      vercel env rm ANTHROPIC_API_KEY "$ENVN" -y >/dev/null 2>&1 || true
-      printf "%s" "$KEY" | vercel env add ANTHROPIC_API_KEY "$ENVN" >/dev/null 2>&1 || true
-    done
-    echo "  done."
-  else
-    bold "⚠ No ANTHROPIC_API_KEY found in .env.local — add it in the Vercel dashboard later."
-  fi
-else
-  bold "⚠ No .env.local found — set ANTHROPIC_API_KEY in the Vercel dashboard later."
-fi
-
-# 4. Deploy to production.
-bold "Deploying to production… (first build takes ~1 minute)"
-vercel --prod --yes
+bold "Starting app on http://localhost:3000 …"
+docker compose up -d
 
 echo
-bold "✅ Done! Your live URL is shown above. Bookmark it on your Mac and phone."
+bold "✅ Done! Open http://localhost:3000 in your browser."
+echo "   To view logs: docker compose logs -f"
+echo "   To stop:      docker compose down"

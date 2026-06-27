@@ -1,12 +1,12 @@
 // eBay API constants + credential loading for the web app.
 //
 // Phase 2 uses a SEPARATE eBay keyset from the Python lister (so the two never
-// interfere). These come from environment variables set in Vercel:
+// interfere). These come from environment variables:
 //   EBAY_CLIENT_ID      — the App ID (Client ID)
 //   EBAY_CLIENT_SECRET  — the Cert ID (Client Secret)
 //   EBAY_RU_NAME        — the RuName, whose "auth accepted URL" in the eBay
 //                         developer portal must point at this app's callback
-//                         (e.g. https://your-app.vercel.app/api/ebay/callback)
+//                         (e.g. https://your-app.example.com/api/ebay/callback)
 //   SESSION_SECRET      — random string used to encrypt the stored eBay token
 
 export const EBAY_OAUTH_URL = "https://auth.ebay.com/oauth2/authorize";
@@ -38,7 +38,7 @@ export function getEbayCreds(): EbayCreds {
   const ruName = process.env.EBAY_RU_NAME;
   if (!clientId || !clientSecret || !ruName) {
     throw new Error(
-      "eBay is not configured. Set EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_RU_NAME in Vercel."
+      "eBay is not configured. Set EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_RU_NAME in your environment variables."
     );
   }
   return { clientId, clientSecret, ruName };

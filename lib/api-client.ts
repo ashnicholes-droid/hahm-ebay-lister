@@ -53,8 +53,8 @@ export async function apiPost(path: string, body: unknown): Promise<Response> {
   for (let attempt = 0; attempt < 2 && res.status === 401; attempt++) {
     const entered = window.prompt(
       attempt === 0
-        ? "Enter your access code. This is the APP_SECRET you set in Vercel (Settings → Environment Variables) — not your Anthropic API key."
-        : "That didn't match the APP_SECRET set in Vercel — try again:"
+        ? "Enter your access code. This is the APP_SECRET you set in your environment variables — not your Anthropic API key."
+        : "That didn't match the APP_SECRET in your environment variables — try again:"
     );
     if (!entered || !entered.trim()) return res; // user cancelled — surface the 401
     code = entered.trim();

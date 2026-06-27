@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Evaluated once per cold start — env vars do not change at runtime.
-const isProd =
-  process.env.NODE_ENV === "production" ||
-  process.env.VERCEL_ENV === "production";
+const isProd = process.env.NODE_ENV === "production";
 
 export function middleware(request: NextRequest) {
   // Fresh nonce for every HTML response. Buffer is polyfilled by Next.js for
