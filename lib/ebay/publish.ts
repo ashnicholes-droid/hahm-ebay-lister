@@ -799,6 +799,11 @@ export async function publishListing(
     ) {
       for (const alt of condCandidates) {
         if (alt === inventoryItem.condition) continue;
+        // Loud on purpose: a silent step-down is how "Excellent" items ended
+        // up displaying as "Pre-owned – Good" with no trace in the logs.
+        console.warn(
+          `[ebay/publish] sku=${sku} condition ${inventoryItem.condition} rejected by category ${catId} — trying ${alt}`
+        );
         inventoryItem.condition = alt;
         r = await putInventory();
         if ([200, 201, 204].includes(r.status)) break;
@@ -951,6 +956,9 @@ async function publishOfferWithRecovery(
   if (eids.includes(25059) || eids.includes(25021)) {
     for (const alt of ctx.condCandidates) {
       if (alt === ctx.inventoryItem.condition) continue;
+      console.warn(
+        `[ebay/publish] sku=${sku} condition ${ctx.inventoryItem.condition} rejected at publish (category ${ctx.catId}) — trying ${alt}`
+      );
       ctx.inventoryItem.condition = alt;
       await putInventory();
       r = await doPublish();
