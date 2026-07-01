@@ -430,6 +430,46 @@ function errorIds(r: EbayResp): number[] {
   }
 }
 
+// Extra guidance for eBay errors that a seller can act on directly. Keyed by
+// errorId; appended to the raw eBay message when surfaced in the UI.
+const EBAY_ERROR_HINTS: Record<number, string> = {
+  25019:
+    "eBay rejected the listing's content — usually a restricted or trademarked word in the title/description, or the item is already listed. Edit the title/description and try again.",
+};
+
+// Pull eBay's primary error (id + human message) from a failed response, so we
+// can log it and show it cleanly instead of dumping raw JSON at the user.
+function primaryEbayError(r: EbayResp): { errorId: number; message: string } {
+  const err = r.json?.errors?.[0];
+  if (err) {
+    return {
+      errorId: Number(err.errorId || 0),
+      message: String(err.longMessage || err.message || "").trim(),
+    };
+  }
+  return { errorId: 0, message: (r.text || "").slice(0, 300) };
+}
+
+// One structured log line per publish failure, so Vercel Function Logs actually
+// show what eBay rejected. Without this the whole path logged nothing, which is
+// why failed requests showed "No logs found for this request".
+function logPublishFailure(stage: string, sku: string, r: EbayResp): void {
+  const { errorId, message } = primaryEbayError(r);
+  console.error(
+    `[ebay/publish] ${stage} failed sku=${sku} http=${r.status} errorId=${errorId || "?"} ${message}`
+  );
+}
+
+// User-facing one-liner: eBay's own reason, tagged with its errorId, plus an
+// actionable hint when we have one.
+function publishErrorMessage(stage: string, r: EbayResp): string {
+  const { errorId, message } = primaryEbayError(r);
+  const detail = message || `HTTP ${r.status}`;
+  const head = errorId ? `${stage} (eBay error ${errorId}): ${detail}` : `${stage} (${r.status}): ${detail}`;
+  const hint = errorId ? EBAY_ERROR_HINTS[errorId] : undefined;
+  return hint ? `${head} ${hint}` : head;
+}
+
 function extractExistingOfferId(r: EbayResp): string | null {
   for (const err of r.json?.errors || []) {
     if (err.errorId === 25002) {
@@ -681,7 +721,8 @@ export async function publishListing(
       }
     }
     if (![200, 201, 204].includes(r.status)) {
-      return { success: false, sku, error: `Inventory item failed (${r.status}): ${r.text.slice(0, 300)}` };
+      logPublishFailure("inventory item", sku, r);
+      return { success: false, sku, error: publishErrorMessage("Inventory item failed", r) };
     }
   }
 
@@ -734,7 +775,8 @@ export async function publishListing(
   if (r.status === 400) {
     const existing = extractExistingOfferId(r);
     if (!existing) {
-      return { success: false, sku, error: `Offer creation failed (${r.status}): ${r.text.slice(0, 300)}` };
+      logPublishFailure("offer creation", sku, r);
+      return { success: false, sku, error: publishErrorMessage("Offer creation failed", r) };
     }
     // Update the pre-existing offer instead.
     const upd = await ebayRequest(accessToken, "PUT", `${EBAY_INV_BASE}/offer/${existing}`, {
@@ -742,11 +784,13 @@ export async function publishListing(
       extraHeaders: CL,
     });
     if (![200, 201, 204].includes(upd.status)) {
-      return { success: false, sku, error: `Offer update failed (${upd.status}): ${upd.text.slice(0, 300)}` };
+      logPublishFailure("offer update", sku, upd);
+      return { success: false, sku, error: publishErrorMessage("Offer update failed", upd) };
     }
     offerId = existing;
   } else if (![200, 201].includes(r.status)) {
-    return { success: false, sku, error: `Offer creation failed (${r.status}): ${r.text.slice(0, 300)}` };
+    logPublishFailure("offer creation", sku, r);
+    return { success: false, sku, error: publishErrorMessage("Offer creation failed", r) };
   } else {
     offerId = r.json?.offerId || "";
   }
@@ -833,10 +877,11 @@ async function publishOfferWithRecovery(
     }
   }
 
+  logPublishFailure("publish", sku, r);
   return {
     success: false,
     sku,
     offerId,
-    error: `Publish failed (${r.status}): ${r.text.slice(0, 300)}`,
+    error: publishErrorMessage("Publish failed", r),
   };
 }

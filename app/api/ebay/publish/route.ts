@@ -43,8 +43,13 @@ export async function POST(req: NextRequest) {
   try {
     const setup = await fetchAccountSetup(accessToken);
     const result = await publishListing(accessToken, setup, body);
-    return NextResponse.json(result, { status: result.success ? 200 : 502 });
+    // A failed publish is a business outcome (eBay rejected the listing), not a
+    // server error. Return 422 so it can't be confused with Vercel's own
+    // platform 502 (function crash/timeout). The client keys off `success`, not
+    // the HTTP status. True server faults still throw and surface as 500 below.
+    return NextResponse.json(result, { status: result.success ? 200 : 422 });
   } catch (e) {
+    console.error(`[ebay/publish] unhandled error sku=${body.sku}:`, e);
     return NextResponse.json(
       { success: false, sku: body.sku, error: (e as Error).message },
       { status: 500 }
