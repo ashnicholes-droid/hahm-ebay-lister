@@ -101,7 +101,7 @@ Return ONLY valid JSON — no markdown, no code fences, no explanation. Use this
   "brand": "Brand name exactly as shown on tag/label. Use 'No Brand' if truly unbranded.",
   "item_type": "Specific descriptive item type",
   "color": ["Primary color", "Secondary color if present — omit if solid"],
-  "size": "Size EXACTLY as printed on the tag. Write 'See photos' if no tag visible.",
+  "size": "Size EXACTLY as printed on the tag. If no size tag is visible but visible measurements clearly indicate one standard size, give that standard size (e.g. 'M', '32x34', '10.5'). Otherwise use an empty string — NEVER write placeholder text like 'See photos', 'Unknown', or 'N/A' (eBay blocks apparel listings with non-standard size values).",
   "material": "Fabric or material composition as shown on tag. Write 'See tag in photos' if unclear.",
   "condition": "One of: NEW_WITH_TAGS, NEW_NO_TAGS, EXCELLENT, VERY_GOOD, GOOD, FAIR",
   "condition_notes": "Honest 2-3 sentence condition description for buyers.",

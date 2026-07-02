@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 
 const TITLE_LIMIT = 80;
@@ -78,6 +79,11 @@ export function ListingCard({
   }, [listing?.item_specifics]);
 
   const titleLen = listing?.title?.length ?? 0;
+
+  // eBay's size standardization blocks apparel/footwear listings that are
+  // missing a Size, so flag those for the seller before they post.
+  const sizeRequired = SIZE_REQUIRED_CATEGORIES.has(listing?.category ?? "");
+  const sizeMissing = sizeRequired && !(listing?.size ?? "").trim();
 
   return (
     <article className={`listing-card status-${group.status}`}>
@@ -198,13 +204,30 @@ export function ListingCard({
                 <div className="v">{listing.brand}</div>
               </div>
             )}
-            {listing.size && (
-              <div className="stat">
-                <div className="k">Size</div>
-                <div className="v">{listing.size}</div>
+            {(sizeRequired || listing.size) && (
+              <div className={`stat editable${sizeMissing ? " needs-attention" : ""}`}>
+                <label className="k" htmlFor={`size-${group.id}`}>
+                  Size
+                </label>
+                <input
+                  id={`size-${group.id}`}
+                  type="text"
+                  className="size-input"
+                  value={listing.size ?? ""}
+                  placeholder={sizeRequired ? "e.g. M, 32x34, 10.5" : "—"}
+                  onChange={(e) => onEdit(group.id, { size: e.target.value })}
+                />
               </div>
             )}
           </div>
+
+          {sizeMissing && (
+            <p className="size-warning" role="alert">
+              ⚠️ No size found on the tag. eBay now blocks apparel listings
+              without a standard size — check the photos or measure the item,
+              then fill in Size above before posting.
+            </p>
+          )}
 
           <div className="result-field">
             <label>Description</label>

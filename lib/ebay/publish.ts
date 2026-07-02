@@ -17,6 +17,7 @@ import {
 } from "./taxonomy";
 import { clipAspectValue, matchAllowed, canonicalizeAspectKeys } from "./aspects";
 import { fillRecommendedAspects } from "./aspectFill";
+import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
 import type { ListingResult } from "@/lib/types";
 
 // ── Constants (from the Python script) ───────────────────────────────────────
@@ -114,25 +115,32 @@ const APPAREL_CONDITION_ID_PREFERENCES: Record<string, number[]> = {
 const GENERAL_SAFE_CONDITION_IDS = [3000, 4000, 5000, 6000, 2750, 1500, 1000, 1750, 7000];
 const APPAREL_SAFE_CONDITION_IDS = [3000, 2990, 3010, 1500, 1000, 1750];
 
-const APPAREL_CATEGORIES = new Set([
-  "womens_top", "womens_dress", "womens_skirt", "womens_pants", "womens_coat",
-  "womens_sweater", "womens_jeans", "womens_clothing", "womens_shoes", "mens_top",
-  "mens_pants", "mens_coat", "mens_sweater", "mens_jeans", "mens_clothing",
-  "mens_shoes", "scarf", "belt", "hat",
-]);
-const PANTS_CATEGORIES = new Set([
-  "womens_pants", "womens_jeans", "womens_skirt", "mens_pants", "mens_jeans",
-]);
-
 const ASPECT_DEFAULTS: Record<string, string> = {
   "Skirt Length": "Knee-Length", "Dress Length": "Knee-Length", Rise: "Mid Rise",
   "Leg Style": "Straight", Closure: "Pull-On", "Shoe Width": "Medium",
   "Heel Height": "Flat", "Toe Shape": "Round", Adjustable: "Yes",
   "Exterior Pockets": "Yes", Lining: "Lined", Hood: "No Hood", "Bag Closure": "Zip",
   "Strap Type": "Adjustable", "Hat Style": "Baseball Cap", "Brim Style": "Curved Bill",
-  "Size Type": "Regular", Size: "Regular", Style: "Casual", Department: "Unisex Adult",
+  "Size Type": "Regular", Style: "Casual", Department: "Unisex Adult",
   Type: "Item", Brand: "Unbranded", Color: "Multicolor", Material: "Mixed Materials",
 };
+
+// eBay's size standardization (enforced July 2026) blocks or holds listings
+// whose Size is a placeholder or non-standard value, so size aspects are only
+// ever filled from real listing data — never from defaults or guesses.
+// "Size Type" (Regular/Plus/Petite/…) is exempt: it's a fit class, not a size.
+function isSizeAspect(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.includes("size") && !n.includes("size type");
+}
+
+const PLACEHOLDER_SIZE_RE =
+  /^(see\s|refer\s|check\s|unknown\b|n\/?a\b|none\b|not\s|no\s(size|tag)|[-?]+$|tbd\b)/i;
+
+function cleanSize(raw: unknown): string {
+  const s = String(raw || "").trim();
+  return PLACEHOLDER_SIZE_RE.test(s) ? "" : s;
+}
 
 // ── eBay REST client (token-authed) ──────────────────────────────────────────
 
@@ -312,7 +320,7 @@ function buildAspects(listing: ListingResult, catKey: string): Record<string, st
   };
 
   put("Brand", String(listing.brand || "").trim());
-  put("Size", String(listing.size || "").trim());
+  put("Size", cleanSize(listing.size));
   put("Color", singleValue(listing.color));
   put("Material", singleValue(listing.material));
   put("Type", String(listing.item_type || "").trim());
@@ -374,7 +382,7 @@ function freeTextDefault(name: string, listing: ListingResult): string {
   const n = name.toLowerCase();
   if (n.includes("brand")) return String(listing.brand || "").trim() || "Unbranded";
   if (n.includes("color")) return singleValue(listing.color) || "Multicolor";
-  if (n.includes("shoe size") || n === "size") return String(listing.size || "").trim();
+  if (n.includes("shoe size") || n === "size") return cleanSize(listing.size);
   if (n.includes("material")) return singleValue(listing.material) || "Man Made";
   if (n.includes("style")) return String(listing.item_specifics?.Style || listing.item_type || "").trim();
   if (n.includes("type")) return String(listing.item_type || "").trim();
@@ -394,16 +402,24 @@ function reconcileAspects(
 
     if (a.mode === "SELECTION_ONLY") {
       // Must be one of eBay's allowed values, or the publish 25002-fails.
+      // Size aspects never fall back to a guessed value — a wrong size
+      // mislabels the item and trips eBay's standardization enforcement.
       const canonical =
         matchAllowed(current || "", a.values) ||
-        matchAllowed(ASPECT_DEFAULTS[a.name] || "", a.values) ||
-        (a.name === "Department" ? pickDepartment(a.values, listing, catKey) : "") ||
-        a.values[0] ||
-        "";
+        (isSizeAspect(a.name)
+          ? ""
+          : matchAllowed(ASPECT_DEFAULTS[a.name] || "", a.values) ||
+            (a.name === "Department" ? pickDepartment(a.values, listing, catKey) : "") ||
+            a.values[0] ||
+            "");
       if (canonical) aspects[a.name] = [canonical];
+      else if (isSizeAspect(a.name)) delete aspects[a.name];
     } else if (!current) {
       // FREE_TEXT and unset — fill from the listing or a sensible default.
-      const v = freeTextDefault(a.name, listing) || ASPECT_DEFAULTS[a.name] || a.values[0] || "";
+      const fromListing = freeTextDefault(a.name, listing);
+      const v =
+        fromListing ||
+        (isSizeAspect(a.name) ? "" : ASPECT_DEFAULTS[a.name] || a.values[0] || "");
       const clipped = clipAspectValue(v);
       if (clipped) aspects[a.name] = [clipped];
     }
@@ -494,6 +510,9 @@ function addMissingAspects(
 ): string[] {
   const added: string[] = [];
   for (const field of missing) {
+    // Never stamp a default into a size aspect — let eBay's "missing item
+    // specific" error surface so the seller supplies the real size.
+    if (isSizeAspect(field)) continue;
     const def = ASPECT_DEFAULTS[field] || "Unbranded";
     aspects[field] = [def];
     added.push(`${field}=${def}`);
