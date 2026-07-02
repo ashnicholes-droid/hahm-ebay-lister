@@ -8,6 +8,11 @@
 //                         developer portal must point at this app's callback
 //                         (e.g. https://your-app.vercel.app/api/ebay/callback)
 //   SESSION_SECRET      — random string used to encrypt the stored eBay token
+//
+// Optional marketplace overrides (defaults are the US site). Set all three
+// together for another marketplace, e.g. UK: EBAY_MARKETPLACE_ID=EBAY_GB,
+// EBAY_CATEGORY_TREE_ID=3, EBAY_CURRENCY=GBP. After changing them, regenerate
+// the offline category fallback with scripts/refresh-category-map.ts.
 
 export const EBAY_OAUTH_URL = "https://auth.ebay.com/oauth2/authorize";
 export const EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token";
@@ -16,8 +21,9 @@ export const EBAY_ACC_BASE = "https://api.ebay.com/sell/account/v1";
 export const EBAY_META_BASE = "https://api.ebay.com/sell/metadata/v1";
 export const EBAY_TAX_BASE = "https://api.ebay.com/commerce/taxonomy/v1";
 export const EBAY_TRADING = "https://api.ebay.com/ws/api.dll";
-export const EBAY_MARKETPLACE_ID = "EBAY_US";
-export const EBAY_CATEGORY_TREE_ID = "0";
+export const EBAY_MARKETPLACE_ID = process.env.EBAY_MARKETPLACE_ID || "EBAY_US";
+export const EBAY_CATEGORY_TREE_ID = process.env.EBAY_CATEGORY_TREE_ID || "0";
+export const EBAY_CURRENCY = process.env.EBAY_CURRENCY || "USD";
 
 export const EBAY_SCOPES = [
   "https://api.ebay.com/oauth/api_scope",
