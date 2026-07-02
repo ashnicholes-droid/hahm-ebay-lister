@@ -5,6 +5,7 @@
 
 import {
   EBAY_ACC_BASE,
+  EBAY_CURRENCY,
   EBAY_INV_BASE,
   EBAY_MARKETPLACE_ID,
   EBAY_TRADING,
@@ -877,7 +878,7 @@ export async function publishListing(
     marketplaceId: EBAY_MARKETPLACE_ID,
     format: "FIXED_PRICE",
     listingDescription: listing.description || "",
-    pricingSummary: { price: { value: String(price), currency: "USD" } },
+    pricingSummary: { price: { value: String(price), currency: EBAY_CURRENCY } },
     quantityLimitPerBuyer: 1,
     categoryId: catId,
     merchantLocationKey: setup.locationKey,
