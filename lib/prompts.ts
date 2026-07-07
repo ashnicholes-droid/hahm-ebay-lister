@@ -279,3 +279,10 @@ export function slugifyFolderName(raw: string): string {
   const cleaned = lowered.replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
   return cleaned.replace(/^-+|-+$/g, "") || "item";
 }
+1. Front/main photo
+2. Back
+3. Brand/tag/label
+4. Size tag
+5. Condition/flaws
+6. Measurements
+7. Extra angles
