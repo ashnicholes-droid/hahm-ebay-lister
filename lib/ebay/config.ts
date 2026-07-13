@@ -18,12 +18,12 @@ export const EBAY_TAX_BASE = "https://api.ebay.com/commerce/taxonomy/v1";
 export const EBAY_TRADING = "https://api.ebay.com/ws/api.dll";
 export const EBAY_MARKETPLACE_ID = "EBAY_US";
 export const EBAY_CATEGORY_TREE_ID = "0";
-
-export const EBAY_SCOPES = [
+  export const EBAY_SCOPES = [
   "https://api.ebay.com/oauth/api_scope",
   "https://api.ebay.com/oauth/api_scope/sell.inventory",
   "https://api.ebay.com/oauth/api_scope/sell.account",
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+  "https://api.ebay.com/oauth/api_scope/sell.marketing",
 ].join(" ");
 
 export interface EbayCreds {
