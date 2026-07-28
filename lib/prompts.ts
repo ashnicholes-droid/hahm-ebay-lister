@@ -87,6 +87,14 @@ Study each photo carefully:
 • Main shots → overall condition, color, silhouette, style details
 • Tag/label photos → brand name EXACTLY as written, size EXACTLY as printed, material composition, country of origin, care instructions
 • Measurement photos → note any measurements written or shown
+• Photo order → arrange the photos in this order whenever possible:
+  1. Front/main photo
+  2. Back
+  3. Brand/tag/label
+  4. Size tag
+  5. Condition/flaws
+  6. Measurements
+  7. Extra angles
 • Close-ups → look for logos, hardware details, monograms, serial numbers, maker marks, model numbers, edition info, signatures, stamps, and flaws
 • Packaging/manual/accessory shots → include only if clearly part of the item being sold
 • For jewelry → identify exact jewelry type (ring, necklace, bracelet, earrings, brooch, pendant, charm, cufflinks, watch accessory, etc.), clasp/closure, main stone, metal/base metal, metal purity or hallmarks (925, 10K, 14K, etc.), signed/maker marks, approximate length, ring size, vintage/antique status, and whether it appears handmade
@@ -279,10 +287,3 @@ export function slugifyFolderName(raw: string): string {
   const cleaned = lowered.replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
   return cleaned.replace(/^-+|-+$/g, "") || "item";
 }
-1. Front/main photo
-2. Back
-3. Brand/tag/label
-4. Size tag
-5. Condition/flaws
-6. Measurements
-7. Extra angles
