@@ -15,7 +15,7 @@ import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 export const maxDuration = 60;
 
 const ANALYSIS_MODEL = "claude-opus-4-8";
-const ROUTER_MODEL = "claude-sonnet-4-6";
+const ROUTER_MODEL = "claude-sonnet-4-5-20250929";
 const MAX_IMAGES = 12;
 
 function toImageBlocks(images: AnalyzeRequestBody["images"]): ImageBlock[] {

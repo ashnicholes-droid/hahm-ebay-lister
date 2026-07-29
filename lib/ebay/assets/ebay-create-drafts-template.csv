@@ -1,0 +1,6 @@
+#INFO,Version=0.0.2,Template= eBay-draft-listings-template_US,,,,,,,,
+#INFO Action and Category ID are required fields. 1) Set Action to Draft 2) Please find the category ID for your listings here: https://pages.ebay.com/sellerinformation/news/categorychanges.html,,,,,,,,,,
+"#INFO After you've successfully uploaded your draft from the Seller Hub Reports tab, complete your drafts to active listings here: https://www.ebay.com/sh/lst/drafts",,,,,,,,,,
+#INFO,,,,,,,,,,
+Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8),Custom label (SKU),Category ID,Title,UPC,Price,Quantity,Item photo URL,Condition ID,Description,Format
+Draft,,47140,Test Draft Shoe,,11,1,https://ir.ebaystatic.com/cr/v/c1/rsc/ebay_logo_512.png,NEW,<p><CENTER><H4>This is a Test Auction...Please Do Not Bid</H4></CENTER><P>This is one of those test auctions. Please do not bid as there is no merchandise being auctioned.</P>,FixedPrice

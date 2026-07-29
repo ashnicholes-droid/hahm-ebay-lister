@@ -13,7 +13,7 @@ import type { ListingResult } from "@/lib/types";
 import type { AspectMeta } from "./taxonomy";
 import { clipAspectValue, matchAllowed } from "./aspects";
 
-const FILL_MODEL = "claude-sonnet-4-6";
+const FILL_MODEL = "claude-sonnet-4-5-20250929";
 const MAX_ASPECTS_TO_FILL = 25;
 const MAX_ALLOWED_VALUES_SHOWN = 40;
 
