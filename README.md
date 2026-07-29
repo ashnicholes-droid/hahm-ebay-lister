@@ -125,14 +125,18 @@ and redeploy with `vercel --prod`.
 
 > **"Marketplace account deletion" compliance.** When you create a production
 > keyset, eBay flags it **"not compliant"** and asks for a *Marketplace account
-> deletion/closure notification endpoint*. This app stores **no** eBay user data on
-> a server — your token lives only in an encrypted cookie in your own browser — so
-> you don't need an endpoint. Instead, take eBay's exemption: in the developer
-> portal under *Alerts & Notifications → Marketplace account deletion*, toggle ON
-> **Exempted from Marketplace Account Deletion / Not persisting eBay data** and
-> submit it. (Describe your setup honestly — eBay penalizes false exemptions.) Do
-> this **before** your first production API call. Only if eBay won't accept the
-> exemption do you need to host an endpoint.
+> deletion/closure notification endpoint*. This app hosts one for you at
+> `/api/ebay/account-deletion`, because it stores scheduled listing records in a
+> database. To register it, in the developer portal under *Alerts & Notifications
+> → Marketplace account deletion* enter:
+>
+> - **Notification endpoint URL:** `https://your-app.vercel.app/api/ebay/account-deletion`
+> - **Verification token:** the same random string you set as
+>   `EBAY_VERIFICATION_TOKEN` in your Vercel env vars (see below)
+>
+> Set the variable in Vercel and redeploy **before** you hit *Send Test
+> Notification* — eBay verifies the endpoint by calling it, and it can't answer
+> without the token. Do this **before** your first production API call.
 
 ---
 
@@ -147,6 +151,7 @@ and redeploy with `vercel --prod`.
 | `EBAY_RU_NAME` | for posting | Your eBay RuName — the short `Name-XXXX-XXXX-XXXX` identifier, **not** the long "Sign In (OAuth)" URL |
 | `SESSION_SECRET` | for posting | Random string to encrypt your eBay token. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_URL` | for posting | Your deployed URL, e.g. `https://your-app.vercel.app` |
+| `EBAY_VERIFICATION_TOKEN` | for posting | Random 32–80 char string (letters/digits/`_`/`-`) proving eBay's account-deletion endpoint is yours. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Must match the value you enter in eBay's developer portal. |
 | `EBAY_LOCATION_POSTAL_CODE` | optional | Your ZIP (only used once to create an eBay inventory location) |
 | `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Editable per listing on eBay. |
 | `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches (defaults 12 × 9 × 3). |
@@ -185,8 +190,11 @@ flowchart TD
 - **`/api/analyze`**: writes a listing for one item from its photos.
 - **`/api/ebay/*`**: OAuth connect (encrypted-cookie token) + the
   inventory→offer→publish flow, with recovery for eBay's category/aspect quirks.
-- **Stack**: Next.js (App Router) + TypeScript, deployed on Vercel. Nothing is
-  stored server-side; photos are used to build listings and discarded.
+  Also hosts eBay's required account-deletion notification endpoint.
+- **Stack**: Next.js (App Router) + TypeScript, deployed on Vercel. Scheduled
+  listing records are stored in Postgres; your photos are used to build listings
+  and then discarded, and your eBay token stays in the encrypted cookie — neither
+  is ever written to the database.
 
 ---
 

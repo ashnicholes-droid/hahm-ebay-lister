@@ -2,7 +2,8 @@
 //
 // We keep only the long-lived refresh token (encrypted with SESSION_SECRET).
 // Short-lived access tokens are minted on demand from it, so nothing sensitive
-// is exposed to the browser and there's no database to manage.
+// is exposed to the browser. The app's database holds scheduling records only —
+// eBay credentials and tokens are never written to it.
 
 import { refreshAccessToken } from "./oauth";
 
