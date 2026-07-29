@@ -45,28 +45,48 @@ export interface SortResponse {
 }
 
 // ── Client-side working model for the bulk flow ──────────────────────────────
-
 export interface Photo {
   id: string;
-  previewUrl: string;
   mediaType: string;
-  data: string; // base64, no prefix
+  data: string;
+  previewUrl: string;
 }
 
-export type ItemStatus = "idle" | "writing" | "done" | "error";
+export type ItemStatus =
+  | "idle"
+  | "writing"
+  | "done"
+  | "error";
 
-export type PostStatus = "idle" | "posting" | "posted" | "error";
+export type PostStatus =
+  | "idle"
+  | "saving"
+  | "draft-saved"
+  // Published live and enrolled in a Promoted Listings campaign.
+  | "published"
+  | "error";
+
+// Which action is in flight / produced the current state. Both buttons share
+// postStatus, so without this each one can't tell whether the spinner is its own.
+export type PostMode = "draft" | "promote";
 
 export interface ItemGroup {
   id: string;
-  sku: string; // bin reference, e.g. "K75-A"
+  sku: string;
   name: string;
   photoIds: string[];
   listing?: ListingResult;
   status: ItemStatus;
-  error?: string;
-  // eBay posting state (Phase 2)
+
+  // eBay draft state
   postStatus?: PostStatus;
+  postMode?: PostMode;
+  offerId?: string;
   listingId?: string;
   postError?: string;
+
+  // Promote-only. A listing can go live but fail to enrol in the ad campaign,
+  // so promoted=false with a reason is a distinct outcome from success.
+  promoted?: boolean;
+  promoteError?: string;
 }

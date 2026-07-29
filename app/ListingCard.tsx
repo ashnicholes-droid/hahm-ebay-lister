@@ -59,6 +59,7 @@ interface ListingCardProps {
   onEdit: (groupId: string, patch: Partial<ListingResult>) => void;
   onRetry: (groupId: string) => void;
   onPost: (groupId: string) => void;
+  onPublishAndPromote: (groupId: string) => void;
 }
 
 export function ListingCard({
@@ -68,6 +69,7 @@ export function ListingCard({
   onEdit,
   onRetry,
   onPost,
+  onPublishAndPromote,
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
   const listing = group.listing;
@@ -108,7 +110,7 @@ export function ListingCard({
             )}
             {group.status === "error" && (
               <span style={{ color: "var(--color-danger)" }}>
-                ⚠️ {group.error || "Failed"}
+                ⚠️ {group.postError || "Failed"}
               </span>
             )}
             {group.status === "idle" && "Waiting…"}
@@ -256,39 +258,65 @@ export function ListingCard({
           )}
 
           {/* eBay posting */}
-          {group.postStatus === "posted" ? (
+          {group.postStatus === "draft-saved" ? (
             <p className="post-result ok">
-              ✅ Posted to eBay
-              {group.listingId ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <a
-                    href={`https://www.ebay.com/itm/${group.listingId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View listing ↗
-                  </a>
-                </>
-              ) : null}
+             ✅ Saved as eBay Draft
             </p>
+          ) : group.postStatus === "published" ? (
+            <div className="post-row">
+              <p className="post-result ok">
+                {group.promoted ? "✅ Published + promoted (3%)" : "✅ Published to eBay"}
+                {group.listingId ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <a
+                      href={`https://www.ebay.com/itm/${group.listingId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View listing ↗
+                    </a>
+                  </>
+                ) : null}
+              </p>
+              {/* Live but not advertised — without this the failure is invisible. */}
+              {!group.promoted && group.promoteError && (
+                <p className="post-result err">⚠️ Not promoted: {group.promoteError}</p>
+              )}
+            </div>
           ) : ebayConnected ? (
             <div className="post-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => onPost(group.id)}
-                disabled={group.postStatus === "posting"}
-              >
-                {group.postStatus === "posting" ? (
-                  <>
-                    <span className="spinner" aria-hidden="true" /> Posting to eBay…
-                  </>
-                ) : (
-                  "🚀 Post this to eBay"
-                )}
-              </button>
+              <div className="post-buttons">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onPost(group.id)}
+                  disabled={group.postStatus === "saving"}
+                >
+                  {group.postStatus === "saving" && group.postMode !== "promote" ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" /> Posting to eBay…
+                    </>
+                  ) : (
+                    "🚀 💾 Save as eBay Draft"
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onPublishAndPromote(group.id)}
+                  disabled={group.postStatus === "saving"}
+                >
+                  {group.postStatus === "saving" && group.postMode === "promote" ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" /> Publishing…
+                    </>
+                  ) : (
+                    "🚀 Publish + Promote 3%"
+                  )}
+                </button>
+              </div>
               {group.postStatus === "error" && group.postError && (
                 <p className="post-result err">⚠️ {group.postError}</p>
               )}
