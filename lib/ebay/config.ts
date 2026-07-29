@@ -14,6 +14,7 @@ export const EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token";
 export const EBAY_INV_BASE = "https://api.ebay.com/sell/inventory/v1";
 export const EBAY_ACC_BASE = "https://api.ebay.com/sell/account/v1";
 export const EBAY_META_BASE = "https://api.ebay.com/sell/metadata/v1";
+export const EBAY_MKT_BASE = "https://api.ebay.com/sell/marketing/v1";
 export const EBAY_TAX_BASE = "https://api.ebay.com/commerce/taxonomy/v1";
 export const EBAY_TRADING = "https://api.ebay.com/ws/api.dll";
 export const EBAY_MARKETPLACE_ID = "EBAY_US";

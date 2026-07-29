@@ -8,6 +8,7 @@ import {
   EBAY_ACC_BASE,
   EBAY_INV_BASE,
   EBAY_MARKETPLACE_ID,
+  EBAY_MKT_BASE,
   EBAY_TRADING,
 } from "./config";
 
@@ -153,6 +154,9 @@ interface EbayResp {
   status: number;
   json: any;
   text: string;
+  // The Marketing API returns a created campaign/ad id only in the Location
+  // header (201 with an empty body), so responses carry their headers along.
+  headers: Headers;
 }
 
 async function ebayRequest(
@@ -181,7 +185,7 @@ async function ebayRequest(
   } catch {
     /* non-JSON (e.g. empty 204) */
   }
-  return { ok: resp.ok, status: resp.status, json, text };
+  return { ok: resp.ok, status: resp.status, json, text, headers: resp.headers };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1088,4 +1092,205 @@ return {
   offerId,
   listingId: "",
 };
+}
+
+// ── Publish live + Promoted Listings Standard ────────────────────────────────
+//
+// publishListing() deliberately stops at a DRAFT offer. This path takes that
+// same offer the rest of the way: publish it live, then enroll the resulting
+// listing in a Promoted Listings Standard (COST_PER_SALE) ad campaign.
+
+// Ad rate applied to every listing we enroll. eBay wants it as a string with
+// one decimal place, between "2.0" and "100.0".
+const PROMOTE_BID_PERCENTAGE = "3.0";
+
+// All listings from this app share one campaign, looked up by name so repeat
+// publishes reuse it instead of creating a campaign per item.
+const PROMOTE_CAMPAIGN_NAME =
+  process.env.EBAY_PROMOTE_CAMPAIGN_NAME || "Auto Promoted Listings";
+
+export interface PromoteResult extends PublishResult {
+  // The offer went live (publishListing's draft was published).
+  published?: boolean;
+  // The listing was added to a Promoted Listings campaign.
+  promoted?: boolean;
+  campaignId?: string;
+  adId?: string;
+  // Promotion is best-effort: a live listing that failed to enroll is still a
+  // success, with the reason reported here rather than in `error`.
+  promoteError?: string;
+}
+
+// Marketing API 201s carry the new resource id in the Location header
+// (…/ad_campaign/12345), sometimes with no response body at all.
+function idFromLocation(r: EbayResp): string {
+  const loc = r.headers.get("location") || r.headers.get("content-location") || "";
+  const tail = loc.split("?")[0].replace(/\/+$/, "").split("/").pop() || "";
+  return /^\d+$/.test(tail) ? tail : "";
+}
+
+// Publish a draft offer live. Mirrors publishOfferWithRecovery's handling of an
+// offer that is already published (an earlier attempt that timed out after the
+// publish landed is a success, not a failure).
+export async function publishOfferLive(
+  accessToken: string,
+  sku: string,
+  offerId: string
+): Promise<{ ok: boolean; listingId: string; error?: string }> {
+  const r = await withTransientRetry(
+    () =>
+      ebayRequest(accessToken, "POST", `${EBAY_INV_BASE}/offer/${offerId}/publish`, {
+        extraHeaders: CL,
+      }),
+    "publish",
+    sku
+  );
+  if (r.ok) return { ok: true, listingId: String(r.json?.listingId || "") };
+
+  if (/already\s*published/i.test(r.text || "")) {
+    const off = await ebayRequest(accessToken, "GET", `${EBAY_INV_BASE}/offer/${offerId}`);
+    return { ok: true, listingId: String(off.json?.listing?.listingId || "") };
+  }
+
+  logPublishFailure("publish", sku, r);
+  return { ok: false, listingId: "", error: publishErrorMessage("Publish failed", r) };
+}
+
+// Reuse the app's running COST_PER_SALE campaign, or create it on first use.
+// Returns "" if eBay refuses (seller not eligible for Promoted Listings, missing
+// sell.marketing scope, …) — the caller treats that as a non-fatal miss.
+export async function findOrCreateCampaignId(
+  accessToken: string,
+  sku: string
+): Promise<{ campaignId: string; error?: string }> {
+  const byName = async (): Promise<string> => {
+    const r = await ebayRequest(
+      accessToken,
+      "GET",
+      `${EBAY_MKT_BASE}/ad_campaign?campaign_status=RUNNING&limit=500`
+    );
+    if (!r.ok) return "";
+    const campaigns: any[] = r.json?.campaigns || [];
+    const cps = campaigns.filter(
+      (c) => String(c?.fundingStrategy?.fundingModel || "") === "COST_PER_SALE"
+    );
+    const named = cps.find((c) => String(c?.campaignName || "") === PROMOTE_CAMPAIGN_NAME);
+    return String((named || cps[0])?.campaignId || "");
+  };
+
+  const existing = await byName();
+  if (existing) return { campaignId: existing };
+
+  const create = await ebayRequest(accessToken, "POST", `${EBAY_MKT_BASE}/ad_campaign`, {
+    body: {
+      campaignName: PROMOTE_CAMPAIGN_NAME,
+      marketplaceId: EBAY_MARKETPLACE_ID,
+      fundingStrategy: { fundingModel: "COST_PER_SALE" },
+      // Start now and run until we end it. Ads are added per listing below, so
+      // the campaign intentionally has no campaignCriterion (manual selection).
+      startDate: new Date().toISOString(),
+    },
+    extraHeaders: CL,
+  });
+
+  if (create.ok || create.status === 201) {
+    const id = idFromLocation(create) || String(create.json?.campaignId || "");
+    if (id) return { campaignId: id };
+    // 201 with neither a body nor a usable Location — read it back by name.
+    const found = await byName();
+    if (found) return { campaignId: found };
+  }
+
+  // A campaign with this name already exists but isn't RUNNING (ended/paused),
+  // so the name is taken and the lookup above missed it.
+  const found = await byName();
+  if (found) return { campaignId: found };
+
+  const { errorId, message } = primaryEbayError(create);
+  console.error(
+    `[ebay/promote] campaign create failed sku=${sku} http=${create.status} errorId=${errorId || "?"} ${message}`
+  );
+  return { campaignId: "", error: publishErrorMessage("Ad campaign setup failed", create) };
+}
+
+// Add one live listing to a campaign at the standard ad rate.
+export async function createPromotion(
+  accessToken: string,
+  campaignId: string,
+  listingId: string,
+  sku: string,
+  bidPercentage: string = PROMOTE_BID_PERCENTAGE
+): Promise<{ ok: boolean; adId: string; error?: string }> {
+  const r = await ebayRequest(
+    accessToken,
+    "POST",
+    `${EBAY_MKT_BASE}/ad_campaign/${campaignId}/ad`,
+    { body: { listingId, bidPercentage }, extraHeaders: CL }
+  );
+
+  if (r.ok || r.status === 201) {
+    return { ok: true, adId: idFromLocation(r) || String(r.json?.adId || "") };
+  }
+
+  // The listing is already advertised in this campaign — idempotent success.
+  if (/already/i.test(r.text || "")) {
+    return { ok: true, adId: String(r.json?.adId || "") };
+  }
+
+  const { errorId, message } = primaryEbayError(r);
+  console.error(
+    `[ebay/promote] ad create failed sku=${sku} listingId=${listingId} http=${r.status} errorId=${errorId || "?"} ${message}`
+  );
+  return { ok: false, adId: "", error: publishErrorMessage("Promoting the listing failed", r) };
+}
+
+// Full pipeline: draft offer (publishListing, unchanged) → publish live →
+// promote. Promotion failures never fail the publish; the listing is already
+// live by then, so they're reported alongside a successful result.
+export async function publishAndPromoteListing(
+  accessToken: string,
+  setup: AccountSetup,
+  input: PublishInput
+): Promise<PromoteResult> {
+  const { sku } = input;
+
+  const base = await publishListing(accessToken, setup, input);
+  if (!base.success || !base.offerId) return base;
+
+  const live = await publishOfferLive(accessToken, sku, base.offerId);
+  if (!live.ok) {
+    return { ...base, success: false, published: false, error: live.error };
+  }
+  console.log("[ebay/promote] published live", { sku, offerId: base.offerId, listingId: live.listingId });
+
+  const result: PromoteResult = {
+    ...base,
+    success: true,
+    published: true,
+    listingId: live.listingId,
+  };
+
+  if (!live.listingId) {
+    // Nothing to advertise against — eBay didn't hand back a listing id.
+    return { ...result, promoted: false, promoteError: "eBay did not return a listing id, so the item could not be promoted." };
+  }
+
+  const campaign = await findOrCreateCampaignId(accessToken, sku);
+  if (!campaign.campaignId) {
+    return { ...result, promoted: false, promoteError: campaign.error };
+  }
+
+  const ad = await createPromotion(accessToken, campaign.campaignId, live.listingId, sku);
+  if (!ad.ok) {
+    return { ...result, promoted: false, campaignId: campaign.campaignId, promoteError: ad.error };
+  }
+
+  console.log("[ebay/promote] listing promoted", {
+    sku,
+    listingId: live.listingId,
+    campaignId: campaign.campaignId,
+    adId: ad.adId,
+    bidPercentage: PROMOTE_BID_PERCENTAGE,
+  });
+  return { ...result, promoted: true, campaignId: campaign.campaignId, adId: ad.adId };
 }
