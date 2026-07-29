@@ -82,8 +82,13 @@ export function EbayConnect() {
 
   // If eBay isn't configured on the server, show nothing (the writing flow
   // still works fine without it).
-  if (!status?.configured) return null;
-
+  if (!status?.configured) {
+  return (
+    <div className="ebay-bar">
+      <span>eBay is not configured on this server.</span>
+    </div>
+  );
+}
   return (
     <div className={`ebay-bar${status.connected ? " connected" : ""}`}>
       <span className="ebay-dot" aria-hidden="true" />
