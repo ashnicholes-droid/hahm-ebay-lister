@@ -14,6 +14,7 @@ import type {
   ItemGroup,
   ListingResult,
   Photo,
+  PostMode,
   SortResponse,
 } from "@/lib/types";
 type Step = "upload" | "review" | "listings";
@@ -26,6 +27,13 @@ const WRITE_CONCURRENCY = 3;
 // eBay accepts at most 12 photos per listing; sending more just bloats the
 // publish request toward Vercel's body limit.
 const MAX_PUBLISH_PHOTOS = 12;
+
+// "draft" leaves the offer unpublished; "promote" publishes it live and enrols
+// the listing in a Promoted Listings campaign. Same request payload either way.
+const POST_ENDPOINTS: Record<PostMode, string> = {
+  draft: "/api/ebay/publish",
+  promote: "/api/ebay/publish-and-promote",
+};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -403,7 +411,7 @@ export default function Home() {
     );
 
   const postGroup = useCallback(
-    async (groupId: string) => {
+    async (groupId: string, mode: PostMode = "draft") => {
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group || !group.listing) return;
 
@@ -416,7 +424,7 @@ export default function Home() {
       setGroups((prev) =>
         prev.map((g) =>
           g.id === groupId
-            ? { ...g, postStatus: "saving", postError: undefined }
+            ? { ...g, postStatus: "saving", postMode: mode, postError: undefined }
             : g
         )
       );
@@ -428,11 +436,13 @@ export default function Home() {
           listingId?: string;
           error?: string;
           alreadyListed?: boolean;
+          promoted?: boolean;
+          promoteError?: string;
         } | null = null;
         let hadTransientRetry = false;
 
         for (let attempt = 0; ; attempt++) {
-          const res = await apiPost("/api/ebay/publish", {
+          const res = await apiPost(POST_ENDPOINTS[mode], {
             sku: group.sku,
             listing: group.listing,
             images,
@@ -465,14 +475,19 @@ export default function Home() {
           throw new Error(data?.error || "eBay did not return an offer ID.");
         }
 
+        const result = data;
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
               ? {
                   ...g,
-                  postStatus: "draft-saved",
-                  offerId: data.offerId,
-                  listingId: "",
+                  postStatus: mode === "promote" ? "published" : "draft-saved",
+                  offerId: result.offerId,
+                  listingId: mode === "promote" ? result.listingId || "" : "",
+                  // Promotion is best-effort on the server: the listing can be
+                  // live with promoted=false and a reason. Carry both through.
+                  promoted: mode === "promote" ? Boolean(result.promoted) : undefined,
+                  promoteError: mode === "promote" ? result.promoteError : undefined,
                   postError: undefined,
                 }
               : g
@@ -495,10 +510,19 @@ export default function Home() {
     [photoMap]
   );
 
+  const publishAndPromoteGroup = useCallback(
+    (groupId: string) => postGroup(groupId, "promote"),
+    [postGroup]
+  );
+
   const postAll = async () => {
     const ready = groups
       .filter(
-        (g) => g.status === "done" && g.postStatus !== "draft-saved"
+        (g) =>
+          g.status === "done" &&
+          g.postStatus !== "draft-saved" &&
+          // Already live — re-posting would create a second listing.
+          g.postStatus !== "published"
       )
       .map((g) => g.id);
 
@@ -682,7 +706,7 @@ export default function Home() {
           onRetry={writeGroup}
           onPost={postGroup}
           onPostAll={postAll}
-          onPublishAndPromote={postGroup}
+          onPublishAndPromote={publishAndPromoteGroup}
           onBack={() => setStep("review")}
         />
       )}

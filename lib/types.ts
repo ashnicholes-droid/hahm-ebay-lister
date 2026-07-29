@@ -62,7 +62,14 @@ export type PostStatus =
   | "idle"
   | "saving"
   | "draft-saved"
+  // Published live and enrolled in a Promoted Listings campaign.
+  | "published"
   | "error";
+
+// Which action is in flight / produced the current state. Both buttons share
+// postStatus, so without this each one can't tell whether the spinner is its own.
+export type PostMode = "draft" | "promote";
+
 export interface ItemGroup {
   id: string;
   sku: string;
@@ -73,7 +80,13 @@ export interface ItemGroup {
 
   // eBay draft state
   postStatus?: PostStatus;
+  postMode?: PostMode;
   offerId?: string;
   listingId?: string;
   postError?: string;
+
+  // Promote-only. A listing can go live but fail to enrol in the ad campaign,
+  // so promoted=false with a reason is a distinct outcome from success.
+  promoted?: boolean;
+  promoteError?: string;
 }

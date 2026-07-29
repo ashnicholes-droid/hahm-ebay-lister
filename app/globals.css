@@ -977,6 +977,15 @@ textarea {
   margin-left: 0;
 }
 
+/* .post-row stacks its children; keep the two post buttons side by side,
+   wrapping onto a second line on narrow screens. */
+.post-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .post-result {
   margin: 0;
   font-size: 0.88rem;

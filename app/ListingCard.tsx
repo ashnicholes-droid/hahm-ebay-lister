@@ -262,29 +262,61 @@ export function ListingCard({
             <p className="post-result ok">
              ✅ Saved as eBay Draft
             </p>
+          ) : group.postStatus === "published" ? (
+            <div className="post-row">
+              <p className="post-result ok">
+                {group.promoted ? "✅ Published + promoted (3%)" : "✅ Published to eBay"}
+                {group.listingId ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <a
+                      href={`https://www.ebay.com/itm/${group.listingId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View listing ↗
+                    </a>
+                  </>
+                ) : null}
+              </p>
+              {/* Live but not advertised — without this the failure is invisible. */}
+              {!group.promoted && group.promoteError && (
+                <p className="post-result err">⚠️ Not promoted: {group.promoteError}</p>
+              )}
+            </div>
           ) : ebayConnected ? (
             <div className="post-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => onPost(group.id)}
-                disabled={group.postStatus === "saving"}
-              >
-                {group.postStatus === "saving" ? (
-                  <>
-                    <span className="spinner" aria-hidden="true" /> Posting to eBay…
-                  </>
-                ) : (
-                  "🚀 💾 Save as eBay Draft"
-                )}
-              </button>
-              <button
-  type="button"
-  className="btn"
-  onClick={() => onPublishAndPromote(group.id)}
->
-  🚀 Publish + Promote 3%
-</button>
+              <div className="post-buttons">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onPost(group.id)}
+                  disabled={group.postStatus === "saving"}
+                >
+                  {group.postStatus === "saving" && group.postMode !== "promote" ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" /> Posting to eBay…
+                    </>
+                  ) : (
+                    "🚀 💾 Save as eBay Draft"
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onPublishAndPromote(group.id)}
+                  disabled={group.postStatus === "saving"}
+                >
+                  {group.postStatus === "saving" && group.postMode === "promote" ? (
+                    <>
+                      <span className="spinner" aria-hidden="true" /> Publishing…
+                    </>
+                  ) : (
+                    "🚀 Publish + Promote 3%"
+                  )}
+                </button>
+              </div>
               {group.postStatus === "error" && group.postError && (
                 <p className="post-result err">⚠️ {group.postError}</p>
               )}
