@@ -12,11 +12,11 @@ const DESCRIPTIONS: Record<string, string> = {
   "claude-opus-4-8":   "Excellent quality. Recommended for detailed listing generation.",
   "claude-opus-4-7":   "High quality with strong reasoning. Good all-around choice.",
   "claude-opus-4-6":   "Solid quality and great value.",
-  "claude-sonnet-4-6": "Fast and capable. Great for sorting; works well for most listings.",
+  "claude-sonnet-4-5-20250929": "Fast and capable. Great for sorting; works well for most listings.",
   "claude-haiku-4-5":  "Fastest and most affordable. Best for photo sorting only.",
 };
 
-const SORT_DEFAULT     = "claude-sonnet-4-6";
+const SORT_DEFAULT     = "claude-sonnet-4-5-20250929";
 const ANALYSIS_DEFAULT = "claude-opus-4-8";
 
 export interface ModelOption {
@@ -35,12 +35,12 @@ interface ModelsPayload {
 const FALLBACK: ModelsPayload = {
   sortModels: [
     { id: "claude-opus-4-8",   displayName: "Claude Opus 4.8",   description: DESCRIPTIONS["claude-opus-4-8"],   isDefault: false },
-    { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", description: DESCRIPTIONS["claude-sonnet-4-6"], isDefault: true  },
+    { id: "claude-sonnet-4-5-20250929", displayName: "Claude Sonnet 4.5", description: DESCRIPTIONS["claude-sonnet-4-5-20250929"], isDefault: true  },
     { id: "claude-haiku-4-5",  displayName: "Claude Haiku 4.5",  description: DESCRIPTIONS["claude-haiku-4-5"],  isDefault: false },
   ],
   analysisModels: [
     { id: "claude-opus-4-8",   displayName: "Claude Opus 4.8",   description: DESCRIPTIONS["claude-opus-4-8"],   isDefault: true  },
-    { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", description: DESCRIPTIONS["claude-sonnet-4-6"], isDefault: false },
+    { id: "claude-sonnet-4-5-20250929", displayName: "Claude Sonnet 4.5", description: DESCRIPTIONS["claude-sonnet-4-5-20250929"], isDefault: false },
   ],
 };
 
