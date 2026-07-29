@@ -45,28 +45,35 @@ export interface SortResponse {
 }
 
 // ── Client-side working model for the bulk flow ──────────────────────────────
-
 export interface Photo {
   id: string;
-  previewUrl: string;
   mediaType: string;
-  data: string; // base64, no prefix
+  data: string;
+  previewUrl: string;
 }
 
-export type ItemStatus = "idle" | "writing" | "done" | "error";
+export type ItemStatus =
+  | "idle"
+  | "writing"
+  | "done"
+  | "error";
 
-export type PostStatus = "idle" | "posting" | "posted" | "error";
-
+export type PostStatus =
+  | "idle"
+  | "saving"
+  | "draft-saved"
+  | "error";
 export interface ItemGroup {
   id: string;
-  sku: string; // bin reference, e.g. "K75-A"
+  sku: string;
   name: string;
   photoIds: string[];
   listing?: ListingResult;
   status: ItemStatus;
-  error?: string;
-  // eBay posting state (Phase 2)
+
+  // eBay draft state
   postStatus?: PostStatus;
+  offerId?: string;
   listingId?: string;
   postError?: string;
 }

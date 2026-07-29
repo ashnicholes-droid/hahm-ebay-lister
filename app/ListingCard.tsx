@@ -59,6 +59,7 @@ interface ListingCardProps {
   onEdit: (groupId: string, patch: Partial<ListingResult>) => void;
   onRetry: (groupId: string) => void;
   onPost: (groupId: string) => void;
+  onPublishAndPromote: (groupId: string) => void;
 }
 
 export function ListingCard({
@@ -68,6 +69,7 @@ export function ListingCard({
   onEdit,
   onRetry,
   onPost,
+  onPublishAndPromote,
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
   const listing = group.listing;
@@ -108,7 +110,7 @@ export function ListingCard({
             )}
             {group.status === "error" && (
               <span style={{ color: "var(--color-danger)" }}>
-                ⚠️ {group.error || "Failed"}
+                ⚠️ {group.postError || "Failed"}
               </span>
             )}
             {group.status === "idle" && "Waiting…"}
@@ -256,22 +258,9 @@ export function ListingCard({
           )}
 
           {/* eBay posting */}
-          {group.postStatus === "posted" ? (
+          {group.postStatus === "draft-saved" ? (
             <p className="post-result ok">
-              ✅ Posted to eBay
-              {group.listingId ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <a
-                    href={`https://www.ebay.com/itm/${group.listingId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View listing ↗
-                  </a>
-                </>
-              ) : null}
+             ✅ Saved as eBay Draft
             </p>
           ) : ebayConnected ? (
             <div className="post-row">
@@ -279,16 +268,23 @@ export function ListingCard({
                 type="button"
                 className="btn btn-primary"
                 onClick={() => onPost(group.id)}
-                disabled={group.postStatus === "posting"}
+                disabled={group.postStatus === "saving"}
               >
-                {group.postStatus === "posting" ? (
+                {group.postStatus === "saving" ? (
                   <>
                     <span className="spinner" aria-hidden="true" /> Posting to eBay…
                   </>
                 ) : (
-                  "🚀 Post this to eBay"
+                  "🚀 💾 Save as eBay Draft"
                 )}
               </button>
+              <button
+  type="button"
+  className="btn"
+  onClick={() => onPublishAndPromote(group.id)}
+>
+  🚀 Publish + Promote 3%
+</button>
               {group.postStatus === "error" && group.postError && (
                 <p className="post-result err">⚠️ {group.postError}</p>
               )}

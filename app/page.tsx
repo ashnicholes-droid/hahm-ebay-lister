@@ -16,7 +16,6 @@ import type {
   Photo,
   SortResponse,
 } from "@/lib/types";
-
 type Step = "upload" | "review" | "listings";
 // Big batches are sorted in chunks of SORT_CHUNK photos per request — each
 // chunk's thumbnail payload stays under Vercel's 4.5 MB body limit — then
@@ -374,7 +373,11 @@ export default function Home() {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, status: "error", error: (e as Error).message }
+              ? {
+                  ...g,
+                  status: "error",
+                  error: e instanceof Error ? e.message : String(e),
+                }
               : g
           )
         );
@@ -403,53 +406,75 @@ export default function Home() {
     async (groupId: string) => {
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group || !group.listing) return;
+
       const images = group.photoIds
         .map((id) => photoMap.get(id))
         .filter((p): p is Photo => Boolean(p))
         .map((p) => ({ mediaType: p.mediaType, data: p.data }))
         .slice(0, MAX_PUBLISH_PHOTOS);
+
       setGroups((prev) =>
         prev.map((g) =>
-          g.id === groupId ? { ...g, postStatus: "posting", postError: undefined } : g
+          g.id === groupId
+            ? { ...g, postStatus: "saving", postError: undefined }
+            : g
         )
       );
+
       try {
         let data: {
           success: boolean;
+          offerId?: string;
           listingId?: string;
           error?: string;
           alreadyListed?: boolean;
         } | null = null;
         let hadTransientRetry = false;
+
         for (let attempt = 0; ; attempt++) {
           const res = await apiPost("/api/ebay/publish", {
             sku: group.sku,
             listing: group.listing,
             images,
           });
-          // Wait out rate limits / transient platform errors instead of dying
-          // mid-batch with "try again later".
+
           if (
             attempt < 2 &&
-            (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504)
+            [429, 502, 503, 504].includes(res.status)
           ) {
             hadTransientRetry = true;
             await sleep(res.status === 429 ? 65_000 : 8_000);
             continue;
           }
+
           data = await readJson(res);
           break;
         }
-        // A retried publish that finds the SKU already live means the earlier
-        // attempt actually landed before the timeout — that's a success.
-        if (data && !data.success && data.alreadyListed && hadTransientRetry && data.listingId) {
-          data = { success: true, listingId: data.listingId };
+
+        // A retried request may discover that the draft already exists.
+        if (
+          data?.success &&
+          data.alreadyListed &&
+          hadTransientRetry &&
+          data.offerId
+        ) {
+          data = { success: true, offerId: data.offerId, listingId: "" };
         }
-        if (!data?.success) throw new Error(data?.error || "eBay rejected the listing.");
+
+        if (!data?.success || !data.offerId) {
+          throw new Error(data?.error || "eBay did not return an offer ID.");
+        }
+
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, postStatus: "posted", listingId: data!.listingId }
+              ? {
+                  ...g,
+                  postStatus: "draft-saved",
+                  offerId: data.offerId,
+                  listingId: "",
+                  postError: undefined,
+                }
               : g
           )
         );
@@ -457,7 +482,11 @@ export default function Home() {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, postStatus: "error", postError: (e as Error).message }
+              ? {
+                  ...g,
+                  postStatus: "error",
+                  postError: e instanceof Error ? e.message : String(e),
+                }
               : g
           )
         );
@@ -468,12 +497,13 @@ export default function Home() {
 
   const postAll = async () => {
     const ready = groups
-      .filter((g) => g.status === "done" && g.postStatus !== "posted")
+      .filter(
+        (g) => g.status === "done" && g.postStatus !== "draft-saved"
+      )
       .map((g) => g.id);
-    // Sequential — keeps eBay calls gentle and errors easy to read.
-    for (const id of ready) {
-      await postGroup(id);
-    }
+
+    if (ready.length === 0) return;
+    await runPool(ready, WRITE_CONCURRENCY, postGroup);
   };
 
   const usableGroups = useMemo(
@@ -652,13 +682,14 @@ export default function Home() {
           onRetry={writeGroup}
           onPost={postGroup}
           onPostAll={postAll}
+          onPublishAndPromote={postGroup}
           onBack={() => setStep("review")}
         />
       )}
 
       <p className="footnote">
-        Your photos are sent securely to sort and write listings, and are not
-        stored. One-click posting to eBay is coming in the next phase.
+  Your photos are sent securely to sort and write listings, and are not
+  stored. Listings are saved to eBay as drafts.
       </p>
     </main>
   );
