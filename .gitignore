@@ -26,3 +26,7 @@ public/test-photos.json
 # vercel local project link
 .vercel
 .env*
+# Anything *ending* in .env too — `.env*` above only catches names that START
+# with ".env", so a secrets file called import.env or production.env would
+# otherwise be committable.
+*.env
