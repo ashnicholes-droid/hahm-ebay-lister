@@ -147,6 +147,8 @@ export default function Home() {
   const [skuStart, setSkuStart] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [ebayConnected, setEbayConnected] = useState(false);
+  // Server-reported reason the deployment can't work at all (missing env var).
+  const [setupError, setSetupError] = useState<string | null>(null);
   const [intakeMode, setIntakeMode] = useState<IntakeMode>("qr");
   const [importing, setImporting] = useState<string | null>(null);
   const [qrWarnings, setQrWarnings] = useState<GroupingWarning[]>([]);
@@ -169,13 +171,35 @@ export default function Home() {
   }, [groups]);
 
   // Keep eBay connection status in sync (also after the connect bar updates).
+  // This probe doubles as the deployment health check: it's the first call the
+  // app makes, so if the deployment is misconfigured this is where we find out.
   useEffect(() => {
-    const check = () =>
-      fetch("/api/ebay/status", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setEbayConnected(Boolean(d.connected)))
-        .catch(() => setEbayConnected(false));
-    check();
+    const check = async () => {
+      try {
+        const res = await fetch("/api/ebay/status", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          connected?: boolean;
+          setupError?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          setSetupError(data.error ?? null);
+          setEbayConnected(false);
+          return;
+        }
+        // The probe answers 200 even on a broken deployment — it has to, since
+        // it is the thing that reports the breakage. The reason rides in the
+        // body, not the status code.
+        setSetupError(data.setupError ?? null);
+        setEbayConnected(Boolean(data.connected));
+      } catch {
+        setEbayConnected(false);
+      }
+    };
+    void check();
     const onFocus = () => check();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -759,6 +783,12 @@ export default function Home() {
           <p>Upload a pile of photos · auto-sort into items · write every listing.</p>
         </div>
       </header>
+
+      {setupError && (
+        <p className="note note-error setup-error" role="alert">
+          <strong>This deployment isn&rsquo;t configured yet.</strong> {setupError}
+        </p>
+      )}
 
       <EbayConnect />
 

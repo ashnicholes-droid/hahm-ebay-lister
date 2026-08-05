@@ -25,9 +25,25 @@ export function ModelSelector() {
     const savedSort = getSortModel();
     const savedAnalysis = getAnalysisModel();
 
-    fetch("/api/models")
-      .then((r) => r.json())
-      .then((data: ModelsPayload) => {
+    fetch("/api/models", { credentials: "same-origin" })
+      .then(async (r) => {
+        // /api/models is access-controlled, so a non-2xx here is routine: an
+        // expired session, or a deployment with no APP_SECRET set. Those answer
+        // with {ok:false,error} — a perfectly valid JSON body of entirely the
+        // wrong shape. Storing it and discovering that during render is what
+        // takes the whole page down, so the shape is checked once, here.
+        const data: unknown = await r.json();
+        const payload = data as Partial<ModelsPayload>;
+        if (
+          !r.ok ||
+          !Array.isArray(payload.sortModels) ||
+          !Array.isArray(payload.analysisModels)
+        ) {
+          throw new Error("model list unavailable");
+        }
+        return payload as ModelsPayload;
+      })
+      .then((data) => {
         setModels(data);
 
         const defaultSort =
@@ -65,8 +81,12 @@ export function ModelSelector() {
     saveAnalysisModel(id);
   };
 
-  const sortDesc = models?.sortModels.find((m) => m.id === sortModel)?.description;
-  const analysisDesc = models?.analysisModels.find((m) => m.id === analysisModel)?.description;
+  // Optional-chain every hop. `models?.sortModels.find(...)` guards only the
+  // first one, so a payload that is non-null but missing the array throws here
+  // — during render, where React has no way to recover and the user gets
+  // "a client-side exception has occurred" instead of a page.
+  const sortDesc = models?.sortModels?.find((m) => m.id === sortModel)?.description;
+  const analysisDesc = models?.analysisModels?.find((m) => m.id === analysisModel)?.description;
 
   return (
     <>

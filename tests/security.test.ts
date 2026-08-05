@@ -245,3 +245,41 @@ describe("public paths", () => {
     expect(isPublicPath("/privacy/details")).toBe(true);
   });
 });
+
+describe("deployment health probe", () => {
+  const OLD_ENV = { ...process.env };
+
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.VERCEL_ENV;
+  });
+  afterEach(() => {
+    process.env = { ...OLD_ENV };
+  });
+
+  const probe = async () => {
+    const { GET } = await import("@/app/api/ebay/status/route");
+    const req = new NextRequest("https://example.test/api/ebay/status", {
+      headers: { "x-forwarded-for": "203.0.113.7" },
+    });
+    return (await GET(req)).json();
+  };
+
+  it("reports a missing APP_SECRET in production so the UI can say why nothing works", async () => {
+    delete process.env.APP_SECRET;
+    process.env.VERCEL_ENV = "production";
+    const body = await probe();
+    expect(body.setupError).toMatch(/APP_SECRET/);
+  });
+
+  it("stays quiet once APP_SECRET is set", async () => {
+    process.env.APP_SECRET = SECRET;
+    process.env.VERCEL_ENV = "production";
+    expect((await probe()).setupError).toBeUndefined();
+  });
+
+  it("stays quiet in local development, where the gate is off by design", async () => {
+    delete process.env.APP_SECRET;
+    expect((await probe()).setupError).toBeUndefined();
+  });
+});

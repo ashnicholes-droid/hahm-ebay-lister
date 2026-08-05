@@ -1640,3 +1640,10 @@ textarea {
 .login-form .btn {
   justify-content: center;
 }
+
+/* Deployment-level misconfiguration (e.g. no APP_SECRET). Sits above the app
+   because nothing below it can work until it's resolved. */
+.setup-error {
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
