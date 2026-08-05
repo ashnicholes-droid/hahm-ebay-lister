@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardApiRequest } from "@/lib/api-guard";
+import { BODY_LIMIT_JSON, enforceBodyLimit, guardApiRequest } from "@/lib/api-guard";
 import { isEbayConfigured } from "@/lib/ebay/config";
 import { appToken } from "@/lib/ebay/taxonomy";
 import { searchComps } from "@/lib/ebay/comps";
@@ -14,6 +14,8 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   const denied = guardApiRequest(req);
   if (denied) return denied;
+  const oversized = enforceBodyLimit(req, BODY_LIMIT_JSON);
+  if (oversized) return oversized;
 
   if (!isEbayConfigured()) {
     return NextResponse.json({ ok: false, error: "eBay isn't configured." }, { status: 200 });

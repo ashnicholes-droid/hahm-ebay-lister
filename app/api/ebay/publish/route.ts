@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
-import { guardApiRequest } from "@/lib/api-guard";
+import { BODY_LIMIT_PHOTOS, enforceBodyLimit, guardApiRequest } from "@/lib/api-guard";
 import { fetchAccountSetup, publishListing } from "@/lib/ebay/publish";
 import type { PublishInput } from "@/lib/ebay/publish";
 
@@ -13,6 +13,10 @@ export async function POST(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
   const denied = guardApiRequest(req);
   if (denied) return denied;
+  // The normal flow sends eBay-hosted URLs (a few KB); the legacy path can still
+  // carry base64 photos, so cap at the photo limit rather than the JSON one.
+  const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
+  if (oversized) return oversized;
 
   let body: PublishInput;
   try {

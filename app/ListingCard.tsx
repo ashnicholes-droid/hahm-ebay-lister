@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
+import { reportStatus } from "@/lib/verification";
+import { AccuracyPanel } from "./AccuracyPanel";
+import { ListingPreview } from "./ListingPreview";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 
 const TITLE_LIMIT = 80;
@@ -60,6 +63,7 @@ interface ListingCardProps {
   onRenameSku: (groupId: string, sku: string) => void;
   onRetry: (groupId: string) => void;
   onPost: (groupId: string) => void;
+  onVerify: (groupId: string) => void;
 }
 
 export function ListingCard({
@@ -70,10 +74,13 @@ export function ListingCard({
   onRenameSku,
   onRetry,
   onPost,
+  onVerify,
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const listing = group.listing;
   const cover = photoById(group.photoIds[0]);
+  const accuracy = reportStatus(group.verification);
 
   const specifics = useMemo(() => {
     const entries = Object.entries(listing?.item_specifics ?? {});
@@ -118,6 +125,12 @@ export function ListingCard({
             {group.status === "done" &&
               (priceMissing ? (
                 <span style={{ color: "var(--color-danger)" }}>⚠️ needs a price</span>
+              ) : accuracy === "fail" ? (
+                <span style={{ color: "var(--color-danger)" }}>
+                  ⛔ {formatPrice(listing?.suggested_price)} · accuracy check failed
+                </span>
+              ) : accuracy === "warn" ? (
+                <>⚠️ {formatPrice(listing?.suggested_price)} · check before posting</>
               ) : (
                 <>✅ {formatPrice(listing?.suggested_price)} · ready</>
               ))}
@@ -315,6 +328,26 @@ export function ListingCard({
             </details>
           )}
 
+          <AccuracyPanel
+            report={group.verification}
+            verifying={group.verifying}
+            onCheckPhotos={() => onVerify(group.id)}
+          />
+
+          <div className="preview-row">
+            <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(true)}>
+              👁 Preview as it will appear on eBay
+            </button>
+          </div>
+
+          {previewOpen && (
+            <ListingPreview
+              group={group}
+              photoById={photoById}
+              onClose={() => setPreviewOpen(false)}
+            />
+          )}
+
           {/* eBay posting */}
           {group.postStatus === "posted" ? (
             <>
@@ -342,9 +375,14 @@ export function ListingCard({
             </>
           ) : ebayConnected ? (
             <div className="post-row">
+              {/* A failing accuracy check doesn't lock the button — it's the
+                  seller's item and their call. It does change what the button
+                  says, so the choice is a deliberate one. "Post all" skips
+                  these entirely; mass-posting known-bad listings is different
+                  from knowingly posting one. */}
               <button
                 type="button"
-                className="btn btn-primary"
+                className={`btn ${accuracy === "fail" ? "btn-danger" : "btn-primary"}`}
                 onClick={() => onPost(group.id)}
                 disabled={group.postStatus === "posting"}
               >
@@ -352,6 +390,8 @@ export function ListingCard({
                   <>
                     <span className="spinner" aria-hidden="true" /> Posting to eBay…
                   </>
+                ) : accuracy === "fail" ? (
+                  "⛔ Post anyway — accuracy check failed"
                 ) : (
                   "🚀 Post this to eBay"
                 )}

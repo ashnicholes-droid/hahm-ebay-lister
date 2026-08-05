@@ -5,7 +5,15 @@ import { apiPost } from "@/lib/api-client";
 import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
 import { buildSku } from "@/lib/sku";
+import { groupByQrDelimiters, type GroupingWarning } from "@/lib/qrGrouping";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
+import {
+  buildReport,
+  reportStatus,
+  runRuleChecks,
+  verdictsFromClaims,
+  type PhotoClaim,
+} from "@/lib/verification";
 import { EbayConnect } from "./EbayConnect";
 import { ModelSelector } from "./ModelSelector";
 import { ReviewBoard } from "./ReviewBoard";
@@ -20,6 +28,13 @@ import type {
 } from "@/lib/types";
 
 type Step = "upload" | "review" | "listings";
+// How photos get split into items.
+//   "qr" — deterministic: the batch is cut at QR labels, and each label's
+//          inventory number becomes that item's SKU. No model call, no guessing.
+//   "ai" — the original behaviour: a model groups the photos, and you check it
+//          on the review board.
+type IntakeMode = "qr" | "ai";
+const VERIFY_CONCURRENCY = 3;
 // Big batches are sorted in chunks of SORT_CHUNK photos per request — each
 // chunk's thumbnail payload stays under Vercel's 4.5 MB body limit — then
 // stitched back together with a merge check at every chunk boundary.
@@ -66,6 +81,42 @@ async function readJson(
   }
 }
 
+// Which accuracy verdict an edit to a given listing field invalidates. Editing
+// the price says nothing about whether the photos show the brand, so a single
+// edit shouldn't throw away a whole photo-grounding pass (and make the seller pay
+// for another one) — only the verdicts it actually touches.
+const FIELD_FOR_PATCH_KEY: Record<string, string> = {
+  title: "title",
+  suggested_price: "price",
+  condition: "condition",
+  condition_notes: "condition",
+  description: "description",
+  size: "size",
+  brand: "brand",
+  item_specifics: "specifics",
+  material: "specifics",
+  color: "specifics",
+};
+
+// Rebuild a group's report from the listing as it currently stands. Rule
+// verdicts are always recomputed from scratch; photo verdicts are carried
+// forward except where `invalidatedFields` says they've gone stale.
+function reviseReport(group: ItemGroup, invalidatedFields: string[] = []): ItemGroup {
+  if (!group.listing) return group;
+  const stale = new Set(invalidatedFields);
+  const photoVerdicts = (group.verification?.verdicts ?? []).filter(
+    (v) => v.source === "photo" && !stale.has(v.field)
+  );
+  return {
+    ...group,
+    verification: buildReport(
+      runRuleChecks(group.listing, group.comps),
+      photoVerdicts,
+      group.verification?.photoChecked ?? false
+    ),
+  };
+}
+
 // Run async workers over items with a fixed concurrency limit.
 async function runPool<T>(
   items: T[],
@@ -96,7 +147,13 @@ export default function Home() {
   const [skuStart, setSkuStart] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [ebayConnected, setEbayConnected] = useState(false);
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>("qr");
+  const [importing, setImporting] = useState<string | null>(null);
+  const [qrWarnings, setQrWarnings] = useState<GroupingWarning[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // How many of the loaded photos carry a QR inventory label.
+  const labelCount = useMemo(() => photos.filter((p) => p.sku).length, [photos]);
 
   const photoMap = useMemo(() => {
     const m = new Map<string, Photo>();
@@ -134,15 +191,28 @@ export default function Home() {
       return;
     }
     try {
-      const resized = await Promise.all(files.map(resizeImage));
+      // Resize and QR-scan in sequence rather than all at once: a 200-photo drop
+      // resized in parallel pins the main thread and the tab stops responding.
+      // Sequential work with a progress line is slower on paper and much better
+      // to sit through — and the QR scan is why this is worth showing at all.
+      const resized: Awaited<ReturnType<typeof resizeImage>>[] = [];
+      for (const [i, file] of files.entries()) {
+        setImporting(`Reading photo ${i + 1} of ${files.length}…`);
+        resized.push(await resizeImage(file));
+      }
       setPhotos((prev) =>
         [...prev, ...resized.map((r) => ({ id: newId(), ...r }))].slice(
           0,
           MAX_PHOTOS
         )
       );
+      // A batch that carries labels should default to the deterministic path;
+      // one that doesn't shouldn't sit on a mode that can't work.
+      if (resized.some((r) => r.sku)) setIntakeMode("qr");
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setImporting(null);
     }
   }, []);
 
@@ -155,11 +225,49 @@ export default function Home() {
     void addFiles(e.dataTransfer.files);
   };
 
-  // ── Sort ────────────────────────────────────────────────
+  // ── Organise into items ─────────────────────────────────
+
+  // Deterministic path: cut the batch at its QR labels. No network, no model,
+  // no ambiguity — and every item arrives already carrying its inventory number,
+  // so the SKU is the one physically on the item rather than a generated letter.
+  const groupByLabels = () => {
+    setError(null);
+    const { items, orphanIds: leftovers, warnings } = groupByQrDelimiters(
+      photos.map((p) => ({ id: p.id, sku: p.sku }))
+    );
+    setQrWarnings(warnings);
+    if (items.length === 0) {
+      setError(
+        "No QR labels were found in these photos. Add a label photo after each item, or switch to AI sorting."
+      );
+      return;
+    }
+    setSkuStart(0);
+    setGroups(
+      items.map((item, i) => ({
+        id: newId(),
+        // An item whose label was never photographed still needs a reference —
+        // fall back to the bin lettering so it can be posted after review.
+        sku: item.sku || buildSku(binPrefix, i),
+        name: item.sku || `item-${i + 1}`,
+        photoIds: item.photoIds,
+        status: "idle" as const,
+        ...(item.markerPhotoId ? { markerPhotoId: item.markerPhotoId } : {}),
+      }))
+    );
+    setOrphanIds(leftovers);
+    setStep("review");
+  };
+
   const sort = async () => {
     if (photos.length === 0) return;
+    if (intakeMode === "qr") {
+      groupByLabels();
+      return;
+    }
     setSorting(true);
     setError(null);
+    setQrWarnings([]);
     try {
       // Continue bin lettering after any SKUs already on eBay for this bin.
       let skuOffset = 0;
@@ -355,6 +463,70 @@ export default function Home() {
       },
     ]);
 
+  // ── Accuracy checking ───────────────────────────────────
+
+  const verifyGroup = useCallback(
+    async (groupId: string) => {
+      const group = groupsRef.current.find((g) => g.id === groupId);
+      if (!group?.listing) return;
+      const images = group.photoIds
+        .map((id) => photoMap.get(id))
+        .filter((p): p is Photo => Boolean(p))
+        .map((p) => ({ mediaType: p.mediaType, data: p.data }))
+        .slice(0, MAX_PUBLISH_PHOTOS);
+      if (images.length === 0) return;
+
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, verifying: true } : g))
+      );
+      try {
+        const res = await apiPost("/api/verify", {
+          images,
+          listing: group.listing,
+          verifyModel: getAnalysisModel() ?? undefined,
+        });
+        const data = (await readJson(res)) as {
+          ok?: boolean;
+          claims?: PhotoClaim[];
+          error?: string;
+        };
+        if (!data.ok) throw new Error(data.error || "Could not check this listing.");
+        const photoVerdicts = verdictsFromClaims(data.claims ?? []);
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? {
+                  ...g,
+                  verifying: false,
+                  verification: buildReport(
+                    runRuleChecks(g.listing, g.comps),
+                    photoVerdicts,
+                    true
+                  ),
+                }
+              : g
+          )
+        );
+      } catch (e) {
+        // A failed check must never read as a pass. Leave the report as it was
+        // and surface the error, rather than quietly marking the item checked.
+        setGroups((prev) =>
+          prev.map((g) => (g.id === groupId ? { ...g, verifying: false } : g))
+        );
+        setError(`Accuracy check failed: ${(e as Error).message}`);
+      }
+    },
+    [photoMap]
+  );
+
+  const verifyAll = async () => {
+    const pending = groupsRef.current
+      .filter((g) => g.status === "done" && !g.verification?.photoChecked)
+      .map((g) => g.id);
+    if (pending.length === 0) return;
+    await runPool(pending, VERIFY_CONCURRENCY, verifyGroup);
+  };
+
   // ── Write listings ──────────────────────────────────────
   const writeGroup = useCallback(
     async (groupId: string) => {
@@ -384,7 +556,10 @@ export default function Home() {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, status: "done", listing: data.listing }
+              ? // Rule checks run the moment a listing exists, so the card opens
+                // with its contradictions already visible. The photo pass is a
+                // paid model call, so it stays an explicit choice.
+                reviseReport({ ...g, status: "done", listing: data.listing })
               : g
           )
         );
@@ -395,8 +570,10 @@ export default function Home() {
             const res = await apiPost("/api/ebay/comps", { listing: data.listing });
             const d = (await readJson(res)) as { ok?: boolean; comps?: CompsSummary };
             if (d.ok && d.comps?.ok) {
+              // Comps are what turn the price rule from "no market data" into a
+              // real verdict, so recompute once they land.
               setGroups((prev) =>
-                prev.map((g) => (g.id === groupId ? { ...g, comps: d.comps } : g))
+                prev.map((g) => (g.id === groupId ? reviseReport({ ...g, comps: d.comps }) : g))
               );
             }
           } catch {
@@ -429,14 +606,18 @@ export default function Home() {
     await runPool(usable, WRITE_CONCURRENCY, writeGroup);
   };
 
-  const editListing = (groupId: string, patch: Partial<ListingResult>) =>
+  const editListing = (groupId: string, patch: Partial<ListingResult>) => {
+    const invalidated = Object.keys(patch)
+      .map((k) => FIELD_FOR_PATCH_KEY[k])
+      .filter(Boolean);
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId && g.listing
-          ? { ...g, listing: { ...g.listing, ...patch } }
+          ? reviseReport({ ...g, listing: { ...g.listing, ...patch } }, invalidated)
           : g
       )
     );
+  };
 
   const postGroup = useCallback(
     async (groupId: string) => {
@@ -546,8 +727,15 @@ export default function Home() {
   );
 
   const postAll = async () => {
+    // Items whose accuracy check failed are excluded here on purpose. They stay
+    // postable one at a time from their own card, where the button says so.
     const ready = groups
-      .filter((g) => g.status === "done" && g.postStatus !== "posted")
+      .filter(
+        (g) =>
+          g.status === "done" &&
+          g.postStatus !== "posted" &&
+          reportStatus(g.verification) !== "fail"
+      )
       .map((g) => g.id);
     // Sequential — keeps eBay calls gentle and errors easy to read.
     for (const id of ready) {
@@ -591,6 +779,46 @@ export default function Home() {
             <h2 id="upload-heading" className="section-label">
               1 · Add all your photos
             </h2>
+
+            <fieldset className="intake-mode">
+              <legend>How should these photos be split into items?</legend>
+              <label className={intakeMode === "qr" ? "active" : ""}>
+                <input
+                  type="radio"
+                  name="intake"
+                  checked={intakeMode === "qr"}
+                  onChange={() => setIntakeMode("qr")}
+                />
+                <span>
+                  <strong>QR labels (exact)</strong>
+                  Shoot each item, then a QR label holding its inventory number.
+                  The batch is cut at the labels and each item posts under the
+                  number physically on it. No AI guessing, no review pass, no
+                  sorting cost.
+                  {photos.length > 0 && (
+                    <em>
+                      {labelCount > 0
+                        ? ` ${labelCount} label${labelCount === 1 ? "" : "s"} found → ${labelCount} item${labelCount === 1 ? "" : "s"}.`
+                        : " No labels found in these photos yet."}
+                    </em>
+                  )}
+                </span>
+              </label>
+              <label className={intakeMode === "ai" ? "active" : ""}>
+                <input
+                  type="radio"
+                  name="intake"
+                  checked={intakeMode === "ai"}
+                  onChange={() => setIntakeMode("ai")}
+                />
+                <span>
+                  <strong>AI sorting</strong>
+                  No labels needed — a model groups the photos by item, and you
+                  fix its mistakes on the review board. Use this for photos you
+                  already took.
+                </span>
+              </label>
+            </fieldset>
 
             <div className="field bin-field">
               <label htmlFor="bin">
@@ -648,12 +876,24 @@ export default function Home() {
               />
             </div>
 
+            {importing && (
+              <div className="loading-card">
+                <span className="spinner" aria-hidden="true" />
+                <span>{importing} Scanning each one for a QR inventory label.</span>
+              </div>
+            )}
+
             {photos.length > 0 && (
               <div className="thumbs" aria-label="Selected photos">
                 {photos.map((p) => (
-                  <div className="thumb" key={p.id}>
+                  <div className={`thumb${p.sku ? " is-marker" : ""}`} key={p.id}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.previewUrl} alt="" />
+                    {p.sku && (
+                      <span className="thumb-sku" title={`QR label: ${p.sku}`}>
+                        {p.sku}
+                      </span>
+                    )}
                     <button
                       type="button"
                       aria-label="Remove photo"
@@ -672,13 +912,15 @@ export default function Home() {
                 type="button"
                 className="btn btn-primary"
                 onClick={sort}
-                disabled={photos.length === 0 || sorting}
+                disabled={photos.length === 0 || sorting || Boolean(importing)}
               >
                 {sorting ? (
                   <>
                     <span className="spinner" aria-hidden="true" /> Sorting{" "}
                     {photos.length} photos…
                   </>
+                ) : intakeMode === "qr" ? (
+                  <>🏷 Split into {labelCount || ""} item{labelCount === 1 ? "" : "s"} by label</>
                 ) : (
                   <>🔀 Sort {photos.length || ""} photos into items</>
                 )}
@@ -689,6 +931,14 @@ export default function Home() {
               <p className="note note-error" role="alert">
                 {error}
               </p>
+            )}
+
+            {qrWarnings.length > 0 && (
+              <ul className="qr-warnings" role="status">
+                {qrWarnings.map((w, i) => (
+                  <li key={`${w.code}-${i}`}>⚠️ {w.message}</li>
+                ))}
+              </ul>
             )}
           </section>
 
@@ -732,6 +982,8 @@ export default function Home() {
           onRetry={writeGroup}
           onPost={postGroup}
           onPostAll={postAll}
+          onVerify={verifyGroup}
+          onVerifyAll={verifyAll}
           onBack={() => setStep("review")}
         />
       )}

@@ -13,13 +13,90 @@ own eBay developer keys, so you're in full control and there's no middleman.
 ## What it does
 
 - 📸 Upload a whole batch of photos at once
-- 🔀 Auto-sorts them into separate items (group → verify → un-split)
-- 🏷️ Assigns bin/SKU codes so you can find items later (e.g. `K42-A`, `K42-B`)
+- 🏷️ **Split items by QR label** — shoot each item, then a QR code holding its
+  inventory number, and the batch is cut at the labels with zero guessing
+- 🔀 Or auto-sort with AI when your photos have no labels (group → verify → un-split)
 - 🤖 Writes a title, description, item specifics, condition, and suggested price
+- 🔍 **Accuracy check** — re-reads the photos and grades every claim as
+  supported, not visible, or contradicted, so an invented brand or an
+  unmentioned flaw never reaches a buyer
+- 👁 **eBay preview** — see the listing as it will actually appear, built from
+  the exact payload that publishes
 - ✍️ Everything is editable before you post
 - 🚀 Posts straight to eBay — one item or the whole batch
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
+
+---
+
+## Bulk listing with QR labels
+
+The fastest, most reliable way to work a big pile of inventory.
+
+**1. Print a QR label per item.** Encode whatever inventory number you already
+use. All of these work:
+
+| What you encode | Example |
+|---|---|
+| The code itself | `K75-A` |
+| A URL with the code in a query parameter | `https://bins.example/scan?sku=K75-A` |
+| A URL ending in the code | `https://bins.example/item/K75-A` |
+| A small JSON blob | `{"sku":"K75-A"}` |
+
+**2. Photograph in order: item, item, item, *label*.** The label is the
+delimiter — everything shot before it belongs to that item. If your workflow
+scans the label *first* instead, that's supported too.
+
+**3. Drop the whole batch in.** Each photo is scanned for a QR code in your
+browser as it's imported (nothing is uploaded to do this). Labelled photos get a
+gold outline and show their code.
+
+**4. Hit "Split into N items by label".** No model call, no sorting cost, no
+review pass — each item arrives already carrying the inventory number that's
+physically on it, which becomes its eBay SKU.
+
+Edge cases are reported, never silently swallowed: photos trailing the last
+label become an item that's flagged for review, a label with nothing before it
+is skipped with a warning, and a duplicate inventory number is renumbered
+(`K75-A` → `K75-A-2`) so eBay doesn't reject the second listing.
+
+---
+
+## Making sure the AI is telling the truth
+
+Every listing gets an **accuracy check** with two independent layers:
+
+- **Rules** run automatically as soon as a listing exists, and again on every
+  edit. They catch contradictions *inside* the listing: a title over eBay's 80
+  characters, a "new with tags" grade whose own notes mention a stain, apparel
+  with no size, a price that's 3× the median of the live comps, item specifics
+  that appear nowhere else in the listing.
+- **The photo check** is a second model pass that re-reads the photos and grades
+  each claim as **supported** (it can point at a readable label), **not visible**
+  (plausible but unphotographed — the default when unsure), or **contradicted**
+  (a photo shows something incompatible). Recognising a shape is explicitly *not*
+  treated as evidence of a brand; only a readable tag, stamp, or engraving is.
+
+A contradiction blocks the item from **Post all** — it can still be posted
+individually, from a button that says exactly what you're overriding. Editing a
+field invalidates only that field's photo verdict, so fixing a price doesn't
+throw away (and make you pay again for) the brand check.
+
+---
+
+## Seeing the listing before it goes live
+
+**Preview as it will appear on eBay** renders the item page from the *same*
+payload builder the publish route uses, driven by the *same* live eBay taxonomy
+lookup. So the category is the leaf category eBay picked, the item specifics are
+the ones eBay will store (canonicalised, cardinality-trimmed, numeric-sanitised),
+and the condition line is the tier eBay will actually display — which is often
+not the grade you chose, because eBay has no "Very Good" tier in fashion.
+
+Two things a preview genuinely can't know, and which it says rather than guesses:
+whether the SKU is already live on your account, and whether eBay's validators
+will reject a particular specific value. Both are only answered on submission,
+and the posting flow already recovers from them.
 
 ---
 
@@ -186,10 +263,16 @@ flowchart TD
     E -->|"upload photos · inventory → offer → publish"| EB
 ```
 
-- **Frontend** (`app/`): the upload → sort → review → write → post wizard.
-  Photos are shrunk in your browser before upload.
+- **Frontend** (`app/`): the upload → split → review → write → check → post
+  wizard. Photos are shrunk **and QR-scanned** in your browser before upload.
+- **QR splitting** (`lib/qrGrouping.ts`): pure, deterministic, no network. This
+  replaces `/api/sort` entirely when your photos carry labels.
 - **`/api/sort`**: groups photos into items (AI), with verify + un-split passes.
 - **`/api/analyze`**: writes a listing for one item from its photos.
+- **`/api/verify`**: re-reads the photos and grades each claim in the drafted
+  listing (see *Making sure the AI is telling the truth* above).
+- **`/api/ebay/preview`**: builds the publish payload without sending it, so the
+  preview can't drift from what actually posts.
 - **`/api/ebay/*`**: OAuth connect (encrypted-cookie token) + the
   inventory→offer→publish flow, with recovery for eBay's category/aspect quirks.
 - **Stack**: Next.js (App Router) + TypeScript, deployed on Vercel. Nothing is

@@ -1,3 +1,5 @@
+import type { VerificationReport } from "@/lib/verification";
+
 // Shape of a generated listing. Mirrors the JSON the model returns in the
 // Python script's analyze_photos(), plus the routed profile.
 
@@ -51,6 +53,9 @@ export interface Photo {
   previewUrl: string;
   mediaType: string;
   data: string; // base64, no prefix
+  // Inventory number read from a QR label in this photo during import. Its
+  // presence is what makes the photo an item delimiter (see lib/qrGrouping.ts).
+  sku?: string;
 }
 
 export type ItemStatus = "idle" | "writing" | "done" | "error";
@@ -90,4 +95,9 @@ export interface ItemGroup {
   postError?: string;
   // Non-fatal quality warnings from the last publish (e.g. schema unavailable)
   postWarnings?: string[];
+  // Accuracy check over the listing as it currently stands (see lib/verification.ts).
+  verification?: VerificationReport;
+  verifying?: boolean;
+  // Set when this item came from a QR label rather than the AI sorter.
+  markerPhotoId?: string;
 }

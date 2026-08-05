@@ -21,9 +21,32 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 // the real access gate, this only blunts anonymous hammering.
 const RATE_LIMIT_MAX_REQUESTS = 40;
 
+// Wrong access codes get their own, far tighter budget. Sharing the throughput
+// limiter above gave an attacker 40 guesses a minute — plenty to walk a short
+// human-chosen code. A client that has *never* sent a correct code gets this
+// many failures per window, then is locked out even if it stops hammering.
+const AUTH_FAIL_WINDOW_MS = 15 * 60_000;
+const AUTH_FAIL_MAX = 8;
+
 // Per-serverless-instance limiter. Not a global guarantee (each warm lambda
 // has its own map), but it blunts burst abuse at zero infra cost.
 const hits = new Map<string, number[]>();
+const authFails = new Map<string, number[]>();
+
+// Bound memory without handing an attacker a reset button: spraying addresses
+// used to call hits.clear(), wiping every honest client's counters too. Evict
+// the oldest entries instead (Map preserves insertion order).
+const MAX_TRACKED_CLIENTS = 5000;
+
+function evictOldest(map: Map<string, number[]>, limit: number): void {
+  if (map.size <= limit) return;
+  const excess = map.size - Math.floor(limit * 0.9);
+  let removed = 0;
+  for (const key of map.keys()) {
+    map.delete(key);
+    if (++removed >= excess) break;
+  }
+}
 
 function timingSafeEqual(a: string, b: string): boolean {
   const ha = crypto.createHash("sha256").update(a).digest();
@@ -39,14 +62,38 @@ function clientIp(req: NextRequest): string {
   );
 }
 
-function rateLimited(ip: string): boolean {
+function recentCount(
+  map: Map<string, number[]>,
+  key: string,
+  windowMs: number,
+  record: boolean
+): number {
   const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW_MS;
-  const recent = (hits.get(ip) ?? []).filter((t) => t > windowStart);
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) hits.clear(); // bound memory under address-spray
-  return recent.length > RATE_LIMIT_MAX_REQUESTS;
+  const windowStart = now - windowMs;
+  const recent = (map.get(key) ?? []).filter((t) => t > windowStart);
+  if (record) recent.push(now);
+  if (recent.length) map.set(key, recent);
+  else map.delete(key);
+  evictOldest(map, MAX_TRACKED_CLIENTS);
+  return recent.length;
+}
+
+function rateLimited(ip: string): boolean {
+  return recentCount(hits, ip, RATE_LIMIT_WINDOW_MS, true) > RATE_LIMIT_MAX_REQUESTS;
+}
+
+/** True once this client has burned its access-code guesses for the window. */
+function authLockedOut(ip: string): boolean {
+  return recentCount(authFails, ip, AUTH_FAIL_WINDOW_MS, false) >= AUTH_FAIL_MAX;
+}
+
+function recordAuthFailure(ip: string): void {
+  recentCount(authFails, ip, AUTH_FAIL_WINDOW_MS, true);
+}
+
+/** Clear the lockout counter after a correct code — honest typos shouldn't stack up. */
+function clearAuthFailures(ip: string): void {
+  authFails.delete(ip);
 }
 
 /**
@@ -62,6 +109,34 @@ export function rateLimitRequest(req: NextRequest): NextResponse | null {
   }
   return null;
 }
+
+/**
+ * Reject an oversized request before its body is read into memory.
+ *
+ * Next.js route handlers do NOT honour `experimental.serverActions.bodySizeLimit`
+ * (that setting only covers Server Actions), so without this a caller past the
+ * access gate could stream an arbitrarily large JSON body at a photo route and
+ * exhaust the function's memory. Content-Length is advisory — a client can lie —
+ * so treat this as a cheap first cut, not the only defence; the per-image size
+ * and count caps downstream are what actually bound the work.
+ */
+export function enforceBodyLimit(req: NextRequest, maxBytes: number): NextResponse | null {
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `That request was too large (${Math.round(declared / 1e6)} MB). Send fewer or smaller photos.`,
+      },
+      { status: 413 }
+    );
+  }
+  return null;
+}
+
+/** Body caps by route shape. Photos are browser-resized well under these. */
+export const BODY_LIMIT_PHOTOS = 12 * 1024 * 1024;
+export const BODY_LIMIT_JSON = 512 * 1024;
 
 /**
  * Returns an error response when the request isn't allowed, or null to proceed.
@@ -86,14 +161,30 @@ export function guardApiRequest(req: NextRequest): NextResponse | null {
     return null; // local development only
   }
 
+  const ip = clientIp(req);
+  if (authLockedOut(ip)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "ACCESS_CODE_LOCKED",
+        error: "Too many incorrect access codes. Wait 15 minutes and try again.",
+      },
+      { status: 429 }
+    );
+  }
+
   const provided = req.headers.get("x-app-secret") ?? "";
   if (!provided || !timingSafeEqual(provided, secret)) {
+    // Only a *wrong* code counts against the lockout. A first request with no
+    // header at all is the normal handshake — the browser hasn't been asked yet.
+    if (provided) recordAuthFailure(ip);
     return NextResponse.json(
       { ok: false, code: "ACCESS_CODE_REQUIRED", error: "Access code required." },
       { status: 401 }
     );
   }
 
+  clearAuthFailures(ip);
   return null;
 }
 

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import type Anthropic from "@anthropic-ai/sdk";
 import { getClient, parseModelJson, AnthropicAuthError, anthropicAuthError } from "@/lib/anthropic";
-import { guardApiRequest, safeErrorResponse } from "@/lib/api-guard";
+import {
+  BODY_LIMIT_PHOTOS,
+  enforceBodyLimit,
+  guardApiRequest,
+  safeErrorResponse,
+} from "@/lib/api-guard";
 import {
   PROFILE_ROUTER_PROMPT,
   buildProfiledAnalysisPrompt,
@@ -95,6 +100,8 @@ function firstText(resp: Anthropic.Message): string {
 export async function POST(req: NextRequest) {
   const denied = guardApiRequest(req);
   if (denied) return denied;
+  const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
+  if (oversized) return oversized;
 
   let body: AnalyzeRequestBody;
   try {

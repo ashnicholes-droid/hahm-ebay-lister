@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
-import { guardApiRequest } from "@/lib/api-guard";
+import { BODY_LIMIT_PHOTOS, enforceBodyLimit, guardApiRequest } from "@/lib/api-guard";
 import { uploadPhotos } from "@/lib/ebay/publish";
 
 // Uploads ONE small batch of photos to eBay Picture Services and returns the
@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
   const denied = guardApiRequest(req);
   if (denied) return denied;
+  const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
+  if (oversized) return oversized;
 
   let body: UploadBody;
   try {

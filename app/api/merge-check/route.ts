@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient, AnthropicAuthError } from "@/lib/anthropic";
-import { guardApiRequest, safeErrorResponse } from "@/lib/api-guard";
+import {
+  BODY_LIMIT_PHOTOS,
+  enforceBodyLimit,
+  guardApiRequest,
+  safeErrorResponse,
+} from "@/lib/api-guard";
 import { checkMergePair } from "@/lib/sortPipeline";
 import { isAllowedModel } from "@/lib/models";
 import type { WireImage } from "@/lib/images";
@@ -14,6 +19,8 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   const denied = guardApiRequest(req);
   if (denied) return denied;
+  const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
+  if (oversized) return oversized;
 
   let body: { a?: WireImage; b?: WireImage; countA?: number; countB?: number; sortModel?: string };
   try {

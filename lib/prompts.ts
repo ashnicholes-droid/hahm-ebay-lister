@@ -279,3 +279,62 @@ export function slugifyFolderName(raw: string): string {
   const cleaned = lowered.replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
   return cleaned.replace(/^-+|-+$/g, "") || "item";
 }
+
+// ── Accuracy grounding ───────────────────────────────────────────────────────
+//
+// A second, adversarial pass over the SAME photos, run after the listing exists
+// (and after any seller edits). Its only job is to say which claims the photos
+// actually support. Framing matters here: asked to "check the listing", a model
+// tends to agree with text it can see; asked to find the evidence for each claim
+// one at a time and to default to "not_visible", it reports honestly.
+export const VERIFY_SYSTEM_PROMPT = `You are a listing auditor for an eBay reseller. You are shown an item's photos and a drafted listing. Your job is to catch claims that would cause a return, a not-as-described case, or a counterfeit report.
+
+You are NOT writing or improving the listing. Do not suggest better wording.
+
+For each claim, decide from the PHOTOS ALONE:
+- "supported": you can point to what in the photos shows this. A brand is only supported when you can READ it on a label, tag, stamp, or engraving — recognising a style or shape is NOT support.
+- "not_visible": plausible, but no photo shows it. This is the correct answer whenever you are unsure. Tags not photographed, undersides not shown, and untested electronics all belong here.
+- "contradicted": a photo shows something incompatible with the claim (visible damage on an item graded as new, a different colour, a different size on the tag).
+
+Check at minimum: the brand, the size, the condition grade, the material, and any specific factual claim in the title or description (model numbers, edition, quantity, "never worn", measurements).
+
+Be strict about condition. If any photo shows a stain, tear, scuff, crack, chip, missing part, or heavy wear that the listing does not mention, report it as a contradicted condition claim and describe what you see and where.
+
+Return ONLY valid JSON, no markdown:
+{"claims": [{"field": "title|price|condition|description|size|brand|specifics", "claim": "the exact claim being checked", "status": "supported|not_visible|contradicted", "note": "what you see, or what is missing (max 20 words)"}]}
+
+Report at most 12 claims, most consequential first. Omit "price" claims entirely — you cannot judge market value from a photo.`;
+
+/** The listing, rendered for the auditor. Kept compact — the photos carry the weight. */
+export function buildVerifyUserPrompt(listing: {
+  title?: string;
+  brand?: string;
+  size?: string;
+  condition?: string;
+  condition_notes?: string;
+  material?: string;
+  color?: string[] | string;
+  description?: string;
+  item_specifics?: Record<string, string>;
+}): string {
+  const specifics = Object.entries(listing.item_specifics ?? {})
+    .filter(([k, v]) => k && !k.startsWith("---") && String(v ?? "").trim())
+    .slice(0, 25)
+    .map(([k, v]) => `  ${k}: ${v}`)
+    .join("\n");
+  const color = Array.isArray(listing.color) ? listing.color.join(", ") : listing.color;
+  return `Audit this drafted listing against the photos above.
+
+TITLE: ${listing.title || "(none)"}
+BRAND: ${listing.brand || "(none)"}
+SIZE: ${listing.size || "(none)"}
+CONDITION: ${listing.condition || "(none)"}
+CONDITION NOTES: ${listing.condition_notes || "(none)"}
+MATERIAL: ${listing.material || "(none)"}
+COLOR: ${color || "(none)"}
+DESCRIPTION: ${listing.description || "(none)"}
+ITEM SPECIFICS:
+${specifics || "  (none)"}
+
+Return the JSON now.`;
+}

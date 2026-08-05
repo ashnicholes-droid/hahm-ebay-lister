@@ -7,6 +7,8 @@
 //                  sort payload tiny avoids Vercel's 4.5 MB request-body limit
 //                  when a whole batch is sent at once.
 
+import { scanQrSku } from "@/lib/qrScan";
+
 const FULL_DIM = 1024;
 const FULL_QUALITY = 0.82;
 const THUMB_DIM = 360;
@@ -16,17 +18,35 @@ export interface ResizedImage {
   mediaType: "image/jpeg";
   data: string; // base64 (no prefix) ~1024px — for listing analysis
   previewUrl: string; // data url ~400px — for display + sorting
+  // Inventory number decoded from a QR label in this photo, when there is one.
+  // Set during import because that's the one moment the full-resolution bitmap
+  // is already in hand — re-decoding a thumbnail later loses QR modules.
+  sku?: string;
 }
 
-export async function resizeImage(file: File): Promise<ResizedImage> {
+export async function resizeImage(
+  file: File,
+  { detectQr = true }: { detectQr?: boolean } = {}
+): Promise<ResizedImage> {
   const bitmap = await loadBitmap(file);
   const full = drawToJpeg(bitmap, FULL_DIM, FULL_QUALITY);
   const thumb = drawToJpeg(bitmap, THUMB_DIM, THUMB_QUALITY);
+  // Scan before releasing the bitmap. A failed scan is never fatal — the photo
+  // is simply treated as an ordinary item photo.
+  let sku = "";
+  if (detectQr) {
+    try {
+      sku = await scanQrSku(bitmap);
+    } catch {
+      /* decoder unavailable or image unreadable — treat as "no label" */
+    }
+  }
   if ("close" in bitmap) bitmap.close();
   return {
     mediaType: "image/jpeg",
     data: full.split(",")[1],
     previewUrl: thumb,
+    ...(sku ? { sku } : {}),
   };
 }
 

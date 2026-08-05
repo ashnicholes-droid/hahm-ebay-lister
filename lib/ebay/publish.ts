@@ -278,7 +278,7 @@ export function defaultPackageWeightAndSize(catKey: string): Record<string, unkn
   };
 }
 
-function normalizeConditionInput(value: string | undefined): string {
+export function normalizeConditionInput(value: string | undefined): string {
   const cleaned = (value || "GOOD")
     .trim()
     .toUpperCase()
@@ -323,7 +323,7 @@ function conditionIdsForGrade(
 // Ordered eBay Inventory condition enums to try for an internal grade. The grade
 // comes from photo analysis; the allowed IDs come from the chosen leaf category's
 // Metadata policy, so apparel/books/electronics/etc. can each resolve differently.
-function conditionCandidates(
+export function conditionCandidates(
   grade: string | undefined,
   acceptedIds: Set<number>,
   catKey: string
@@ -339,7 +339,7 @@ function conditionCandidates(
 
 // Offline/static category resolution — used only when eBay's Taxonomy
 // suggestions are unavailable.
-function staticCategory(listing: ListingResult): string {
+export function staticCategory(listing: ListingResult): string {
   const explicit = (listing.category_id || "").toString().trim();
   const catKey = (listing.category || "other").toString();
   return explicit || CATEGORY_MAP[catKey] || CATEGORY_MAP.other;
@@ -362,7 +362,7 @@ function departmentForCategory(catKey: string): string {
 // aspect metadata arrives, enforceCardinality() trims single-value aspects.
 // Placeholder phrases ("See tag in photos") never become aspect values —
 // cleanAspectValue/splitAspectValues drop them at the door.
-function buildAspects(listing: ListingResult, catKey: string): Record<string, string[]> {
+export function buildAspects(listing: ListingResult, catKey: string): Record<string, string[]> {
   const aspects: Record<string, string[]> = {};
   const putOne = (k: string, v: string) => {
     const val = cleanAspectValue(v);
@@ -450,7 +450,7 @@ function freeTextDefault(name: string, listing: ListingResult): string {
 }
 
 // Make every REQUIRED aspect present and valid. Mutates `aspects` in place.
-function reconcileAspects(
+export function reconcileAspects(
   aspects: Record<string, string[]>,
   meta: AspectMeta[],
   listing: ListingResult,

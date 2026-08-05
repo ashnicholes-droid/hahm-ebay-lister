@@ -28,6 +28,11 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // Isolate this origin's browsing context group so a window this app
+          // opens (the eBay consent flow) can't reach back into it, and no
+          // other site can embed our subresources.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
           // Content-Security-Policy is set per-request by middleware.ts using a
           // random nonce, so it cannot be a static header here.
         ],
