@@ -20,7 +20,7 @@ function setStateCookie(res: NextResponse, state: string): void {
 // This cannot be a plain link/GET, because GET redirects cannot carry the
 // x-app-secret header stored by the browser.
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
 
   try {

@@ -11,7 +11,7 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
   // The normal flow sends eBay-hosted URLs (a few KB); the legacy path can still
   // carry base64 photos, so cap at the photo limit rather than the JSON one.

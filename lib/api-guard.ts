@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { SESSION_COOKIE, verifySession } from "@/lib/session-auth";
 
 /**
  * Access guard for the AI-powered API routes.
@@ -96,6 +97,40 @@ function clearAuthFailures(ip: string): void {
   authFails.delete(ip);
 }
 
+const lockoutResponse = () =>
+  NextResponse.json(
+    {
+      ok: false,
+      code: "ACCESS_CODE_LOCKED",
+      error: "Too many incorrect access codes. Wait 15 minutes and try again.",
+    },
+    { status: 429 }
+  );
+
+/**
+ * Drive the guess-lockout counter from the login route, which owns the actual
+ * code check. Returns a 429 from `"check"` when the client is already locked
+ * out; `"fail"` and `"success"` only record and always return null.
+ */
+export function recordAuthOutcome(
+  req: NextRequest,
+  outcome: "check" | "fail" | "success"
+): NextResponse | null {
+  const ip = clientIp(req);
+  if (outcome === "check") {
+    if (rateLimited(ip)) {
+      return NextResponse.json(
+        { ok: false, error: "Too many requests — wait a minute and try again." },
+        { status: 429 }
+      );
+    }
+    return authLockedOut(ip) ? lockoutResponse() : null;
+  }
+  if (outcome === "fail") recordAuthFailure(ip);
+  else clearAuthFailures(ip);
+  return null;
+}
+
 /**
  * Rate limiting only — for routes that must stay reachable without the access
  * code (the eBay OAuth callback, the status probe) but shouldn't be hammered.
@@ -140,8 +175,19 @@ export const BODY_LIMIT_JSON = 512 * 1024;
 
 /**
  * Returns an error response when the request isn't allowed, or null to proceed.
+ *
+ * Middleware already gates every one of these routes, so in normal operation
+ * this is the second of two locks on the same door. It stays because the two
+ * fail in different ways: a matcher typo or a Next upgrade that changes
+ * middleware semantics silently opens the first lock, and nothing about that
+ * failure is visible until someone finds the hole. A route that also checks for
+ * itself cannot be opened by an error in the layer above it.
+ *
+ * Two credentials are accepted, both proving knowledge of APP_SECRET:
+ *   • the session cookie, which is what the browser actually sends; and
+ *   • an x-app-secret header, for scripts and curl that have no cookie jar.
  */
-export function guardApiRequest(req: NextRequest): NextResponse | null {
+export async function guardApiRequest(req: NextRequest): Promise<NextResponse | null> {
   const limited = rateLimitRequest(req);
   if (limited) return limited;
 
@@ -162,21 +208,16 @@ export function guardApiRequest(req: NextRequest): NextResponse | null {
   }
 
   const ip = clientIp(req);
-  if (authLockedOut(ip)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "ACCESS_CODE_LOCKED",
-        error: "Too many incorrect access codes. Wait 15 minutes and try again.",
-      },
-      { status: 429 }
-    );
+  if (authLockedOut(ip)) return lockoutResponse();
+
+  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value, secret)) {
+    return null;
   }
 
   const provided = req.headers.get("x-app-secret") ?? "";
   if (!provided || !timingSafeEqual(provided, secret)) {
-    // Only a *wrong* code counts against the lockout. A first request with no
-    // header at all is the normal handshake — the browser hasn't been asked yet.
+    // Only a *wrong* code counts against the lockout. A request with no header
+    // and no cookie is the normal pre-login state, not a guess.
     if (provided) recordAuthFailure(ip);
     return NextResponse.json(
       { ok: false, code: "ACCESS_CODE_REQUIRED", error: "Access code required." },

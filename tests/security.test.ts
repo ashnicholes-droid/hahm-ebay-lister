@@ -2,6 +2,16 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { isWellFormedImage, toImageBlock } from "@/lib/images";
 import { BODY_LIMIT_JSON, enforceBodyLimit, guardApiRequest } from "@/lib/api-guard";
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE_SECONDS,
+  accessCodeMatches,
+  isPublicPath,
+  issueSession,
+  verifySession,
+} from "@/lib/session-auth";
+
+const SECRET = "correct-horse-battery-staple";
 
 // Valid file headers, base64-encoded, padded out to the 16 chars the sniffer reads.
 const JPEG = Buffer.concat([
@@ -78,7 +88,7 @@ describe("access-code guard", () => {
 
   beforeEach(() => {
     vi.resetModules();
-    process.env.APP_SECRET = "correct-horse-battery-staple";
+    process.env.APP_SECRET = SECRET;
     // Vitest already runs with NODE_ENV=test; only VERCEL_ENV could make the
     // guard think this is a production deployment.
     delete process.env.VERCEL_ENV;
@@ -88,13 +98,13 @@ describe("access-code guard", () => {
     process.env = { ...OLD_ENV };
   });
 
-  it("lets a correct code through", () => {
-    const res = guardApiRequest(post({ "x-app-secret": "correct-horse-battery-staple" }, "10.0.0.1"));
+  it("lets a correct code through", async () => {
+    const res = await guardApiRequest(post({ "x-app-secret": SECRET }, "10.0.0.1"));
     expect(res).toBeNull();
   });
 
   it("asks for a code when none is supplied", async () => {
-    const res = guardApiRequest(post({}, "10.0.0.2"));
+    const res = await guardApiRequest(post({}, "10.0.0.2"));
     expect(res?.status).toBe(401);
     expect((await res!.json()).code).toBe("ACCESS_CODE_REQUIRED");
   });
@@ -103,34 +113,135 @@ describe("access-code guard", () => {
     const ip = "10.0.0.3";
     const statuses: number[] = [];
     for (let i = 0; i < 12; i++) {
-      statuses.push(guardApiRequest(post({ "x-app-secret": `guess-${i}` }, ip))!.status);
+      statuses.push((await guardApiRequest(post({ "x-app-secret": `guess-${i}` }, ip)))!.status);
     }
     // First few are plain 401s; once the guess budget is spent it becomes a 429.
     expect(statuses.slice(0, 8)).toEqual(Array(8).fill(401));
     expect(statuses.slice(8)).toEqual(Array(4).fill(429));
-    const locked = guardApiRequest(post({ "x-app-secret": "correct-horse-battery-staple" }, ip));
+    const locked = await guardApiRequest(post({ "x-app-secret": SECRET }, ip));
     expect(locked?.status).toBe(429);
     expect((await locked!.json()).code).toBe("ACCESS_CODE_LOCKED");
   });
 
-  it("keeps the lockout per-client — one attacker doesn't lock out everyone", () => {
-    for (let i = 0; i < 10; i++) guardApiRequest(post({ "x-app-secret": "bad" }, "10.0.0.4"));
-    const other = guardApiRequest(post({ "x-app-secret": "correct-horse-battery-staple" }, "10.0.0.5"));
-    expect(other).toBeNull();
+  it("keeps the lockout per-client — one attacker doesn't lock out everyone", async () => {
+    for (let i = 0; i < 10; i++) await guardApiRequest(post({ "x-app-secret": "bad" }, "10.0.0.4"));
+    expect(await guardApiRequest(post({ "x-app-secret": SECRET }, "10.0.0.5"))).toBeNull();
   });
 
-  it("does not count the header-less handshake against the guess budget", () => {
+  it("does not count the credential-less request against the guess budget", async () => {
     const ip = "10.0.0.6";
     for (let i = 0; i < 20; i++) {
-      expect(guardApiRequest(post({}, ip))?.status).toBe(401);
+      expect((await guardApiRequest(post({}, ip)))?.status).toBe(401);
     }
-    expect(guardApiRequest(post({ "x-app-secret": "correct-horse-battery-staple" }, ip))).toBeNull();
+    expect(await guardApiRequest(post({ "x-app-secret": SECRET }, ip))).toBeNull();
   });
 
   it("fails closed in production when APP_SECRET is missing", async () => {
     delete process.env.APP_SECRET;
     process.env.VERCEL_ENV = "production";
-    const res = guardApiRequest(post({}, "10.0.0.7"));
+    const res = await guardApiRequest(post({}, "10.0.0.7"));
     expect(res?.status).toBe(503);
+  });
+
+  it("accepts a valid session cookie instead of the header", async () => {
+    const token = await issueSession(SECRET);
+    const res = await guardApiRequest(post({ cookie: `${SESSION_COOKIE}=${token}` }, "10.0.0.8"));
+    expect(res).toBeNull();
+  });
+
+  it("rejects a session cookie signed with a different APP_SECRET", async () => {
+    const token = await issueSession("some-other-secret-entirely");
+    const res = await guardApiRequest(post({ cookie: `${SESSION_COOKIE}=${token}` }, "10.0.0.9"));
+    expect(res?.status).toBe(401);
+  });
+});
+
+describe("session tokens", () => {
+  it("round-trips a freshly issued session", async () => {
+    expect(await verifySession(await issueSession(SECRET), SECRET)).toBe(true);
+  });
+
+  it("rejects a session signed with a different secret — rotating APP_SECRET logs everyone out", async () => {
+    const token = await issueSession(SECRET);
+    expect(await verifySession(token, "rotated-secret-value")).toBe(false);
+  });
+
+  it("rejects a tampered signature", async () => {
+    const [v, t, sig] = (await issueSession(SECRET)).split(".");
+    const flipped = (sig[0] === "A" ? "B" : "A") + sig.slice(1);
+    expect(await verifySession(`${v}.${t}.${flipped}`, SECRET)).toBe(false);
+  });
+
+  it("rejects a forged issue time — you cannot re-date someone else's signature", async () => {
+    const [v, , sig] = (await issueSession(SECRET, Date.now() - 60_000)).split(".");
+    expect(await verifySession(`${v}.${Date.now()}.${sig}`, SECRET)).toBe(false);
+  });
+
+  it("expires after the max age, and not before", async () => {
+    const expired = await issueSession(SECRET, Date.now() - (SESSION_MAX_AGE_SECONDS + 60) * 1000);
+    expect(await verifySession(expired, SECRET)).toBe(false);
+    const nearly = await issueSession(SECRET, Date.now() - (SESSION_MAX_AGE_SECONDS - 60) * 1000);
+    expect(await verifySession(nearly, SECRET)).toBe(true);
+  });
+
+  it("rejects a token issued in the future", async () => {
+    const token = await issueSession(SECRET, Date.now() + 10 * 60_000);
+    expect(await verifySession(token, SECRET)).toBe(false);
+  });
+
+  it("rejects malformed and empty tokens without throwing", async () => {
+    for (const bad of ["", "garbage", "v1.abc", "v1.123.sig.extra", "v2.123.sig"]) {
+      expect(await verifySession(bad, SECRET)).toBe(false);
+    }
+    expect(await verifySession(undefined, SECRET)).toBe(false);
+    expect(await verifySession(await issueSession(SECRET), undefined)).toBe(false);
+  });
+
+  it("matches the access code exactly, and nothing near it", async () => {
+    expect(await accessCodeMatches(SECRET, SECRET)).toBe(true);
+    expect(await accessCodeMatches(SECRET.toUpperCase(), SECRET)).toBe(false);
+    expect(await accessCodeMatches(`${SECRET} `, SECRET)).toBe(false);
+    expect(await accessCodeMatches(SECRET.slice(0, -1), SECRET)).toBe(false);
+    expect(await accessCodeMatches("", SECRET)).toBe(false);
+  });
+});
+
+describe("public paths", () => {
+  it("leaves reachable exactly the paths that must not be gated", () => {
+    // eBay redirects a browser to the callback, and requires a publicly
+    // reachable privacy policy for the keyset. Gating either breaks posting or
+    // developer-account compliance.
+    expect(isPublicPath("/api/ebay/callback")).toBe(true);
+    expect(isPublicPath("/privacy")).toBe(true);
+    expect(isPublicPath("/login")).toBe(true);
+    expect(isPublicPath("/api/login")).toBe(true);
+    expect(isPublicPath("/api/logout")).toBe(true);
+  });
+
+  it("gates everything else, including every route that spends money", () => {
+    for (const path of [
+      "/",
+      "/api/analyze",
+      "/api/sort",
+      "/api/verify",
+      "/api/models",
+      "/api/ebay/publish",
+      "/api/ebay/upload-photos",
+      "/api/ebay/connect",
+      "/api/ebay/status",
+      "/api/ebay/preview",
+    ]) {
+      expect(isPublicPath(path)).toBe(false);
+    }
+  });
+
+  it("does not let a prefix collision open a gated path", () => {
+    // "/privacy" is public; "/privacy-report" is a different path and must not
+    // inherit that just because it shares a prefix.
+    expect(isPublicPath("/privacy-report")).toBe(false);
+    expect(isPublicPath("/login-as-admin")).toBe(false);
+    expect(isPublicPath("/api/ebay/callback-hijack")).toBe(false);
+    // A real subpath of a public path stays public.
+    expect(isPublicPath("/privacy/details")).toBe(true);
   });
 });

@@ -19,7 +19,7 @@ interface PreviewBody {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
   // The client sends eBay-hosted URLs or nothing — never photo bytes.
   const oversized = enforceBodyLimit(req, BODY_LIMIT_JSON);

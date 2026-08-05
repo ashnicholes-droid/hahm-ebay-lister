@@ -84,6 +84,39 @@ throw away (and make you pay again for) the brand check.
 
 ---
 
+## Who can reach your deployment
+
+With `APP_SECRET` set, **the whole app is private** — middleware checks a signed
+session cookie before anything renders, so someone who finds the URL gets a login
+screen that names neither the app nor your eBay account. That covers the page
+itself and every API route.
+
+Three paths stay deliberately public, because gating them breaks eBay:
+
+| Path | Why it must stay open |
+|---|---|
+| `/api/ebay/callback` | eBay redirects your **browser** here after you consent. That request cannot carry an access code. It's protected instead by the OAuth `state` cookie. |
+| `/privacy` | eBay requires a publicly reachable privacy-policy URL for your RuName. Gating it puts your keyset out of compliance. |
+| `/login`, `/api/login`, `/api/logout` | The gate itself, and the ability to sign out of an already-expired session. |
+
+**What a stranger with the URL can do:** see a login screen. Nothing else.
+
+**What someone with the URL *and* your access code can do:** spend your Anthropic
+credits, and list to *their own* eBay account through your developer keyset. They
+**cannot** touch your eBay listings — your eBay refresh token lives in an
+encrypted, httpOnly cookie in your browser only, and is never on the server. Treat
+the access code as the thing that protects your Anthropic bill and your keyset's
+standing, not your seller account.
+
+Wrong codes are budgeted separately from ordinary traffic: **8 failures per IP per
+15 minutes**, then that IP is refused even if it later supplies the right code. A
+successful login clears the counter, so ordinary typos don't accumulate.
+
+Rotating `APP_SECRET` invalidates every outstanding session immediately — the
+cookie is signed with it — so that's your "log every device out" button.
+
+---
+
 ## Seeing the listing before it goes live
 
 **Preview as it will appear on eBay** renders the item page from the *same*
@@ -222,7 +255,7 @@ and redeploy with `vercel --prod`.
 | Variable | Required | What it is |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | ✅ | Your Anthropic API key (writes the listings) |
-| `APP_SECRET` | ✅ for deployed apps | Access code protecting the AI endpoints so strangers can't spend your Anthropic credits. **A deployed (production) app fails closed without it** — every AI route returns an error until it's set. Asked for once per device, then remembered. Optional only for local dev. |
+| `APP_SECRET` | ✅ for deployed apps | Access code locking **the entire app** — the page and every API route, not just the AI ones. Someone with the URL and no code sees a login screen and nothing else. **A deployed (production) app fails closed without it.** Asked for once per device, then remembered for 30 days. Optional only for local dev. See *Who can reach your deployment* below. |
 | `EBAY_CLIENT_ID` | for posting | eBay App ID |
 | `EBAY_CLIENT_SECRET` | for posting | eBay Cert ID |
 | `EBAY_RU_NAME` | for posting | Your eBay RuName — the short `Name-XXXX-XXXX-XXXX` identifier, **not** the long "Sign In (OAuth)" URL |

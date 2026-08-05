@@ -27,7 +27,7 @@ interface UploadBody {
 
 export async function POST(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
   const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
   if (oversized) return oversized;

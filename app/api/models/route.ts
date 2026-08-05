@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getClient } from "@/lib/anthropic";
+import { guardApiRequest } from "@/lib/api-guard";
 import { isAllowedModel } from "@/lib/models";
 import type { ModelInfo } from "@anthropic-ai/sdk/resources/models.js";
 
@@ -79,7 +80,15 @@ function buildPayload(raw: ModelInfo[]): ModelsPayload {
   return { sortModels, analysisModels };
 }
 
-export async function GET() {
+// Guarded like every other route. It took no request object at all before, so
+// it could neither check the access code nor rate-limit — leaving one
+// unauthenticated endpoint that reaches the Anthropic API with the owner's key.
+// The response is cached, so the exposure was small, but "small" is not a
+// reason for the only unlocked door in the building.
+export async function GET(req: NextRequest) {
+  const denied = await guardApiRequest(req);
+  if (denied) return denied;
+
   const now = Date.now();
   if (cache && now - cacheAt < CACHE_TTL) {
     return NextResponse.json(cache);

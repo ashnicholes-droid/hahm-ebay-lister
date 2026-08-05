@@ -12,7 +12,7 @@ export const maxDuration = 30;
 // Market price check for a drafted listing: active-comp count, median, and
 // range. Uses the app-level eBay token, so it works before a seller connects.
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
   const oversized = enforceBodyLimit(req, BODY_LIMIT_JSON);
   if (oversized) return oversized;

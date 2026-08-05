@@ -33,7 +33,7 @@ function extractCode(input: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
 
   let body: { url?: string; code?: string };

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 // Forget the stored eBay connection.
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
 
   const res = NextResponse.json({ ok: true });

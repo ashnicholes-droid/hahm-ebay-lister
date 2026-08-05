@@ -1,11 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, isPublicPath, verifySession } from "@/lib/session-auth";
 
 // Evaluated once per cold start — env vars do not change at runtime.
 const isProd =
   process.env.NODE_ENV === "production" ||
   process.env.VERCEL_ENV === "production";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const secret = process.env.APP_SECRET;
+
+  // ── Access gate ───────────────────────────────────────────────────────────
+  // With APP_SECRET set, nothing outside the public list is reachable without a
+  // valid session — not the API, and not the page itself. Someone holding only
+  // the URL gets a login screen and no evidence of what is behind it.
+  //
+  // With APP_SECRET UNSET we deliberately do not gate. Locally that is the
+  // existing convenience; in a misconfigured production it lets the request
+  // reach the route, which answers with an actionable 503 naming the missing
+  // variable. Redirecting to a login page that cannot accept any password
+  // would strand you with no explanation of why.
+  if (secret && !isPublicPath(pathname)) {
+    const authed = await verifySession(request.cookies.get(SESSION_COOKIE)?.value, secret);
+    if (!authed) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { ok: false, code: "ACCESS_CODE_REQUIRED", error: "Access code required." },
+          { status: 401 }
+        );
+      }
+      const login = new URL("/login", request.url);
+      // Return them to what they asked for — but only ever as a path on this
+      // site. Echoing back a caller-supplied absolute URL is an open redirect.
+      const next = `${pathname}${request.nextUrl.search}`;
+      if (next !== "/") login.searchParams.set("next", next);
+      return NextResponse.redirect(login);
+    }
+  }
+
   // Fresh nonce for every HTML response. Buffer is polyfilled by Next.js for
   // the Edge runtime; crypto.randomUUID() is part of the Web Crypto API.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");

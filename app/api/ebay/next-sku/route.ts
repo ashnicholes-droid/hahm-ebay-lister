@@ -14,7 +14,7 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 10; // up to 2000 inventory items scanned
 
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
 
   let prefix = "";

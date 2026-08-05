@@ -17,7 +17,7 @@ import type { WireImage } from "@/lib/images";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  const denied = guardApiRequest(req);
+  const denied = await guardApiRequest(req);
   if (denied) return denied;
   const oversized = enforceBodyLimit(req, BODY_LIMIT_PHOTOS);
   if (oversized) return oversized;
