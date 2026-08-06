@@ -1,0 +1,241 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { scanQrSku } from "@/lib/qrScan";
+import type { ResizedImage } from "@/lib/resize";
+
+// Rapid multi-shot capture.
+//
+// A plain <input type="file" capture> hands each photo to the OS camera app and
+// makes you confirm it, so every single shot costs "choose camera → shoot → Use
+// Photo → reopen". For a batch of forty items that is hundreds of taps, which is
+// the difference between this tool being useful on a phone and not.
+//
+// Here the camera stays open and the shutter just fires: tap, tap, tap. The
+// preview is live, so QR labels can be recognised AS YOU AIM — you see the code
+// register before you shoot, instead of finding out at import time that a label
+// didn't read.
+
+const FULL_DIM = 1024;
+const FULL_QUALITY = 0.82;
+const THUMB_DIM = 360;
+const THUMB_QUALITY = 0.5;
+// How often to look for a label in the live preview. Fast enough to feel
+// instant when you raise a tag to the lens, slow enough to leave the main
+// thread free for a smooth preview.
+const LIVE_SCAN_MS = 700;
+
+interface CameraCaptureProps {
+  onCapture: (shots: ResizedImage[]) => void;
+  onClose: () => void;
+}
+
+function drawToJpeg(
+  src: CanvasImageSource,
+  sw: number,
+  sh: number,
+  maxDim: number,
+  quality: number
+): string {
+  const ratio = Math.min(1, maxDim / Math.max(sw, sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sw * ratio));
+  canvas.height = Math.max(1, Math.round(sh * ratio));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process the photo.");
+  ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [shots, setShots] = useState<ResizedImage[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [liveSku, setLiveSku] = useState<string | null>(null);
+  const [flash, setFlash] = useState(false);
+
+  // ── Camera lifecycle ──────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("This browser can't open the camera directly.");
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          // The rear camera, at a resolution that still resolves a QR label.
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setReady(true);
+      } catch (e) {
+        const err = e as Error;
+        setError(
+          err.name === "NotAllowedError"
+            ? "Camera access was blocked. Allow it in your browser's site settings, or use “Choose photos” instead."
+            : err.message || "Could not open the camera."
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+      // Releasing every track is what turns the phone's camera light off. Miss
+      // this and the camera stays live behind the closed sheet.
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  // ── Live label detection ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ready) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = async () => {
+      const video = videoRef.current;
+      if (!stopped && video && video.videoWidth) {
+        try {
+          const canvas = document.createElement("canvas");
+          const ratio = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.round(video.videoWidth * ratio);
+          canvas.height = Math.round(video.videoHeight * ratio);
+          canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const img = new Image();
+          img.src = canvas.toDataURL("image/jpeg", 0.7);
+          await new Promise((r) => (img.onload = r));
+          const sku = await scanQrSku(img);
+          if (!stopped) setLiveSku(sku || null);
+        } catch {
+          /* a dropped frame is not worth reporting */
+        }
+      }
+      if (!stopped) timer = setTimeout(tick, LIVE_SCAN_MS);
+    };
+    timer = setTimeout(tick, LIVE_SCAN_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [ready]);
+
+  const shoot = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth) return;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    const full = drawToJpeg(video, w, h, FULL_DIM, FULL_QUALITY);
+    const thumb = drawToJpeg(video, w, h, THUMB_DIM, THUMB_QUALITY);
+
+    // Scan the captured frame rather than trusting the live preview: the live
+    // pass runs on a throttled tick and may be a beat behind what you shot.
+    let sku = "";
+    try {
+      const img = new Image();
+      img.src = full;
+      await new Promise((r) => (img.onload = r));
+      sku = await scanQrSku(img);
+    } catch {
+      /* fall back to "ordinary photo" */
+    }
+
+    setShots((prev) => [
+      ...prev,
+      { mediaType: "image/jpeg", data: full.split(",")[1], previewUrl: thumb, ...(sku ? { sku } : {}) },
+    ]);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 120);
+  }, []);
+
+  const done = () => {
+    if (shots.length) onCapture(shots);
+    onClose();
+  };
+
+  const labelCount = shots.filter((s) => s.sku).length;
+
+  return (
+    <div className="camera-backdrop" role="dialog" aria-modal="true" aria-label="Camera">
+      <div className="camera-sheet">
+        <header className="camera-head">
+          <span>
+            <strong>{shots.length}</strong> photo{shots.length === 1 ? "" : "s"}
+            {labelCount > 0 && <> · {labelCount} label{labelCount === 1 ? "" : "s"}</>}
+          </span>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+        </header>
+
+        {error ? (
+          <p className="note note-error" role="alert">
+            {error}
+          </p>
+        ) : (
+          <div className="camera-stage">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video ref={videoRef} playsInline muted autoPlay className="camera-video" />
+            {flash && <div className="camera-flash" aria-hidden="true" />}
+            {liveSku && (
+              <div className="camera-live-sku" role="status">
+                🏷 {liveSku} in view
+              </div>
+            )}
+            {!ready && (
+              <div className="camera-loading">
+                <span className="spinner" aria-hidden="true" /> Starting camera…
+              </div>
+            )}
+          </div>
+        )}
+
+        {shots.length > 0 && (
+          <div className="camera-strip" aria-label="Captured photos">
+            {shots.map((s, i) => (
+              <div className={`camera-thumb${s.sku ? " is-marker" : ""}`} key={i}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.previewUrl} alt="" />
+                {s.sku && <span>{s.sku}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="camera-controls">
+          <button
+            type="button"
+            className="camera-shutter"
+            onClick={shoot}
+            disabled={!ready || Boolean(error)}
+            aria-label="Take photo"
+          >
+            <span />
+          </button>
+          <button type="button" className="btn btn-primary" onClick={done} disabled={!shots.length}>
+            Use {shots.length || ""} photo{shots.length === 1 ? "" : "s"}
+          </button>
+        </div>
+
+        <p className="camera-hint">
+          Keep tapping the shutter — the camera stays open. Shoot each item, then
+          its QR label; the label is recognised as you aim.
+        </p>
+      </div>
+    </div>
+  );
+}

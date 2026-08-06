@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiPost } from "@/lib/api-client";
 import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
-import { buildSku } from "@/lib/sku";
+import { buildSku, sanitizeSku } from "@/lib/sku";
 import { groupByQrDelimiters, type GroupingWarning } from "@/lib/qrGrouping";
+import { decoderName, loadImageForScan, scanQrSku } from "@/lib/qrScan";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
 import {
   buildReport,
@@ -14,6 +15,7 @@ import {
   verdictsFromClaims,
   type PhotoClaim,
 } from "@/lib/verification";
+import { CameraCapture } from "./CameraCapture";
 import { EbayConnect } from "./EbayConnect";
 import { ModelSelector } from "./ModelSelector";
 import { ReviewBoard } from "./ReviewBoard";
@@ -152,6 +154,7 @@ export default function Home() {
   const [intakeMode, setIntakeMode] = useState<IntakeMode>("qr");
   const [importing, setImporting] = useState<string | null>(null);
   const [qrWarnings, setQrWarnings] = useState<GroupingWarning[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // How many of the loaded photos carry a QR inventory label.
@@ -242,6 +245,55 @@ export default function Home() {
 
   const removePhoto = (id: string) =>
     setPhotos((prev) => prev.filter((p) => p.id !== id));
+
+  // Manual override for a label the decoder couldn't read. Scanning is best
+  // effort — glare, motion blur, a crumpled tag, or a browser whose native
+  // detector misbehaves will all beat it — and without a way to say "this photo
+  // is the label for K75-A" a single miss blocks the entire batch.
+  const setPhotoSku = (id: string) => {
+    const current = photos.find((p) => p.id === id)?.sku ?? "";
+    const entered = window.prompt(
+      "Inventory number for this label photo (leave empty to make it an ordinary photo):",
+      current
+    );
+    if (entered === null) return; // cancelled
+    const sku = sanitizeSku(entered.trim());
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...(sku ? { sku } : { sku: undefined }) } : p))
+    );
+  };
+
+  // Re-run detection over the photos already imported, with the slower
+  // centre-crop pass enabled. Uses the stored 1024px copy, so nothing is
+  // re-read from disk and nothing is uploaded.
+  const rescanLabels = async () => {
+    setImporting("Re-scanning photos for QR labels…");
+    setError(null);
+    try {
+      const found: Record<string, string> = {};
+      for (const [i, photo] of photos.entries()) {
+        setImporting(`Re-scanning photo ${i + 1} of ${photos.length}…`);
+        try {
+          const img = await loadImageForScan(`data:${photo.mediaType};base64,${photo.data}`);
+          const sku = await scanQrSku(img, { thorough: true });
+          if (sku) found[photo.id] = sku;
+        } catch {
+          /* unreadable photo — leave it as an ordinary one */
+        }
+      }
+      setPhotos((prev) =>
+        prev.map((p) => (found[p.id] ? { ...p, sku: found[p.id] } : p))
+      );
+      const count = Object.keys(found).length;
+      if (count === 0) {
+        setError(
+          `Still no QR labels found in ${photos.length} photo(s), using the ${decoderName()} on this device. Tag a label photo by hand with the 🏷 button, or switch to AI sorting.`
+        );
+      }
+    } finally {
+      setImporting(null);
+    }
+  };
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -829,7 +881,7 @@ export default function Home() {
                     <em>
                       {labelCount > 0
                         ? ` ${labelCount} label${labelCount === 1 ? "" : "s"} found → ${labelCount} item${labelCount === 1 ? "" : "s"}.`
-                        : " No labels found in these photos yet."}
+                        : ` No labels found yet — scanning runs on this device, never uploaded. Try “Scan again, harder”, or tag a label photo with 🏷.`}
                     </em>
                   )}
                 </span>
@@ -902,8 +954,28 @@ export default function Home() {
                 accept="image/*"
                 multiple
                 hidden
-                onChange={(e) => void addFiles(e.target.files)}
+                onChange={(e) => {
+                  void addFiles(e.target.files);
+                  // Clear the value so picking the SAME file again still fires
+                  // a change event — otherwise a retry after a failed import
+                  // silently does nothing.
+                  e.target.value = "";
+                }}
               />
+            </div>
+
+            <div className="capture-row">
+              <button
+                type="button"
+                className="btn btn-primary capture-btn"
+                onClick={() => setCameraOpen(true)}
+              >
+                📷 Open camera — shoot a whole batch
+              </button>
+              <span className="capture-hint">
+                Keeps the camera open so you can tap the shutter over and over,
+                instead of confirming every single photo.
+              </span>
             </div>
 
             {importing && (
@@ -920,10 +992,19 @@ export default function Home() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.previewUrl} alt="" />
                     {p.sku && (
-                      <span className="thumb-sku" title={`QR label: ${p.sku}`}>
+                      <span className="thumb-sku" title={`Inventory label: ${p.sku}`}>
                         {p.sku}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      className="thumb-tag"
+                      aria-label={p.sku ? `Edit label ${p.sku}` : "Mark as a label photo"}
+                      title={p.sku ? `Edit label ${p.sku}` : "Mark as a label photo"}
+                      onClick={() => setPhotoSku(p.id)}
+                    >
+                      🏷
+                    </button>
                     <button
                       type="button"
                       aria-label="Remove photo"
@@ -963,6 +1044,23 @@ export default function Home() {
               </p>
             )}
 
+            {intakeMode === "qr" && photos.length > 0 && labelCount === 0 && (
+              <div className="rescan-row">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => void rescanLabels()}
+                  disabled={Boolean(importing)}
+                >
+                  🔍 Scan again, harder
+                </button>
+                <span className="capture-hint">
+                  Runs a slower pass that finds smaller and more distant labels.
+                  Still entirely on this device.
+                </span>
+              </div>
+            )}
+
             {qrWarnings.length > 0 && (
               <ul className="qr-warnings" role="status">
                 {qrWarnings.map((w, i) => (
@@ -984,6 +1082,17 @@ export default function Home() {
             </section>
           )}
         </>
+      )}
+
+      {cameraOpen && (
+        <CameraCapture
+          onCapture={(shots) =>
+            setPhotos((prev) =>
+              [...prev, ...shots.map((s) => ({ id: newId(), ...s }))].slice(0, MAX_PHOTOS)
+            )
+          }
+          onClose={() => setCameraOpen(false)}
+        />
       )}
 
       {step === "review" && (

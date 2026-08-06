@@ -27,7 +27,10 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // The in-app camera (app/CameraCapture.tsx) needs getUserMedia on this
+          // origin — `camera=()` blocks it outright. Still denied to every other
+          // origin, and mic/geolocation stay off entirely.
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           // Isolate this origin's browsing context group so a window this app
           // opens (the eBay consent flow) can't reach back into it, and no
           // other site can embed our subresources.
