@@ -28,6 +28,7 @@ import {
 import { fillRecommendedAspects } from "./aspectFill";
 import { extractProductIdentifiers, hasCatalogIdentifier, realBrand } from "./identifiers";
 import { parseMeasurements } from "@/lib/measurements";
+import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estimate";
 import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
 import type { ListingResult } from "@/lib/types";
 
@@ -257,21 +258,53 @@ const PACKAGE_PROFILES: Record<string, PackageProfile> = (() => {
   return profiles;
 })();
 
-export function defaultPackageWeightAndSize(catKey: string): Record<string, unknown> {
+/**
+ * Package weight/size for the inventory item.
+ *
+ * Order of preference, best first:
+ *   1. The per-item shipping estimate derived from the photos and the chosen
+ *      box (lib/shipping). This is what makes calculated shipping quote buyers
+ *      correctly — a class default sends a cast-iron pan as a 1 lb envelope and
+ *      the seller eats the difference on every sale.
+ *   2. An explicit EBAY_DEFAULT_PACKAGE_* env override.
+ *   3. The per-item-class profile, which is a guess and always was.
+ */
+export function defaultPackageWeightAndSize(
+  catKey: string,
+  listing?: ListingResult
+): Record<string, unknown> {
   const profile = PACKAGE_PROFILES[catKey] ?? DEFAULT_PACKAGE;
   const num = (v: string | undefined, fallback: number) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
+
+  let derived: { weightOz: number; l: number; w: number; h: number } | null = null;
+  if (listing) {
+    const estimate = estimateShipping({
+      itemOz: listing.shipping_weight_oz,
+      itemDims: {
+        l: Number(listing.shipping_length_in) || undefined,
+        w: Number(listing.shipping_width_in) || undefined,
+        h: Number(listing.shipping_height_in) || undefined,
+      },
+      category: catKey,
+    });
+    // Only trust it when it came from the photos. A category-default estimate
+    // is no better than the profile below, and the profile is the long-tested
+    // path — no reason to swap one guess for another.
+    if (estimate.basis === "photos") derived = ebayPackageFromEstimate(estimate);
+  }
+
   return {
     weight: {
-      value: num(process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ, profile.oz),
+      value: num(process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ, derived?.weightOz ?? profile.oz),
       unit: "OUNCE",
     },
     dimensions: {
-      length: num(process.env.EBAY_DEFAULT_PACKAGE_LENGTH_IN, profile.l),
-      width: num(process.env.EBAY_DEFAULT_PACKAGE_WIDTH_IN, profile.w),
-      height: num(process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, profile.h),
+      length: num(process.env.EBAY_DEFAULT_PACKAGE_LENGTH_IN, derived?.l ?? profile.l),
+      width: num(process.env.EBAY_DEFAULT_PACKAGE_WIDTH_IN, derived?.w ?? profile.w),
+      height: num(process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, derived?.h ?? profile.h),
       unit: "INCH",
     },
     packageType: SAFE_PACKAGE_TYPE,
@@ -1122,7 +1155,7 @@ export async function publishListing(
     availability: { shipToLocationAvailability: { quantity: 1 } },
     // Class-profiled weight/size so CALCULATED-shipping policies publish
     // (eBay 25020) without a coat shipping as a 1-lb envelope.
-    packageWeightAndSize: defaultPackageWeightAndSize(catKey),
+    packageWeightAndSize: defaultPackageWeightAndSize(catKey, listing),
   };
 
   const putInventory = () =>

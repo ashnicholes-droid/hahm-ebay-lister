@@ -5,6 +5,7 @@ import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
 import { reportStatus } from "@/lib/verification";
 import { AccuracyPanel } from "./AccuracyPanel";
 import { ListingPreview } from "./ListingPreview";
+import { ShippingPanel } from "./ShippingPanel";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 
 const TITLE_LIMIT = 80;
@@ -327,6 +328,8 @@ export function ListingCard({
               </div>
             </details>
           )}
+
+          <ShippingPanel listing={listing} groupId={group.id} onEdit={onEdit} />
 
           <AccuracyPanel
             report={group.verification}

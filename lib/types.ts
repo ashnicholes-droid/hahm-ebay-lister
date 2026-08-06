@@ -1,4 +1,5 @@
 import type { VerificationReport } from "@/lib/verification";
+import type { ShippingEstimate } from "@/lib/shipping/estimate";
 
 // Shape of a generated listing. Mirrors the JSON the model returns in the
 // Python script's analyze_photos(), plus the routed profile.
@@ -22,6 +23,13 @@ export interface ListingResult {
   key_features?: string[];
   item_specifics?: Record<string, string>;
   item_profile?: string;
+  // The ITEM alone, unpackaged, as read or judged from the photos. The shipping
+  // estimator adds box, padding, and fill (see lib/shipping/estimate.ts). Zero
+  // or absent means "couldn't tell" and falls back to a category profile.
+  shipping_weight_oz?: number | string;
+  shipping_length_in?: number | string;
+  shipping_width_in?: number | string;
+  shipping_height_in?: number | string;
 }
 
 export interface AnalyzeRequestBody {
@@ -100,4 +108,6 @@ export interface ItemGroup {
   verifying?: boolean;
   // Set when this item came from a QR label rather than the AI sorter.
   markerPhotoId?: string;
+  // Packaging + cost estimate, recomputed whenever the weight/size fields change.
+  shipping?: ShippingEstimate;
 }

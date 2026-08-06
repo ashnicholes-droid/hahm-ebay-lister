@@ -108,6 +108,10 @@ Return ONLY valid JSON — no markdown, no code fences, no explanation. Use this
   "measurements": "Measurements visible in photos, each with its label (e.g. 'Pit to pit 21 in, length 27 in' or 'Waist 32 in, rise 11 in, inseam 29 in'). Use an empty string if none visible — no placeholder text.",
   "description": "Full eBay listing description — plain text only, no markdown.",
   "suggested_price": 0.00,
+  "shipping_weight_oz": 0,
+  "shipping_length_in": 0,
+  "shipping_width_in": 0,
+  "shipping_height_in": 0,
   "seo_keywords": ["Up to 10 search phrases buyers would use"],
   "key_features": ["Up to 5 features"],
   "item_specifics": {
@@ -199,6 +203,13 @@ Return ONLY valid JSON — no markdown, no code fences, no explanation. Use this
 For title: Make it read like a strong live eBay title, using the most searchable nouns, brand, model, type, material, size, era, character, theme, or pattern when supported by the photos.
 For condition: Do NOT use LIKE_NEW. If an item is near mint but preowned, use EXCELLENT instead.
 For suggested_price: Price realistically for what this exact item sells for on eBay. Be honest. If the item can't be identified well enough to price it, use 0 — the seller will price it manually (a wrong guess is worse than no guess).
+For shipping_weight_oz and the three shipping dimensions: describe the ITEM ALONE, unpackaged — ounces and inches. The app adds the box, padding, and packing material itself, so do not try to account for them.
+  Use this order of evidence:
+  1. A weight or dimension printed on the item, its box, or its spec plate. Read it and convert to ounces/inches. This is by far the best answer.
+  2. A known product you can identify confidently (a specific camera body, a named appliance, a standard hardback) — use its real published weight.
+  3. Otherwise judge from the photos: what the material is, how large it is next to any reference object, and whether it looks solid or hollow.
+  A cast iron pan, a ceramic vase, a power tool, and a boxed appliance are HEAVY — do not default them to clothing weights. Under-estimating costs the seller real money on every sale.
+  Use 0 for any figure you genuinely cannot judge; the app substitutes a category default and marks the estimate as a guess. A 0 is better than a number you invented.
 For item_specifics: Only include fields relevant to this item. Leave any field blank ("") if not applicable or unknown — do NOT guess. Omit all section-label keys (the ones that look like "--- TOPS ---") from your response.
 For category/category_hint: The broad category can be approximate, but the category_hint should help eBay find the exact leaf category for whatever type of item this is.
 For all item types: include as many accurate specifics as the photos support, even for non-clothing items such as collectibles, media, home decor, toys, tools, sporting goods, art, kitchenware, and electronics accessories.`;

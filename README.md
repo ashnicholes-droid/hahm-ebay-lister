@@ -117,6 +117,49 @@ cookie is signed with it — so that's your "log every device out" button.
 
 ---
 
+## Shipping: weight, box, and cost per item
+
+Every drafted listing gets a **📦 Shipping** panel. The model estimates the
+item's own weight and dimensions from the photos — reading a figure printed on
+the box or spec plate where there is one — and the app does the rest:
+
+- picks the smallest box that fits with padding (flat boxes for broad, thin
+  things; long boxes for tools and rods)
+- adds the box's own weight and packing fill
+- computes **dimensional weight**, which is what carriers actually bill on once
+  a package passes one cubic foot
+- prices Ground Advantage, Priority, and Priority Flat Rate, and recommends the
+  cheapest
+- shows what you'd **net at your asking price with free shipping**, after
+  postage and eBay's fee
+
+Every field is editable and recalculates live. A wrong box is expensive: in
+testing, a 13-inch cast iron skillet in the wrong carton estimated **$55** and a
+**−$16** loss; in the right flat box it was **$23** and **+$16**.
+
+### About the numbers
+
+**The weight and box size are the reliable part, and they're what get sent to
+eBay.** With calculated shipping, eBay quotes buyers from those figures at real
+current rates — so getting them right is what stops you absorbing the
+difference on every sale.
+
+**The dollar amounts are an estimate from a built-in table**, not a live carrier
+quote — this app has no USPS/UPS credentials and eBay exposes no public
+rate-quote API. They're there for margin maths ("is this worth listing at all").
+Check them against what you actually pay.
+
+To correct them, edit `lib/shipping/rates.ts`, or set `SHIPPING_RATES_JSON` to a
+JSON object of the same shape — no code change needed. A malformed override is
+rejected and the built-in table is used instead, rather than silently pricing
+everything at $0.
+
+If the photos show nothing to judge weight from, the estimate falls back to a
+per-category profile and **says so** — that's the amber panel. Weigh the item
+before pricing off it.
+
+---
+
 ## Seeing the listing before it goes live
 
 **Preview as it will appear on eBay** renders the item page from the *same*

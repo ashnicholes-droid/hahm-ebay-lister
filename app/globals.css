@@ -1215,11 +1215,27 @@ textarea {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
+  /* On a phone the button and the heading cannot share one row: the button
+     refuses to shrink, so the text column collapsed to about one word wide.
+     Wrap instead, and let the button take the full row underneath. */
+  flex-wrap: wrap;
 }
 
 .accuracy-head > div {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
+}
+
+.accuracy-head > .btn-ghost {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (min-width: 560px) {
+  .accuracy-head > div {
+    flex: 1 1 auto;
+  }
 }
 
 .accuracy-head strong {
@@ -1913,4 +1929,176 @@ textarea {
   flex: none;
   font-size: 0.78rem;
   padding: 0.3rem 0.6rem;
+}
+
+/* ── Shipping estimator ─────────────────────────────────── */
+
+.shipping {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  margin-top: 1.25rem;
+  background: var(--color-surface-sunk);
+}
+
+/* A guessed weight is a number you should not price against — say so visually. */
+.shipping-category-default {
+  border-color: color-mix(in oklch, var(--color-gold), white 50%);
+  background: var(--color-gold-soft);
+}
+
+.shipping-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.shipping-headline {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-accent-deep);
+}
+
+.shipping-headline.warn {
+  color: var(--color-danger);
+}
+
+.shipping-basis {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+  margin: 0.3rem 0 0.85rem;
+  line-height: 1.5;
+}
+
+.ship-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
+}
+
+.ship-field {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ship-field > span:first-child {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
+}
+
+.ship-input {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+}
+
+.ship-input input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: 0.95rem;
+  color: var(--color-ink);
+}
+
+.ship-input input:focus {
+  outline: none;
+}
+
+.ship-input em {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+}
+
+.ship-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+  margin: 0.9rem 0 0;
+}
+
+.ship-summary dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
+}
+
+.ship-summary dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ship-summary small {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--color-ink-faint);
+}
+
+.ship-options {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+}
+
+.ship-options td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ship-options tr.best td {
+  font-weight: 700;
+  background: var(--color-accent-soft);
+}
+
+.ship-options tr.best td:first-child::before {
+  content: "✓ ";
+  color: var(--color-accent-deep);
+}
+
+.ship-box {
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+}
+
+.ship-cost {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ship-net {
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+  line-height: 1.5;
+}
+
+.ship-net.negative {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.ship-warning {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.ship-footnote {
+  margin: 0.85rem 0 0;
+  font-size: 0.73rem;
+  line-height: 1.55;
+  color: var(--color-ink-faint);
 }
