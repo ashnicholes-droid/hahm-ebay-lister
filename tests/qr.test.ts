@@ -72,11 +72,21 @@ describe("groupByQrDelimiters", () => {
     expect(items[0].photoIds).toEqual(["p0", "p1", "p2"]);
   });
 
-  it("leaves the label photo out of the listing but remembers which one it was", () => {
+  it("leaves the label photo out of the listing but keeps it attached to its item", () => {
     const { items, orphanIds } = groupByQrDelimiters(stream("a", "#K1"));
     expect(items[0].photoIds).toEqual(["p0"]);
     expect(items[0].markerPhotoId).toBe("p1");
-    expect(orphanIds).toEqual(["p1"]);
+    // Emphatically NOT an orphan: this photo decided the grouping, so filing it
+    // under "didn't clearly belong to one item" is exactly wrong.
+    expect(orphanIds).toEqual([]);
+  });
+
+  it("never orphans a label photo, however many items there are", () => {
+    const { items, orphanIds } = groupByQrDelimiters(
+      stream("a", "b", "#K1", "c", "#K2", "d", "e", "#K3")
+    );
+    expect(items.map((i) => i.markerPhotoId)).toEqual(["p2", "p4", "p7"]);
+    expect(orphanIds).toEqual([]);
   });
 
   it("can include the label photo when the seller wants the tag visible", () => {
@@ -139,10 +149,20 @@ describe("groupByQrDelimiters", () => {
     expect(orphanIds).toEqual([]);
   });
 
-  it("never loses a photo: every input id lands in an item or in orphans", () => {
+  it("never loses a photo: every input id is a listing photo, a label, or an orphan", () => {
     const photos = stream("a", "#K1", "b", "c", "#K2", "#K3", "d");
     const { items, orphanIds } = groupByQrDelimiters(photos);
-    const accounted = new Set([...items.flatMap((i) => i.photoIds), ...orphanIds]);
+    const accounted = new Set([
+      ...items.flatMap((i) => i.photoIds),
+      ...items.map((i) => i.markerPhotoId).filter(Boolean),
+      ...orphanIds,
+    ]);
     expect(accounted.size).toBe(photos.length);
+  });
+
+  it("still orphans a label that had nothing to label — there is no item to attach it to", () => {
+    const { orphanIds, warnings } = groupByQrDelimiters(stream("#K1", "a", "#K2"));
+    expect(orphanIds).toEqual(["p0"]);
+    expect(warnings.map((w) => w.code)).toEqual(["empty-marker"]);
   });
 });

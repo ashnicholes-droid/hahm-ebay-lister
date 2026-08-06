@@ -40,7 +40,12 @@ export interface GroupingWarning {
 
 export interface GroupingResult {
   items: GroupedItem[];
-  /** Photos that could not be attached to any item. */
+  /**
+   * Photos that could not be attached to any item. Label photos are NOT in
+   * here — each one belongs to the item it delimited, via `markerPhotoId`.
+   * Only a label with nothing to label (see the "empty-marker" warning) and
+   * photos from a batch with no labels at all end up orphaned.
+   */
   orphanIds: string[];
   warnings: GroupingWarning[];
 }
@@ -134,9 +139,12 @@ export function groupByQrDelimiters(
     if (includeMarkerPhoto) {
       if (markerPosition === "before") photoIds.unshift(photo.id);
       else photoIds.push(photo.id);
-    } else {
-      orphanIds.push(photo.id);
     }
+    // A label photo is NOT an orphan. It used to be filed as one, which meant
+    // the photo that decided the grouping got shown under "these didn't clearly
+    // belong to one item — assign each below". It belongs to exactly one item
+    // and we know which: it is carried on markerPhotoId, and the review board
+    // renders it against its item as the inventory tag.
     items.push({ photoIds, sku: photo.sku, markerPhotoId: photo.id });
     pending = [];
   }

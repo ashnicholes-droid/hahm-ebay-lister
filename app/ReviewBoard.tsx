@@ -162,6 +162,47 @@ function PhotoGrid({
   );
 }
 
+// The QR photo that produced this item's inventory number. It isn't a listing
+// photo — buyers don't want a picture of a bin tag — but it isn't unsorted
+// either, so it's shown here, attached to the item it created, rather than in
+// the needs-review tray. One tap promotes it to a real photo for sellers who do
+// want the tag visible.
+function LabelChip({
+  group,
+  photoById,
+  onMovePhoto,
+}: {
+  group: ItemGroup;
+  photoById: ReviewBoardProps["photoById"];
+  onMovePhoto: ReviewBoardProps["onMovePhoto"];
+}) {
+  const markerId = group.markerPhotoId;
+  if (!markerId) return null;
+  // Once promoted it appears in the strip above; don't show it twice.
+  if (group.photoIds.includes(markerId)) return null;
+  const photo = photoById(markerId);
+  if (!photo) return null;
+
+  return (
+    <div className="label-chip">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photo.previewUrl} alt="" />
+      <div className="label-chip-text">
+        <strong>🏷 {group.sku || "label"}</strong>
+        <span>Read from this photo. Not posted to eBay.</span>
+      </div>
+      <button
+        type="button"
+        className="btn-ghost"
+        onClick={() => onMovePhoto(markerId, group.id)}
+        title="Include the label photo in the listing"
+      >
+        Add to photos
+      </button>
+    </div>
+  );
+}
+
 export function ReviewBoard({
   groups,
   orphanIds,
@@ -175,8 +216,13 @@ export function ReviewBoard({
   onWriteAll,
   onBack,
 }: ReviewBoardProps) {
+  // Count label photos too — they're part of the batch the seller handed over,
+  // and a total that silently omits them looks like photos went missing.
+  const labelPhotos = groups.filter(
+    (g) => g.markerPhotoId && !g.photoIds.includes(g.markerPhotoId)
+  ).length;
   const totalPhotos =
-    groups.reduce((n, g) => n + g.photoIds.length, 0) + orphanIds.length;
+    groups.reduce((n, g) => n + g.photoIds.length, 0) + labelPhotos + orphanIds.length;
   const usableGroups = groups.filter((g) => g.photoIds.length > 0);
 
   return (
@@ -234,6 +280,7 @@ export function ReviewBoard({
                 onReorderPhoto={onReorderPhoto}
               />
             )}
+            <LabelChip group={group} photoById={photoById} onMovePhoto={onMovePhoto} />
           </article>
         ))}
       </div>

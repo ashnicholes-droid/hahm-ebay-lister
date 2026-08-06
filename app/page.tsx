@@ -325,7 +325,10 @@ export default function Home() {
         // An item whose label was never photographed still needs a reference —
         // fall back to the bin lettering so it can be posted after review.
         sku: item.sku || buildSku(binPrefix, i),
-        name: item.sku || `item-${i + 1}`,
+        // The SKU has its own field right beside this one, so repeating it here
+        // just showed the same string twice. A positional name is a placeholder
+        // until the listing is written and the real title replaces it.
+        name: `Item ${i + 1}`,
         photoIds: item.photoIds,
         status: "idle" as const,
         ...(item.markerPhotoId ? { markerPhotoId: item.markerPhotoId } : {}),
