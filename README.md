@@ -137,6 +137,28 @@ Every field is editable and recalculates live. A wrong box is expensive: in
 testing, a 13-inch cast iron skillet in the wrong carton estimated **$55** and a
 **−$16** loss; in the right flat box it was **$23** and **+$16**.
 
+### Free shipping vs. buyer pays
+
+A checkbox per listing, with **both** net figures shown side by side so the
+choice is informed rather than a habit:
+
+| | Net at $45 asking, $23 postage |
+|---|---|
+| Free shipping (you pay) | **$15.64** |
+| Buyer pays shipping | **$35.59** |
+
+The gap is bigger than the postage itself, and the reason is easy to miss: eBay
+charges its final value fee on the **order total**, so when the buyer pays
+shipping you're also charged a fee on that shipping — but you're not out the
+postage. Free shipping does tend to convert better; this just makes the price of
+that decision visible per item.
+
+The checkbox isn't cosmetic. At publish time the app picks the eBay **business
+policy** matching your choice, instead of always using whichever policy happens
+to be first on your account. If your account has no policy of the requested
+kind, the listing publishes under your default and **says so in a warning**
+rather than quietly doing the opposite of what you asked.
+
 ### About the numbers
 
 **The weight and box size are the reliable part, and they're what get sent to

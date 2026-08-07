@@ -8,6 +8,8 @@ import {
   weightBasedRate,
 } from "@/lib/shipping/rates";
 import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estimate";
+import { isFreeShippingPolicy, selectFulfillmentPolicy } from "@/lib/ebay/publish";
+import type { AccountSetup } from "@/lib/ebay/publish";
 
 describe("box selection", () => {
   it("picks the smallest box the item actually fits, with padding", () => {
@@ -243,5 +245,99 @@ describe("eBay package payload", () => {
 
   it("returns null when there is no box to describe", () => {
     expect(ebayPackageFromEstimate(estimateShipping({ itemDims: { l: 40, w: 30, h: 20 } }))).toBeNull();
+  });
+});
+
+// ── eBay fulfillment policy selection ────────────────────────────────────────
+
+const policy = (services: unknown[], optionType = "DOMESTIC") => ({
+  shippingOptions: [{ optionType, shippingServices: services }],
+});
+
+describe("classifying a fulfillment policy as free", () => {
+  it("treats an explicit freeShipping flag as free", () => {
+    expect(isFreeShippingPolicy(policy([{ freeShipping: true }]))).toBe(true);
+  });
+
+  it("treats a zero shipping cost as free", () => {
+    expect(isFreeShippingPolicy(policy([{ shippingCost: { value: "0.0" } }]))).toBe(true);
+  });
+
+  it("treats a priced service as not free", () => {
+    expect(isFreeShippingPolicy(policy([{ shippingCost: { value: "7.95" } }]))).toBe(false);
+  });
+
+  it("is not free when only SOME domestic services are free", () => {
+    // A free ground option with a paid expedited upgrade still charges some
+    // buyers — calling that policy "free" would mis-select it.
+    expect(
+      isFreeShippingPolicy(policy([{ freeShipping: true }, { shippingCost: { value: "12.00" } }]))
+    ).toBe(false);
+  });
+
+  it("ignores international options when judging domestic shipping", () => {
+    const p = {
+      shippingOptions: [
+        { optionType: "DOMESTIC", shippingServices: [{ freeShipping: true }] },
+        { optionType: "INTERNATIONAL", shippingServices: [{ shippingCost: { value: "40" } }] },
+      ],
+    };
+    expect(isFreeShippingPolicy(p)).toBe(true);
+  });
+
+  it("is not free when there are no services to judge", () => {
+    expect(isFreeShippingPolicy({})).toBe(false);
+    expect(isFreeShippingPolicy(policy([]))).toBe(false);
+  });
+
+  it("treats a calculated-shipping policy as not free", () => {
+    expect(isFreeShippingPolicy(policy([{ shippingCost: {} }]))).toBe(false);
+  });
+});
+
+describe("selecting the policy a listing asked for", () => {
+  const setup = (policies: { id: string; name: string; free: boolean }[]): AccountSetup => ({
+    fulfillmentPolicyId: policies[0]?.id ?? "",
+    fulfillmentPolicies: policies,
+    paymentPolicyId: "pay",
+    returnPolicyId: "ret",
+    locationKey: "loc",
+  });
+
+  const both = setup([
+    { id: "paid-1", name: "Calculated", free: false },
+    { id: "free-1", name: "Free ground", free: true },
+  ]);
+
+  it("picks the free policy when the listing asked for free shipping", () => {
+    expect(selectFulfillmentPolicy(both, true)).toEqual({ policyId: "free-1" });
+  });
+
+  it("picks the paid policy when the listing asked the buyer to pay", () => {
+    expect(selectFulfillmentPolicy(both, false)).toEqual({ policyId: "paid-1" });
+  });
+
+  it("keeps the old behaviour when the listing has no preference", () => {
+    expect(selectFulfillmentPolicy(both, undefined)).toEqual({ policyId: "paid-1" });
+  });
+
+  it("warns loudly rather than silently listing under the wrong kind", () => {
+    const onlyPaid = setup([{ id: "paid-1", name: "Calculated", free: false }]);
+    const result = selectFulfillmentPolicy(onlyPaid, true);
+    expect(result.policyId).toBe("paid-1");
+    expect(result.warning).toMatch(/free shipping/i);
+    expect(result.warning).toMatch(/Business policies/i);
+  });
+
+  it("warns the other direction too", () => {
+    const onlyFree = setup([{ id: "free-1", name: "Free ground", free: true }]);
+    const result = selectFulfillmentPolicy(onlyFree, false);
+    expect(result.policyId).toBe("free-1");
+    expect(result.warning).toMatch(/buyer-paid/i);
+  });
+
+  it("falls back without a warning when the account has no policies at all", () => {
+    const none = { ...setup([]), fulfillmentPolicyId: "" };
+    expect(selectFulfillmentPolicy(none, true)).toEqual({ policyId: "" });
   });
 });

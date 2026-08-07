@@ -30,6 +30,10 @@ export interface ListingResult {
   shipping_length_in?: number | string;
   shipping_width_in?: number | string;
   shipping_height_in?: number | string;
+  // Who pays postage. true = free to the buyer (you absorb it), false = buyer
+  // pays. Undefined means "no preference": publish keeps using whatever
+  // fulfillment policy the account lists first, which is the old behaviour.
+  shipping_free?: boolean;
 }
 
 export interface AnalyzeRequestBody {

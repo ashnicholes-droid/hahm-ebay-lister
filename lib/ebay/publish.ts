@@ -811,8 +811,18 @@ async function uploadPhoto(
 
 // ── Policies & location ──────────────────────────────────────────────────────
 
+export interface FulfillmentPolicySummary {
+  id: string;
+  name: string;
+  /** True when the buyer pays nothing for domestic shipping. */
+  free: boolean;
+}
+
 export interface AccountSetup {
+  /** Default policy (the account's first) — used when nothing better matches. */
   fulfillmentPolicyId: string;
+  /** Every domestic fulfillment policy, classified, so a listing can pick. */
+  fulfillmentPolicies: FulfillmentPolicySummary[];
   paymentPolicyId: string;
   returnPolicyId: string;
   locationKey: string;
@@ -822,6 +832,68 @@ function pickFirstPolicy(r: EbayResp, listKey: string, idField: string): string 
   if (!r.ok) return "";
   const list = r.json?.[listKey] || [];
   return list.length ? String(list[0][idField] || "") : "";
+}
+
+/**
+ * Is this fulfillment policy free-to-the-buyer for domestic shipping?
+ *
+ * eBay expresses "free" two ways, and a policy is only free if EVERY domestic
+ * service is: a policy whose first service is free but which offers a paid
+ * expedited upgrade still charges some buyers, so treating it as free would
+ * quietly mis-select it. Requiring all of them is the conservative read.
+ */
+export function isFreeShippingPolicy(policy: Record<string, any>): boolean {
+  const domestic = (policy?.shippingOptions ?? []).filter(
+    (o: any) => String(o?.optionType ?? "DOMESTIC").toUpperCase() === "DOMESTIC"
+  );
+  const services = domestic.flatMap((o: any) => o?.shippingServices ?? []);
+  if (services.length === 0) return false;
+  return services.every((s: any) => {
+    if (s?.freeShipping === true) return true;
+    const cost = Number(s?.shippingCost?.value);
+    return Number.isFinite(cost) && cost === 0;
+  });
+}
+
+function summarizePolicies(r: EbayResp): FulfillmentPolicySummary[] {
+  if (!r.ok) return [];
+  return (r.json?.fulfillmentPolicies ?? [])
+    .map((p: any) => ({
+      id: String(p?.fulfillmentPolicyId ?? ""),
+      name: String(p?.name ?? "Unnamed policy"),
+      free: isFreeShippingPolicy(p),
+    }))
+    .filter((p: FulfillmentPolicySummary) => p.id);
+}
+
+/**
+ * Choose the fulfillment policy matching what this listing asked for.
+ *
+ * Returns the fallback plus a warning when the account has no policy of the
+ * requested kind — publishing under the wrong one silently is how a seller
+ * discovers they've been eating postage on forty listings.
+ */
+export function selectFulfillmentPolicy(
+  setup: AccountSetup,
+  wantFree: boolean | undefined
+): { policyId: string; warning?: string } {
+  const policies = setup.fulfillmentPolicies ?? [];
+  // Undefined means "no preference" — keep the long-standing behaviour.
+  if (wantFree === undefined || policies.length === 0) {
+    return { policyId: setup.fulfillmentPolicyId };
+  }
+  const match = policies.find((p) => p.free === wantFree);
+  if (match) return { policyId: match.id };
+
+  const wanted = wantFree ? "free shipping" : "buyer-paid shipping";
+  const have = policies.find((p) => p.id === setup.fulfillmentPolicyId);
+  return {
+    policyId: setup.fulfillmentPolicyId,
+    warning:
+      `You asked for ${wanted}, but your eBay account has no business policy that does that. ` +
+      `Listed under "${have?.name ?? "your default policy"}" (${have?.free ? "free shipping" : "buyer pays"}) instead. ` +
+      `Add a matching policy in eBay → Account → Business policies.`,
+  };
 }
 
 // Policies and location change rarely; refetching them for every item of a
@@ -850,6 +922,7 @@ async function fetchAccountSetupUncached(accessToken: string): Promise<AccountSe
   ]);
   return {
     fulfillmentPolicyId: pickFirstPolicy(ful, "fulfillmentPolicies", "fulfillmentPolicyId"),
+    fulfillmentPolicies: summarizePolicies(ful),
     paymentPolicyId: pickFirstPolicy(pay, "paymentPolicies", "paymentPolicyId"),
     returnPolicyId: pickFirstPolicy(ret, "returnPolicies", "returnPolicyId"),
     locationKey: await fetchOrCreateLocation(accessToken),
@@ -1221,6 +1294,11 @@ export async function publishListing(
   }
 
   // 3. Offer.
+  const chosenFulfillment = selectFulfillmentPolicy(setup, listing.shipping_free);
+  if (chosenFulfillment.warning) {
+    console.warn(`[ebay/publish] sku=${sku} ${chosenFulfillment.warning}`);
+    warnings.push(chosenFulfillment.warning);
+  }
   const offerBody: any = {
     sku,
     marketplaceId: EBAY_MARKETPLACE_ID,
@@ -1231,7 +1309,9 @@ export async function publishListing(
     categoryId: catId,
     merchantLocationKey: setup.locationKey,
     listingPolicies: {
-      fulfillmentPolicyId: setup.fulfillmentPolicyId,
+      // Free vs buyer-paid is a per-listing choice, so pick the policy that
+      // matches it rather than whichever happens to be first on the account.
+      fulfillmentPolicyId: chosenFulfillment.policyId,
       paymentPolicyId: setup.paymentPolicyId,
       returnPolicyId: setup.returnPolicyId,
     },

@@ -40,10 +40,21 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
 
   const price = Number(listing.suggested_price) || 0;
   const shipCost = estimate.recommended?.usd ?? 0;
-  // What the seller keeps if they absorb shipping. eBay's final value fee is
-  // roughly 13.25% + $0.40 on most categories; close enough to tell a
-  // marginal item from a good one, which is the decision this supports.
-  const netIfFree = price > 0 && shipCost > 0 ? price - shipCost - (price * 0.1325 + 0.4) : null;
+  const free = listing.shipping_free === true;
+
+  // eBay's final value fee is roughly 13.25% + $0.40 on most categories — close
+  // enough to tell a marginal item from a good one, which is the decision this
+  // supports. Both modes are computed, because the interesting question isn't
+  // "what do I net" but "which of these two nets me more".
+  //
+  // The asymmetry is easy to miss: eBay charges its fee on the ORDER TOTAL, so
+  // when the buyer pays shipping you are also charged a fee on that shipping.
+  // Free shipping costs you the postage but saves the fee on it.
+  const fee = (total: number) => total * 0.1325 + 0.4;
+  const canCompare = price > 0 && shipCost > 0;
+  const netFree = canCompare ? price - shipCost - fee(price) : null;
+  const netPaid = canCompare ? price - fee(price + shipCost) : null;
+  const netActive = free ? netFree : netPaid;
 
   const field = (key: keyof ListingResult, label: string, unit: string) => (
     <label className="ship-field" key={key}>
@@ -131,11 +142,46 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         </table>
       )}
 
-      {netIfFree !== null && (
-        <p className={`ship-net${netIfFree < 0 ? " negative" : ""}`}>
-          Free shipping at {money(price)} nets about <strong>{money(netIfFree)}</strong> after
-          postage and eBay fees.
-          {netIfFree < 0 && " This item loses money at that price."}
+      <div className="ship-mode">
+        <label className="ship-toggle">
+          <input
+            type="checkbox"
+            checked={free}
+            onChange={(e) => onEdit(groupId, { shipping_free: e.target.checked })}
+          />
+          <span>
+            <strong>Free shipping</strong> — you pay the postage. Unchecked, the buyer pays it.
+          </span>
+        </label>
+
+        {canCompare && (
+          <table className="ship-net-compare">
+            <tbody>
+              <tr className={free ? "best" : ""}>
+                <td>Free shipping</td>
+                <td className={netFree! < 0 ? "ship-cost negative" : "ship-cost"}>
+                  {money(netFree!)}
+                </td>
+              </tr>
+              <tr className={!free ? "best" : ""}>
+                <td>Buyer pays shipping</td>
+                <td className={netPaid! < 0 ? "ship-cost negative" : "ship-cost"}>
+                  {money(netPaid!)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {netActive !== null && (
+        <p className={`ship-net${netActive < 0 ? " negative" : ""}`}>
+          At {money(price)} with {free ? "free shipping" : "buyer-paid shipping"} you net about{" "}
+          <strong>{money(netActive)}</strong> after postage and eBay fees.
+          {netActive < 0 && " This item loses money at that price."}
+          {canCompare && !free && netPaid! - netFree! > 0.5 && (
+            <> Charging shipping keeps {money(netPaid! - netFree!)} more per sale.</>
+          )}
         </p>
       )}
 
@@ -149,7 +195,8 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         Costs are from a built-in rate table ({estimate.rateSource}, {estimate.rateTableEffective}) —
         an estimate for your margin maths, not a live carrier quote. The weight and box size above
         are what get sent to eBay, so with calculated shipping eBay quotes buyers at real current
-        rates.
+        rates. Posting picks the eBay business policy matching the choice above; if your account
+        has no policy of that kind, the listing says so rather than silently using the other one.
       </p>
     </section>
   );
