@@ -56,9 +56,24 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
   const netPaid = canCompare ? price - fee(price + shipCost) : null;
   const netActive = free ? netFree : netPaid;
 
-  const field = (key: keyof ListingResult, label: string, unit: string) => (
-    <label className="ship-field" key={key}>
-      <span>{label}</span>
+  // Every field shows the figure the estimate is ACTUALLY using, as a
+  // placeholder, whenever the seller (or the photos) didn't supply one. Leaving
+  // them blank was the real defect behind "my edits don't do anything": the
+  // panel was quietly costing a 11×9×6 category guess while showing three empty
+  // boxes, so typing one real dimension composed with two invisible ones and
+  // usually moved no number at all.
+  const field = (
+    key: keyof ListingResult,
+    label: string,
+    unit: string,
+    assumed: number,
+    supplied: boolean
+  ) => (
+    <label className={`ship-field${supplied ? "" : " assumed"}`} key={key}>
+      <span>
+        {label}
+        {!supplied && <em className="ship-guess">assumed</em>}
+      </span>
       <span className="ship-input">
         <input
           type="number"
@@ -66,7 +81,7 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
           step="0.1"
           inputMode="decimal"
           value={num(listing[key])}
-          placeholder="—"
+          placeholder={String(Math.round(assumed * 10) / 10)}
           onChange={(e) =>
             onEdit(groupId, { [key]: e.target.value === "" ? "" : Number(e.target.value) })
           }
@@ -93,14 +108,14 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
       <p className="shipping-basis">
         {estimate.basis === "photos"
           ? "Weight and size read from the photos. Edit anything that looks off — these go to eBay."
-          : "Weight and size are a category guess. Fill them in for a real number."}
+          : "Greyed figures below are category guesses the estimate is already using. Type over them — every box you fill in is used for the quote and sent to eBay."}
       </p>
 
       <div className="ship-fields">
-        {field("shipping_weight_oz", "Item weight", "oz")}
-        {field("shipping_length_in", "Length", "in")}
-        {field("shipping_width_in", "Width", "in")}
-        {field("shipping_height_in", "Height", "in")}
+        {field("shipping_weight_oz", "Item weight", "oz", estimate.itemOz, estimate.provided.weight)}
+        {field("shipping_length_in", "Length", "in", estimate.itemDims.l, estimate.provided.l)}
+        {field("shipping_width_in", "Width", "in", estimate.itemDims.w, estimate.provided.w)}
+        {field("shipping_height_in", "Height", "in", estimate.itemDims.h, estimate.provided.h)}
       </div>
 
       {estimate.box && (
@@ -116,7 +131,7 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
             <dt>Billed as</dt>
             <dd>
               {estimate.billableOz} oz
-              {estimate.billableOz > Math.ceil(estimate.packedOz) && <small> (dimensional)</small>}
+              {estimate.dimensionalOz > 0 && <small> (box volume, not the scale)</small>}
             </dd>
           </div>
           <div>

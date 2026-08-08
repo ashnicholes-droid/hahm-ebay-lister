@@ -1984,10 +1984,36 @@ textarea {
 }
 
 .ship-field > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-ink-faint);
+}
+
+/* A field whose number is a category guess. The guess itself sits in the input
+   as a placeholder, so the seller can see exactly what is being costed instead
+   of an empty box that silently stands for 11 inches. */
+.ship-guess {
+  font-style: normal;
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: var(--color-gold-soft);
+  color: var(--color-ink-soft);
+}
+
+.ship-field.assumed .ship-input {
+  border-style: dashed;
+}
+
+.ship-input input::placeholder {
+  color: var(--color-ink-faint);
+  opacity: 0.85;
 }
 
 .ship-input {

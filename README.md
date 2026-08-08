@@ -133,9 +133,23 @@ the box or spec plate where there is one — and the app does the rest:
 - shows what you'd **net at your asking price with free shipping**, after
   postage and eBay's fee
 
-Every field is editable and recalculates live. A wrong box is expensive: in
-testing, a 13-inch cast iron skillet in the wrong carton estimated **$55** and a
-**−$16** loss; in the right flat box it was **$23** and **+$16**.
+Every field is editable, recalculates live, and — the part that matters — is
+what actually publishes. A per-item figure you type in beats the
+`EBAY_DEFAULT_PACKAGE_*` env override and the item-class profile, in that order.
+
+Anything the photos didn't show is filled in from a category profile, and the
+panel **shows you that figure** greyed in the field with an `assumed` tag rather
+than leaving the box empty. An empty box that silently stands for 11 inches is
+how an edit ends up appearing to do nothing: you correct one dimension, the
+other two are still guesses, and the quote doesn't move.
+
+Where the box is over a cubic foot, volume rather than the scale sets the price,
+and the panel says so explicitly — including the weight you'd have to pass
+before weight starts mattering again.
+
+A wrong box is expensive: in testing, a 13-inch cast iron skillet in the wrong
+carton estimated **$55** and a **−$16** loss; in the right flat box it was
+**$23** and **+$16**.
 
 ### Free shipping vs. buyer pays
 
@@ -327,8 +341,8 @@ and redeploy with `vercel --prod`.
 | `SESSION_SECRET` | for posting | Random string to encrypt your eBay token. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_URL` | for posting | Your deployed URL, e.g. `https://your-app.vercel.app` |
 | `EBAY_LOCATION_POSTAL_CODE` | optional | Your ZIP (only used once to create an eBay inventory location) |
-| `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Overrides the built-in per-item-class defaults (coats, shoes, media, etc.). Editable per listing on eBay. |
-| `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches. Override the per-item-class defaults. |
+| `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Used when neither the photos nor the seller supplied a weight; overrides the built-in per-item-class defaults (coats, shoes, media, etc.). A weight typed into a listing's shipping panel outranks this. Editable per listing on eBay. |
+| `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches. Same precedence as the weight above: per-listing edits win, then these, then the per-item-class defaults. |
 | `EBAY_STRICT_QUALITY` | optional | Set to `1` to **stop** a publish when eBay's item-specifics schema can't be retrieved, instead of publishing with a warning. |
 | `PRICE_MARKUP_PERCENT` | optional | Storewide markup applied to every **auto-suggested** price (the AI estimate and the comps "use median" button) before you review it — for sellers who run a permanent store-level sale that discounts everything. `40` lists at 1.4×. The marked-up price is what you see on the card, and you can still edit it; manually typed prices are never touched. Note the math: +40% then a 40%-off sale nets 84% of the original — to land back on the suggested price after an X%-off sale, set `100·X/(100−X)` (≈`66.7` for 40% off). Unset = no markup. |
 | `EBAY_MARKETPLACE_ID` / `EBAY_CATEGORY_TREE_ID` / `EBAY_CURRENCY` | optional, experimental | Marketplace override, e.g. `EBAY_GB` / `3` / `GBP` for eBay UK — set all three together. Defaults: `EBAY_US` / `0` / `USD`. ⚠️ **The US site is the only tested marketplace.** Known gaps on other sites: photo uploads still use the US site ID, condition-tier and size-standardization handling were validated against eBay US, and the UI shows prices with a `$` symbol. After changing marketplace, regenerate the offline category map: `npx tsx scripts/refresh-category-map.ts`. |

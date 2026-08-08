@@ -290,21 +290,37 @@ export function defaultPackageWeightAndSize(
       },
       category: catKey,
     });
-    // Only trust it when it came from the photos. A category-default estimate
-    // is no better than the profile below, and the profile is the long-tested
-    // path — no reason to swap one guess for another.
-    if (estimate.basis === "photos") derived = ebayPackageFromEstimate(estimate);
+    // Use the estimate as soon as ANYTHING was actually supplied — by the model
+    // or, more importantly, typed in by the seller.
+    //
+    // This used to require estimate.basis === "photos", which demands a weight
+    // AND all three dimensions. The model is instructed to return 0 rather than
+    // invent a dimension, so it usually does; a seller who corrected just the
+    // weight therefore failed that test and had their figure thrown away in
+    // favour of the class profile. An edit that silently does nothing is worse
+    // than no edit box at all.
+    const p = estimate.provided;
+    if (p.weight || p.l || p.w || p.h) {
+      derived = ebayPackageFromEstimate(estimate);
+    }
   }
+
+  // Precedence, most specific first: what this item says, then a deployment-wide
+  // override, then the class profile. The env override used to sit at the top
+  // and outrank a per-item edit, which is backwards — a global default is the
+  // crudest source here, not the finest.
+  const pick = (own: number | undefined, env: string | undefined, fallbackValue: number) =>
+    own !== undefined && Number.isFinite(own) && own > 0 ? own : num(env, fallbackValue);
 
   return {
     weight: {
-      value: num(process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ, derived?.weightOz ?? profile.oz),
+      value: pick(derived?.weightOz, process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ, profile.oz),
       unit: "OUNCE",
     },
     dimensions: {
-      length: num(process.env.EBAY_DEFAULT_PACKAGE_LENGTH_IN, derived?.l ?? profile.l),
-      width: num(process.env.EBAY_DEFAULT_PACKAGE_WIDTH_IN, derived?.w ?? profile.w),
-      height: num(process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, derived?.h ?? profile.h),
+      length: pick(derived?.l, process.env.EBAY_DEFAULT_PACKAGE_LENGTH_IN, profile.l),
+      width: pick(derived?.w, process.env.EBAY_DEFAULT_PACKAGE_WIDTH_IN, profile.w),
+      height: pick(derived?.h, process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, profile.h),
       unit: "INCH",
     },
     packageType: SAFE_PACKAGE_TYPE,

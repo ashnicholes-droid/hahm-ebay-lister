@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { BOXES, fits, selectBox } from "@/lib/shipping/boxes";
 import {
   billableOz,
@@ -9,7 +9,9 @@ import {
 } from "@/lib/shipping/rates";
 import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estimate";
 import { isFreeShippingPolicy, selectFulfillmentPolicy } from "@/lib/ebay/publish";
+import { defaultPackageWeightAndSize } from "@/lib/ebay/publish";
 import type { AccountSetup } from "@/lib/ebay/publish";
+import type { ListingResult } from "@/lib/types";
 
 describe("box selection", () => {
   it("picks the smallest box the item actually fits, with padding", () => {
@@ -339,5 +341,138 @@ describe("selecting the policy a listing asked for", () => {
   it("falls back without a warning when the account has no policies at all", () => {
     const none = { ...setup([]), fulfillmentPolicyId: "" };
     expect(selectFulfillmentPolicy(none, true)).toEqual({ policyId: "" });
+  });
+});
+
+// ── What actually reaches eBay ───────────────────────────────────────────────
+//
+// This is the regression that mattered most: a seller corrected the weight in
+// the UI and the item published with the class-default guess anyway.
+
+describe("edits reaching the published package", () => {
+  const OLD = { ...process.env };
+  afterEach(() => {
+    process.env = { ...OLD };
+  });
+
+  const weightOf = (pkg: Record<string, any>) => pkg.weight.value;
+  const dimsOf = (pkg: Record<string, any>) => [
+    pkg.dimensions.length,
+    pkg.dimensions.width,
+    pkg.dimensions.height,
+  ];
+
+  it("uses a hand-entered weight even when no dimensions were given", () => {
+    // The exact reported failure: the model returns 0 for dimensions (it is
+    // told to rather than invent them), the seller fixes only the weight.
+    const pkg = defaultPackageWeightAndSize("kitchenware", {
+      shipping_weight_oz: 200,
+    } as ListingResult);
+    // 200 oz item + box + fill, not the 48 oz kitchenware profile.
+    expect(weightOf(pkg)).toBeGreaterThan(200);
+  });
+
+  it("uses hand-entered dimensions even when no weight was given", () => {
+    const pkg = defaultPackageWeightAndSize("kitchenware", {
+      shipping_length_in: 20,
+      shipping_width_in: 15,
+      shipping_height_in: 3,
+    } as ListingResult);
+    // A 20-inch item cannot fit the 14×11×6 kitchenware profile box.
+    expect(dimsOf(pkg)[0]).toBeGreaterThanOrEqual(20);
+  });
+
+  it("honours a single edited dimension instead of discarding all three", () => {
+    const pkg = defaultPackageWeightAndSize("book", {
+      shipping_length_in: 22,
+    } as ListingResult);
+    expect(dimsOf(pkg)[0]).toBeGreaterThanOrEqual(22);
+  });
+
+  it("falls back to the class profile only when nothing at all was supplied", () => {
+    const pkg = defaultPackageWeightAndSize("book", {} as ListingResult);
+    const bare = defaultPackageWeightAndSize("book");
+    expect(weightOf(pkg)).toBe(weightOf(bare));
+  });
+
+  it("lets a per-item edit outrank a deployment-wide env default", () => {
+    // A global default is the crudest source available, so it must not beat a
+    // figure entered for this specific item.
+    process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ = "16";
+    const edited = defaultPackageWeightAndSize("book", {
+      shipping_weight_oz: 300,
+    } as ListingResult);
+    expect(weightOf(edited)).toBeGreaterThan(300);
+  });
+
+  it("still applies the env default when the item says nothing", () => {
+    process.env.EBAY_DEFAULT_PACKAGE_WEIGHT_OZ = "37";
+    expect(weightOf(defaultPackageWeightAndSize("book"))).toBe(37);
+  });
+
+  it("changing the weight changes what publishes", () => {
+    const light = defaultPackageWeightAndSize("kitchenware", {
+      shipping_weight_oz: 20, shipping_length_in: 9, shipping_width_in: 7, shipping_height_in: 3,
+    } as ListingResult);
+    const heavy = defaultPackageWeightAndSize("kitchenware", {
+      shipping_weight_oz: 240, shipping_length_in: 9, shipping_width_in: 7, shipping_height_in: 3,
+    } as ListingResult);
+    expect(weightOf(heavy)).toBeGreaterThan(weightOf(light) + 200);
+  });
+
+  it("never publishes a zero or negative weight", () => {
+    for (const listing of [
+      { shipping_weight_oz: 0 },
+      { shipping_weight_oz: -10 },
+      { shipping_weight_oz: "" },
+    ]) {
+      expect(weightOf(defaultPackageWeightAndSize("book", listing as ListingResult))).toBeGreaterThan(0);
+    }
+  });
+});
+
+// Whatever the estimate is costing, the panel has to be able to show it. The
+// bug this covers: the seller saw three empty dimension boxes while the quote
+// was quietly built on a category guess, so typing one real number composed
+// with two invisible ones and usually moved nothing on screen.
+describe("what the panel can tell the seller", () => {
+  it("reports per-axis which figures are real and which are assumed", () => {
+    const e = estimateShipping({ itemOz: 40, itemDims: { l: 12 }, category: "kitchenware" });
+    expect(e.provided).toEqual({ weight: true, l: true, w: false, h: false });
+  });
+
+  it("marks everything assumed when the photos showed nothing", () => {
+    const e = estimateShipping({ category: "book" });
+    expect(e.provided).toEqual({ weight: false, l: false, w: false, h: false });
+  });
+
+  it("always exposes the figure it used, so a blank field can display it", () => {
+    const e = estimateShipping({ itemOz: 40, category: "kitchenware" });
+    // The assumed dimensions are the ones the seller never saw.
+    expect(e.itemDims.l).toBeGreaterThan(0);
+    expect(e.itemDims.w).toBeGreaterThan(0);
+    expect(e.itemDims.h).toBeGreaterThan(0);
+    expect(e.itemOz).toBe(40);
+  });
+
+  it("names the dimensional weight when volume, not the scale, sets the price", () => {
+    // A big light box: priced on volume, so weight edits move no number.
+    const e = estimateShipping({ itemOz: 8, itemDims: { l: 17, w: 13, h: 9 } });
+    expect(e.dimensionalOz).toBeGreaterThan(Math.ceil(e.packedOz));
+    expect(e.billableOz).toBe(e.dimensionalOz);
+    expect(e.warnings.join(" ")).toMatch(/won't change the cost/i);
+  });
+
+  it("reports no dimensional weight when the scale is what's billed", () => {
+    const e = estimateShipping({ itemOz: 60, itemDims: { l: 8, w: 6, h: 3 } });
+    expect(e.dimensionalOz).toBe(0);
+    expect(e.billableOz).toBe(Math.ceil(e.packedOz));
+  });
+
+  it("names exactly which figures are still guesses in the warning", () => {
+    const e = estimateShipping({ itemOz: 40, itemDims: { l: 12, w: 9 }, category: "kitchenware" });
+    const w = e.warnings.join(" ");
+    expect(w).toMatch(/height/);
+    expect(w).not.toMatch(/weight,/);
   });
 });

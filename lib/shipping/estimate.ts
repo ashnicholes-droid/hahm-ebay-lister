@@ -54,6 +54,28 @@ export interface ShippingEstimate {
   recommended: ShippingOption | null;
   /** Where the weight came from — evidence or a category guess. */
   basis: "photos" | "category-default";
+  /**
+   * Which figures were actually supplied (by the model or by the seller), as
+   * opposed to filled in from a category profile. Per axis, because a seller
+   * who measures the length and nothing else has still told us something real.
+   *
+   * This is separate from `basis` on purpose. `basis` answers "should the UI
+   * warn about this", and demands everything. Publishing asks a different
+   * question — "did a human or the photos tell us anything at all" — and an
+   * edited weight with no dimensions must count as yes. Conflating the two is
+   * what caused a hand-entered weight to be silently replaced by a class
+   * default at publish time.
+   */
+  provided: { weight: boolean; l: boolean; w: boolean; h: boolean };
+  /**
+   * The carrier's volume-based weight for the chosen box, in ounces, or 0 when
+   * the box is under the cubic-foot threshold.
+   *
+   * Surfaced because it explains an edit that appears to do nothing: while this
+   * exceeds the packed weight, the price is set by the box, and changing the
+   * item's weight moves no number the seller can see.
+   */
+  dimensionalOz: number;
   warnings: string[];
   rateTableEffective: string;
   rateSource: string;
@@ -131,19 +153,32 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   const w = positive(input.itemDims?.w);
   const h = positive(input.itemDims?.h);
   const haveDims = l !== null && w !== null && h !== null;
+  const someDims = l !== null || w !== null || h !== null;
 
   const itemOz = statedOz ?? fallback.oz;
-  const itemDims: Dimensions = haveDims
-    ? { l: l!, w: w!, h: h! }
-    : { ...fallback.dims };
+  // Fall back PER AXIS. All-or-nothing meant typing one real dimension was
+  // thrown away entirely along with the other two, so a partly-measured item
+  // was treated as if it had never been measured.
+  const itemDims: Dimensions = {
+    l: l ?? fallback.dims.l,
+    w: w ?? fallback.dims.w,
+    h: h ?? fallback.dims.h,
+  };
 
+  const provided = { weight: statedOz !== null, l: l !== null, w: w !== null, h: h !== null };
   const basis: ShippingEstimate["basis"] =
     statedOz !== null && haveDims ? "photos" : "category-default";
   if (basis === "category-default") {
+    const missing = [
+      statedOz === null ? "weight" : null,
+      l === null ? "length" : null,
+      w === null ? "width" : null,
+      h === null ? "height" : null,
+    ].filter(Boolean);
     warnings.push(
-      statedOz === null && !haveDims
+      !provided.weight && !someDims
         ? "Weight and size are a category guess — the photos didn't show either. Weigh the item before posting if shipping cost matters."
-        : "Part of this estimate is a category guess. Fill in the missing figure for an accurate quote."
+        : `Still guessing ${missing.join(", ")} from the category. Fill in the rest for an accurate quote.`
     );
   }
 
@@ -161,6 +196,8 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
       options: [],
       recommended: null,
       basis,
+      provided,
+      dimensionalOz: 0,
       warnings,
       rateTableEffective: table.effective,
       rateSource: table.source,
@@ -170,10 +207,14 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   const packedOz = Math.round((itemOz + box.emptyOz + fillOz(box, itemDims)) * 10) / 10;
   const outer = outerOf(box);
   const billable = billableOz(packedOz, outer);
-  const dimensional = dimensionalOz(outer) > Math.ceil(packedOz);
+  const dimOz = dimensionalOz(outer);
+  const dimensional = dimOz > Math.ceil(packedOz);
   if (dimensional) {
+    // Spell out the consequence, not just the fact. While volume is setting the
+    // price, editing the weight moves no visible number, which reads as a
+    // broken input rather than as arithmetic.
     warnings.push(
-      `Priced on dimensional weight (${billable} oz) rather than actual (${Math.ceil(packedOz)} oz) — the box is over 1 cubic foot. A smaller box would cost less.`
+      `Priced on dimensional weight (${billable} oz of box volume) rather than actual (${Math.ceil(packedOz)} oz) — the box is over 1 cubic foot. Changing the item's weight won't change the cost until the packed weight passes ${billable} oz; a smaller box will.`
     );
   }
 
@@ -222,6 +263,8 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     options,
     recommended: options[0] ?? null,
     basis,
+    provided,
+    dimensionalOz: dimensional ? dimOz : 0,
     warnings,
     rateTableEffective: table.effective,
     rateSource: table.source,
