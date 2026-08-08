@@ -23,6 +23,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
 - 👁 **eBay preview** — see the listing as it will actually appear, built from
   the exact payload that publishes
 - ✍️ Everything is editable before you post
+- 🔢 **Multiples** — tick a box for quantity and an optional multi-buy discount;
+  everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
@@ -114,6 +116,46 @@ successful login clears the counter, so ordinary typos don't accumulate.
 
 Rotating `APP_SECRET` invalidates every outstanding session immediately — the
 cookie is signed with it — so that's your "log every device out" button.
+
+---
+
+## Multiples of the same item
+
+Most of what goes through this app is one-of-a-kind, so **every listing defaults
+to a single item** and the quantity field isn't even shown. When you do have
+several of something, tick **"I have multiples of this item"** on its card and
+set a quantity.
+
+Nothing infers this from your photos. Whether you have five of something is a
+fact about your shelf, not about the picture, and a quantity guessed from pixels
+would oversell stock that isn't there.
+
+Ticking the box also lifts eBay's one-per-buyer cap on that listing. That cap is
+correct for a unique item and quietly wrong for everything else — left on, a
+buyer literally cannot take a second unit.
+
+### Multi-buy discount
+
+Optional, alongside the quantity: *save X% each when buying N or more*. The card
+shows what it costs you before you commit — at $24 with 15% off from 3, a buyer
+taking three pays $20.40 each and you clear $61.20 in one sale.
+
+Two things worth knowing about how eBay models this:
+
+- A multi-buy discount isn't a property of a listing, it's an account-level
+  **promotion** holding a set of listings. So listings sharing the same terms
+  join **one** promotion rather than each creating their own — otherwise a
+  200-item batch would leave you with 200 near-identical promotions and then
+  start failing at eBay's cap.
+- It needs the `sell.marketing` permission, which connections made before this
+  feature existed don't have. **If your eBay connection is older, disconnect and
+  reconnect once.** Posting tells you if that's needed; the listing itself
+  publishes either way, and only the discount is skipped.
+
+The discount is applied *after* the listing goes live and can never fail the
+listing. ⚠️ It is also the one part of the publish pipeline not yet exercised
+against a live eBay account — it's written from eBay's Marketing API docs, so
+check the first one lands in eBay's Promotions manager.
 
 ---
 

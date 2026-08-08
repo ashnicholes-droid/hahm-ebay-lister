@@ -5,6 +5,7 @@ import {
   EBAY_OAUTH_URL,
   EBAY_TOKEN_URL,
   EBAY_SCOPES,
+  EBAY_SCOPES_LEGACY,
   basicAuthHeader,
   getEbayCreds,
   type EbayCreds,
@@ -101,11 +102,31 @@ export function exchangeCode(code: string): Promise<TokenResponse> {
 }
 
 // Mint a fresh short-lived access token from a stored refresh token.
-export function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+//
+// eBay refuses a refresh that requests a scope the refresh token was never
+// granted, so a token minted before `sell.marketing` was added to EBAY_SCOPES
+// cannot be refreshed with the current set. That would have disconnected every
+// existing user the moment the scope was added — a self-inflicted outage for an
+// opt-in feature. So an `invalid_scope` rejection is retried once with the
+// legacy set, which is exactly what those older tokens hold.
+//
+// The cost of the fallback is that multi-buy discounts stay unavailable on an
+// old connection until the seller reconnects; publish reports that per listing
+// rather than failing.
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const creds = getEbayCreds();
-  return postToken(creds, {
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    scope: EBAY_SCOPES,
-  });
+  try {
+    return await postToken(creds, {
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      scope: EBAY_SCOPES,
+    });
+  } catch (e) {
+    if (!/invalid_scope/i.test((e as Error).message)) throw e;
+    return postToken(creds, {
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      scope: EBAY_SCOPES_LEGACY,
+    });
+  }
 }

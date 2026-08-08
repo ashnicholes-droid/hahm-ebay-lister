@@ -29,6 +29,8 @@ import { fillRecommendedAspects } from "./aspectFill";
 import { extractProductIdentifiers, hasCatalogIdentifier, realBrand } from "./identifiers";
 import { parseMeasurements } from "@/lib/measurements";
 import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estimate";
+import { listingQuantity, quantityWarnings, volumeDiscount } from "@/lib/quantity";
+import { applyVolumeDiscount } from "./promotions";
 import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
 import type { ListingResult } from "@/lib/types";
 
@@ -325,6 +327,27 @@ export function defaultPackageWeightAndSize(
     },
     packageType: SAFE_PACKAGE_TYPE,
   };
+}
+
+/**
+ * The quantity-related parts of the offer payload.
+ *
+ * Extracted so they can be tested without a live eBay round trip. The bug worth
+ * guarding against is `quantityLimitPerBuyer: 1`, which was hardcoded when every
+ * listing was a unique item: leave it on a stock of 5 and no buyer can take a
+ * second unit, which also makes a multi-buy discount impossible to earn.
+ */
+export function offerQuantityFields(listing: ListingResult): Record<string, unknown> {
+  const quantity = listingQuantity(listing);
+  return {
+    availableQuantity: quantity,
+    ...(quantity > 1 ? {} : { quantityLimitPerBuyer: 1 }),
+  };
+}
+
+/** The inventory item's availability block. Same source of truth as the offer. */
+export function inventoryAvailability(listing: ListingResult): Record<string, unknown> {
+  return { shipToLocationAvailability: { quantity: listingQuantity(listing) } };
 }
 
 export function normalizeConditionInput(value: string | undefined): string {
@@ -1225,6 +1248,9 @@ export async function publishListing(
   // can catalog-match commodity items; one-off vintage pieces have none.
   const identifiers = extractProductIdentifiers(listing);
   const brand = realBrand(listing);
+  // Multiples are opt-in and normalised in one place, so the number here is the
+  // number in the preview, the export, and the offer below.
+  warnings.push(...quantityWarnings(listing));
   const inventoryItem: any = {
     product: {
       title: String(listing.title || "Untitled").slice(0, 80),
@@ -1241,7 +1267,7 @@ export async function publishListing(
     },
     condition,
     conditionDescription: listing.condition_notes || "",
-    availability: { shipToLocationAvailability: { quantity: 1 } },
+    availability: inventoryAvailability(listing),
     // Class-profiled weight/size so CALCULATED-shipping policies publish
     // (eBay 25020) without a coat shipping as a 1-lb envelope.
     packageWeightAndSize: defaultPackageWeightAndSize(catKey, listing),
@@ -1321,7 +1347,7 @@ export async function publishListing(
     format: "FIXED_PRICE",
     listingDescription: listing.description || "",
     pricingSummary: { price: { value: String(price), currency: EBAY_CURRENCY } },
-    quantityLimitPerBuyer: 1,
+    ...offerQuantityFields(listing),
     categoryId: catId,
     merchantLocationKey: setup.locationKey,
     listingPolicies: {
@@ -1441,21 +1467,54 @@ export async function publishListing(
   });
 }
 
+interface PublishCtx {
+  sku: string;
+  offerId: string;
+  catId: string;
+  catKey: string;
+  listing: ListingResult;
+  aspects: Record<string, string[]>;
+  inventoryItem: any;
+  offerBody: any;
+  fallbacks: string[];
+  condCandidates: string[];
+  warnings: string[];
+}
+
+/**
+ * Publish, then attach the multi-buy discount if one was asked for.
+ *
+ * The discount is deliberately a separate step after the listing is live, and
+ * wraps every success path rather than being bolted onto one of them — the
+ * recovery ladder below has several ways to succeed, and a discount that only
+ * applied on the happy path would silently go missing exactly when a listing
+ * needed the most fixing up.
+ */
 async function publishOfferWithRecovery(
   accessToken: string,
-  ctx: {
-    sku: string;
-    offerId: string;
-    catId: string;
-    catKey: string;
-    listing: ListingResult;
-    aspects: Record<string, string[]>;
-    inventoryItem: any;
-    offerBody: any;
-    fallbacks: string[];
-    condCandidates: string[];
-    warnings: string[];
+  ctx: PublishCtx
+): Promise<PublishResult> {
+  const result = await publishOfferInner(accessToken, ctx);
+  if (!result.success) return result;
+
+  const discount = volumeDiscount(ctx.listing);
+  if (!discount) return result;
+
+  const outcome = await applyVolumeDiscount(accessToken, {
+    sku: ctx.sku,
+    listingId: result.listingId || "",
+    discount,
+  });
+  if (outcome.warning) {
+    console.warn(`[ebay/publish] sku=${ctx.sku} ${outcome.warning}`);
+    return { ...result, warnings: [...(result.warnings ?? []), outcome.warning] };
   }
+  return result;
+}
+
+async function publishOfferInner(
+  accessToken: string,
+  ctx: PublishCtx
 ): Promise<PublishResult> {
   const { sku, offerId } = ctx;
   const warnings = ctx.warnings.length ? ctx.warnings : undefined;

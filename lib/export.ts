@@ -1,3 +1,4 @@
+import { listingQuantity, volumeDiscount } from "@/lib/quantity";
 import type { ItemGroup, ListingResult } from "@/lib/types";
 
 function priceNumber(value: ListingResult["suggested_price"]): string {
@@ -14,6 +15,14 @@ function csvCell(value: unknown): string {
 const CSV_COLUMNS: { header: string; get: (l: ListingResult) => string }[] = [
   { header: "Title", get: (l) => l.title ?? "" },
   { header: "Suggested Price", get: (l) => priceNumber(l.suggested_price) },
+  { header: "Quantity", get: (l) => String(listingQuantity(l)) },
+  {
+    header: "Multi-buy Discount",
+    get: (l) => {
+      const d = volumeDiscount(l);
+      return d ? `${d.percentOff}% off at ${d.minQuantity}+` : "";
+    },
+  },
   { header: "Condition", get: (l) => (l.condition ?? "").replace(/_/g, " ") },
   { header: "Brand", get: (l) => l.brand ?? "" },
   { header: "Item Type", get: (l) => l.item_type ?? "" },

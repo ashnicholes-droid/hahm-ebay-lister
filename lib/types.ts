@@ -34,6 +34,19 @@ export interface ListingResult {
   // pays. Undefined means "no preference": publish keeps using whatever
   // fulfillment policy the account lists first, which is the old behaviour.
   shipping_free?: boolean;
+  // Multiples of an identical item. Opt-in: unless `multi_quantity` is exactly
+  // true, this publishes as a single unique item and `quantity` is ignored
+  // entirely. See lib/quantity.ts — nothing should read these fields raw.
+  //
+  // The model never sets these. Whether you have five of something is a fact
+  // about your shelf, not about the photograph, so guessing it from pixels
+  // would only ever oversell stock that isn't there.
+  multi_quantity?: boolean;
+  quantity?: number | string;
+  /** Percent off each item at the multi-buy tier. Absent/0 = no discount. */
+  volume_discount_percent?: number | string;
+  /** Units a buyer must take to earn the discount. Defaults to 2. */
+  volume_discount_min?: number | string;
 }
 
 export interface AnalyzeRequestBody {

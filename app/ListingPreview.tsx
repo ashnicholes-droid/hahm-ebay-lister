@@ -155,6 +155,28 @@ export function ListingPreview({ group, photoById, onClose }: ListingPreviewProp
                   )}
                 </p>
                 <p className="ebay-price">{formatPrice(preview.price, preview.currency)}</p>
+                {preview.volumeDiscount && (
+                  <p className="ebay-multibuy">
+                    <span className="ebay-multibuy-tag">Save on multi-buy</span> Buy{" "}
+                    {preview.volumeDiscount.minQuantity} or more,{" "}
+                    {preview.volumeDiscount.unitPrice !== null ? (
+                      <>
+                        pay{" "}
+                        <strong>
+                          {formatPrice(preview.volumeDiscount.unitPrice, preview.currency)}
+                        </strong>{" "}
+                        each
+                      </>
+                    ) : (
+                      <>save {preview.volumeDiscount.percentOff}% each</>
+                    )}
+                  </p>
+                )}
+                {preview.quantity > 1 && (
+                  <p className="ebay-quantity">
+                    <span className="k">Quantity:</span> {preview.quantity} available
+                  </p>
+                )}
                 <p className="ebay-sku">
                   <span className="k">Inventory (SKU):</span> {preview.sku || "—"}
                 </p>

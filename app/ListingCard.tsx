@@ -5,6 +5,7 @@ import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
 import { reportStatus } from "@/lib/verification";
 import { AccuracyPanel } from "./AccuracyPanel";
 import { ListingPreview } from "./ListingPreview";
+import { QuantityPanel } from "./QuantityPanel";
 import { ShippingPanel } from "./ShippingPanel";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 
@@ -302,6 +303,8 @@ export function ListingCard({
               {group.comps?.ok ? " (see the market check under Price)" : ""}.
             </p>
           )}
+
+          <QuantityPanel listing={listing} groupId={group.id} onEdit={onEdit} />
 
           <div className="result-field">
             <label>Description</label>

@@ -25,12 +25,26 @@ export const EBAY_MARKETPLACE_ID = process.env.EBAY_MARKETPLACE_ID || "EBAY_US";
 export const EBAY_CATEGORY_TREE_ID = process.env.EBAY_CATEGORY_TREE_ID || "0";
 export const EBAY_CURRENCY = process.env.EBAY_CURRENCY || "USD";
 
-export const EBAY_SCOPES = [
+// Scopes needed to list. Anyone who connected before `sell.marketing` was added
+// holds a refresh token WITHOUT it, and eBay refuses a refresh that asks for a
+// scope the token was never granted. So the two sets are kept separate: new
+// consents get everything, and refresh falls back to the legacy set when eBay
+// says no (see refreshAccessToken). Without that fallback, adding a scope would
+// silently disconnect every existing user's eBay account.
+const CORE_SCOPES = [
   "https://api.ebay.com/oauth/api_scope",
   "https://api.ebay.com/oauth/api_scope/sell.inventory",
   "https://api.ebay.com/oauth/api_scope/sell.account",
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
-].join(" ");
+];
+
+/** Only needed for multi-buy discounts, which are opt-in per listing. */
+export const EBAY_MARKETING_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.marketing";
+
+export const EBAY_SCOPES = [...CORE_SCOPES, EBAY_MARKETING_SCOPE].join(" ");
+
+/** The scope set granted to connections made before marketing was requested. */
+export const EBAY_SCOPES_LEGACY = CORE_SCOPES.join(" ");
 
 export interface EbayCreds {
   clientId: string;

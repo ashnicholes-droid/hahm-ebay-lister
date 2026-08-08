@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { estimateShipping } from "@/lib/shipping/estimate";
+import { listingQuantity } from "@/lib/quantity";
 import type { ListingResult } from "@/lib/types";
 
 interface ShippingPanelProps {
@@ -39,6 +40,7 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
   );
 
   const price = Number(listing.suggested_price) || 0;
+  const quantity = listingQuantity(listing);
   const shipCost = estimate.recommended?.usd ?? 0;
   const free = listing.shipping_free === true;
 
@@ -192,7 +194,14 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
       {netActive !== null && (
         <p className={`ship-net${netActive < 0 ? " negative" : ""}`}>
           At {money(price)} with {free ? "free shipping" : "buyer-paid shipping"} you net about{" "}
-          <strong>{money(netActive)}</strong> after postage and eBay fees.
+          <strong>{money(netActive)}</strong>
+          {quantity > 1 ? " per unit" : ""} after postage and eBay fees.
+          {/* Per-unit postage is right here: multiples of one item bought
+              together still ship as separate orders unless the buyer combines
+              them, and assuming they will would flatter the total. */}
+          {quantity > 1 && (
+            <> All {quantity} sold separately comes to <strong>{money(netActive * quantity)}</strong>.</>
+          )}
           {netActive < 0 && " This item loses money at that price."}
           {canCompare && !free && netPaid! - netFree! > 0.5 && (
             <> Charging shipping keeps {money(netPaid! - netFree!)} more per sale.</>

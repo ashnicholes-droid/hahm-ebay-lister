@@ -28,6 +28,13 @@ import {
   type AspectMeta,
 } from "./taxonomy";
 import { EBAY_CURRENCY } from "./config";
+import {
+  discountedUnitPrice,
+  listingQuantity,
+  quantityWarnings,
+  volumeDiscount,
+  type VolumeDiscount,
+} from "@/lib/quantity";
 import type { ListingResult } from "@/lib/types";
 
 /** Buyer-facing condition wording, keyed by the Inventory API enum we send. */
@@ -74,6 +81,10 @@ export interface ListingPreview {
   specifics: PreviewSpecific[];
   /** Required specifics eBay wants for this category that the listing lacks. */
   missingRequired: string[];
+  /** Units eBay will show as available. 1 for an ordinary single item. */
+  quantity: number;
+  /** The multi-buy tier a buyer will see, when one applies. */
+  volumeDiscount: (VolumeDiscount & { unitPrice: number | null }) | null;
   /** Anything that makes this preview less than exact. */
   warnings: string[];
   /** True when eBay's live taxonomy answered; false means an offline best guess. */
@@ -196,10 +207,20 @@ export async function buildListingPreview(input: PreviewInput): Promise<ListingP
     );
   }
 
+  // Quantity comes from the same normaliser publish uses, so "3 available"
+  // here means three will be published — including the clamping.
+  const quantity = listingQuantity(listing);
+  const discount = volumeDiscount(listing);
+  warnings.push(...quantityWarnings(listing));
+
   return {
     sku,
     title,
     titleClipped: rawTitle.length > 80,
+    quantity,
+    volumeDiscount: discount
+      ? { ...discount, unitPrice: price === null ? null : discountedUnitPrice(price, discount) }
+      : null,
     price,
     currency: EBAY_CURRENCY,
     conditionEnum,
