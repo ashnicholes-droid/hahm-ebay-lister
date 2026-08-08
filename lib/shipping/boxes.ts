@@ -53,35 +53,91 @@ export const PADDING_IN = 1.5;
 /** Bubble wrap / paper fill, ounces, scaled by how much air is in the box. */
 export const FILL_OZ_PER_CUBIC_FOOT = 3;
 
+/**
+ * Standard corrugated carton sizes, inner dimensions in inches.
+ *
+ * This list is DENSE on purpose, and the density is the whole point. Carriers
+ * bill on volume once a package passes a cubic foot, so the gap between one
+ * stock size and the next is paid for in cash by whoever ships the item that
+ * falls between them. With a sparse catalogue a 12×10×4 item — a perfectly
+ * ordinary shape — had nothing between a 14×11×6 (too narrow) and a 16×12×8,
+ * and the 16×12×8 crosses a cubic foot: billed at 169 oz of volume instead of
+ * its actual 23 oz, $31.50 instead of $9.10. A sweep of realistic item shapes
+ * found 560 of them landing in gaps like that.
+ *
+ * Every size below is a stock corrugated size sold by the usual suppliers, so
+ * this is a denser list, not a fictional one.
+ */
+const CARTON_SIZES: [number, number, number][] = [
+  // Small parcels.
+  [6, 4, 4], [6, 6, 4], [6, 6, 6], [7, 5, 3], [7, 7, 5],
+  [8, 6, 2], [8, 6, 4], [8, 8, 4], [8, 8, 6], [8, 8, 8],
+  [9, 6, 3], [9, 6, 4], [9, 9, 3], [9, 9, 6],
+  [10, 6, 3], [10, 6, 4], [10, 8, 2], [10, 8, 4], [10, 8, 6],
+  [10, 10, 3], [10, 10, 4], [10, 10, 6], [10, 10, 8], [10, 10, 10],
+  [11, 8, 2], [11, 8, 4], [11, 8, 6], [11, 11, 3], [11, 11, 5],
+  // The 12–16 inch band, where most household goods land and where the old
+  // catalogue was thinnest.
+  [12, 6, 4], [12, 9, 2], [12, 9, 3], [12, 9, 4], [12, 9, 6],
+  [12, 10, 3], [12, 10, 4], [12, 10, 6], [12, 12, 2], [12, 12, 3],
+  [12, 12, 4], [12, 12, 5], [12, 12, 6], [12, 12, 8], [12, 12, 10], [12, 12, 12],
+  [13, 9, 3], [13, 10, 4], [13, 10, 6], [13, 11, 3], [13, 13, 4], [13, 13, 6],
+  [14, 10, 3], [14, 10, 4], [14, 10, 6], [14, 11, 4], [14, 11, 6],
+  [14, 12, 3], [14, 12, 4], [14, 12, 6], [14, 14, 3], [14, 14, 4], [14, 14, 6],
+  [15, 11, 3], [15, 11, 5], [15, 12, 4], [15, 12, 6], [15, 15, 3], [15, 15, 5],
+  [16, 10, 4], [16, 12, 3], [16, 12, 4], [16, 12, 6], [16, 12, 8],
+  [16, 14, 4], [16, 16, 3], [16, 16, 4], [16, 16, 5], [16, 16, 6],
+  [17, 11, 3], [17, 14, 4], [17, 17, 5],
+  [18, 12, 3], [18, 12, 4], [18, 12, 6], [18, 14, 4], [18, 14, 6], [18, 14, 10],
+  [18, 18, 4], [18, 18, 6], [18, 18, 18],
+  [20, 12, 3], [20, 12, 4], [20, 14, 4], [20, 14, 6], [20, 16, 4], [20, 16, 6],
+  [20, 16, 12], [20, 20, 4], [20, 20, 6],
+  [22, 16, 4], [22, 18, 6],
+  [24, 12, 4], [24, 18, 4], [24, 18, 6], [24, 18, 12], [24, 20, 4], [24, 24, 6],
+  // Long and narrow: tools, rods, bats, lamp stems, curtain poles.
+  [18, 6, 4], [20, 6, 6], [22, 4, 4], [24, 4, 4], [24, 6, 6],
+  [26, 6, 6], [30, 4, 4], [30, 6, 6], [36, 6, 6], [36, 8, 8], [40, 8, 8],
+];
+
+/**
+ * Empty weight of a carton, ounces, from its surface area.
+ *
+ * Derived rather than typed per box, because a hundred hand-entered weights is a
+ * hundred chances to be wrong. The coefficients come from fitting the previously
+ * hand-picked values (an 8×6×4 at 3 oz, a 16×12×8 at 13, a 24×18×12 at 34) and
+ * reproduce all of them within about 15%; bigger cartons use heavier board,
+ * hence the step.
+ */
+function cartonOz(l: number, w: number, h: number): number {
+  const area = 2 * (l * w + l * h + w * h);
+  return Math.max(1.5, Math.round(area * (area > 1200 ? 0.018 : 0.015) * 10) / 10);
+}
+
+function carton([l, w, h]: [number, number, number]): Box {
+  // A shape tag, because "Box 20×16×4" and "Box 20×16×12" are very different
+  // things to reach for and the list is long.
+  const sorted = [l, w, h].sort((a, b) => b - a);
+  const shape =
+    sorted[2] <= 4 && sorted[1] >= 10 ? " (flat)" : sorted[0] >= 3 * sorted[1] ? " (long)" : "";
+  return {
+    id: `box-${l}x${w}x${h}`,
+    name: `Box ${l}×${w}×${h}${shape}`,
+    inner: { l, w, h },
+    emptyOz: cartonOz(l, w, h),
+  };
+}
+
 // Sorted smallest-volume-first at module load rather than by hand, so
 // selectBox's "first that fits" is genuinely "smallest that fits" and stays
 // that way when someone adds a box to the middle of this list.
 export const BOXES: Box[] = [
   { id: "poly-sm", name: "Poly mailer, small (10×13)", inner: { l: 12.5, w: 9.5, h: 1 }, emptyOz: 0.6 },
-  { id: "box-8x6x4", name: "Box 8×6×4", inner: { l: 8, w: 6, h: 4 }, emptyOz: 3 },
-  { id: "usps-fr-sm", name: "USPS Priority Flat Rate, small box", inner: { l: 8.6, w: 5.4, h: 1.6 }, emptyOz: 1.5, flatRate: true, carrierSupplied: true },
   { id: "poly-lg", name: "Poly mailer, large (14×17)", inner: { l: 16.5, w: 13.5, h: 1.5 }, emptyOz: 1.2 },
-  { id: "box-10x8x6", name: "Box 10×8×6", inner: { l: 10, w: 8, h: 6 }, emptyOz: 5 },
+  { id: "usps-fr-sm", name: "USPS Priority Flat Rate, small box", inner: { l: 8.6, w: 5.4, h: 1.6 }, emptyOz: 1.5, flatRate: true, carrierSupplied: true },
   { id: "usps-fr-md", name: "USPS Priority Flat Rate, medium box (top-load)", inner: { l: 11, w: 8.5, h: 5.5 }, emptyOz: 4, flatRate: true, carrierSupplied: true },
-  { id: "box-12x9x4", name: "Box 12×9×4", inner: { l: 12, w: 9, h: 4 }, emptyOz: 5 },
-  { id: "box-12x12x8", name: "Box 12×12×8", inner: { l: 12, w: 12, h: 8 }, emptyOz: 8 },
   { id: "usps-fr-lg", name: "USPS Priority Flat Rate, large box", inner: { l: 12, w: 12, h: 5.5 }, emptyOz: 6, flatRate: true, carrierSupplied: true },
-  { id: "box-14x11x6", name: "Box 14×11×6", inner: { l: 14, w: 11, h: 6 }, emptyOz: 9 },
-  { id: "box-16x12x8", name: "Box 16×12×8", inner: { l: 16, w: 12, h: 8 }, emptyOz: 13 },
-  { id: "box-18x14x10", name: "Box 18×14×10", inner: { l: 18, w: 14, h: 10 }, emptyOz: 19 },
-  { id: "box-20x16x12", name: "Box 20×16×12", inner: { l: 20, w: 16, h: 12 }, emptyOz: 26 },
-  { id: "box-24x18x12", name: "Box 24×18×12", inner: { l: 24, w: 18, h: 12 }, emptyOz: 34 },
 
-  // Flat-and-wide. Without these, anything broad but thin — a skillet, a framed
-  // print, a record, a laptop — has no box whose two largest sides are big
-  // enough except a deep cube, which pushes it over a cubic foot and gets it
-  // billed on dimensional weight. That mistake more than doubled the estimate
-  // for a 13-inch pan in testing.
-  { id: "box-12x12x3", name: "Box 12×12×3 (flat)", inner: { l: 12, w: 12, h: 3 }, emptyOz: 6 },
-  { id: "box-14x14x4", name: "Box 14×14×4 (flat)", inner: { l: 14, w: 14, h: 4 }, emptyOz: 8 },
-  { id: "box-16x16x4", name: "Box 16×16×4 (flat)", inner: { l: 16, w: 16, h: 4 }, emptyOz: 10 },
-  { id: "box-20x16x4", name: "Box 20×16×4 (flat)", inner: { l: 20, w: 16, h: 4 }, emptyOz: 12 },
-  { id: "box-24x20x4", name: "Box 24×20×4 (flat)", inner: { l: 24, w: 20, h: 4 }, emptyOz: 16 },
+  ...CARTON_SIZES.map(carton),
 
   // ── USPS Priority Flat Rate envelopes ──────────────────────────────────────
   //
@@ -146,10 +202,6 @@ export const BOXES: Box[] = [
     carrierSupplied: true,
   },
 
-  // Long-and-narrow, for tools, curtain rods, bats, lamp stems.
-  { id: "box-20x6x6", name: "Box 20×6×6 (long)", inner: { l: 20, w: 6, h: 6 }, emptyOz: 9 },
-  { id: "box-30x6x6", name: "Box 30×6×6 (long)", inner: { l: 30, w: 6, h: 6 }, emptyOz: 13 },
-  { id: "box-36x8x8", name: "Box 36×8×8 (long)", inner: { l: 36, w: 8, h: 8 }, emptyOz: 20 },
 ].sort((a, b) => volumeIn3(a.inner) - volumeIn3(b.inner));
 
 // A function declaration, not a const arrow: BOXES sorts itself with this at
@@ -196,6 +248,35 @@ export function fits(
  */
 export function selectBox(item: { l: number; w: number; h: number }): Box | null {
   return BOXES.find((box) => !box.flatRate && fits(item, box)) ?? null;
+}
+
+/**
+ * A carton cut down to this item, for when no stock size is close.
+ *
+ * A fixed catalogue can never cover every shape, and when it misses, the miss is
+ * expensive and silent: a 19×7×5 item had nothing between the long boxes (too
+ * narrow) and a 24×18×12, which is nearly four times the volume it needs and
+ * bills at $78 of dimensional weight. No seller would ever actually do that —
+ * they would cut a box down, which takes a minute and costs nothing.
+ *
+ * So that option is modelled explicitly and priced alongside the stock sizes,
+ * rather than pretending the seller owns every carton ever made. Dimensions
+ * follow the item, so this stays selected through a dimension edit instead of
+ * being dropped as "no longer fits".
+ */
+export const CUT_TO_FIT_ID = "cut-to-fit";
+
+export function cutToFitBox(item: { l: number; w: number; h: number }): Box {
+  const snug = (n: number) => Math.ceil((n + PADDING_IN) * 2) / 2;
+  const l = snug(item.l);
+  const w = snug(item.w);
+  const h = snug(item.h);
+  return {
+    id: CUT_TO_FIT_ID,
+    name: `Cut-to-fit box ${l}×${w}×${h}`,
+    inner: { l, w, h },
+    emptyOz: cartonOz(l, w, h),
+  };
 }
 
 /** Every flat-rate container, in the order a seller would scan a list. */

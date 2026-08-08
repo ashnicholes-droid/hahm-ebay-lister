@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { BOXES, fits, selectBox } from "@/lib/shipping/boxes";
+import { BOXES, CUT_TO_FIT_ID, PADDING_IN, fits, selectBox, volumeIn3 } from "@/lib/shipping/boxes";
 import {
+  DIM_THRESHOLD_IN3,
   billableOz,
   dimensionalOz,
   parseRateTable,
@@ -615,5 +616,135 @@ describe("what a chosen flat-rate container publishes", () => {
     );
     const h = (pkg.dimensions as { height: number }).height;
     expect(h).toBeLessThan(4);
+  });
+});
+
+// The reported bug, and the property that prevents its whole class.
+//
+// A 10×12×4 item at 8 oz was quoted $31.50 because the catalogue jumped from a
+// 14×11×6 (too narrow) straight to a 16×12×8, which crosses a cubic foot and so
+// gets billed on 169 oz of volume instead of its actual 23 oz. Editing the
+// weight moved nothing, because weight wasn't what set the price.
+describe("no item pays for a gap in the box catalogue", () => {
+  const WALL = 0.5;
+  const snugOuterVolume = (d: { l: number; w: number; h: number }) =>
+    (d.l + PADDING_IN + WALL) * (d.w + PADDING_IN + WALL) * (d.h + PADDING_IN + WALL);
+
+  it("quotes the reported item sanely", () => {
+    const e = estimateShipping({ itemOz: 8, itemDims: { l: 10, w: 12, h: 4 } });
+    expect(e.recommended!.usd).toBeLessThan(12);
+    expect(e.recommended!.dimensionalPricing).toBe(false);
+    expect(e.dimensionalOz).toBe(0);
+  });
+
+  it("lets weight drive the price for that item across the whole range", () => {
+    const prices = [2, 32, 128, 320].map(
+      (oz) => estimateShipping({ itemOz: oz, itemDims: { l: 10, w: 12, h: 4 } }).recommended!.usd
+    );
+    // Strictly increasing: nothing is pinned by volume.
+    for (let i = 1; i < prices.length; i++) expect(prices[i]).toBeGreaterThan(prices[i - 1]);
+  });
+
+  it("never bills on volume when a box that avoids it would fit", () => {
+    // The property, swept over realistic shapes rather than asserted on one.
+    const offenders: string[] = [];
+    for (let l = 4; l <= 24; l += 1) {
+      for (let w = 3; w <= l; w += 1) {
+        for (const h of [0.5, 1, 2, 3, 4, 6, 8, 10]) {
+          if (h > w) continue;
+          const dims = { l, w, h };
+          if (snugOuterVolume(dims) > DIM_THRESHOLD_IN3) continue;
+          const e = estimateShipping({ itemOz: 8, itemDims: dims });
+          if (e.recommended?.dimensionalPricing) offenders.push(`${l}x${w}x${h}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps the summary box and the recommended option in agreement", () => {
+    for (const dims of [
+      { l: 10, w: 12, h: 4 },
+      { l: 19, w: 7, h: 5 },
+      { l: 6, w: 4, h: 2 },
+      { l: 13, w: 10, h: 6 },
+    ]) {
+      const e = estimateShipping({ itemOz: 10, itemDims: dims });
+      const cheapestCarton = e.options.filter((o) => !o.flatRate)[0];
+      if (cheapestCarton) expect(e.box!.id).toBe(cheapestCarton.boxId);
+    }
+  });
+});
+
+describe("cut-to-fit carton", () => {
+  it("rescues a shape no stock size covers", () => {
+    // 19×7×5 had nothing between the long boxes (too narrow) and a 24×18×12.
+    const e = estimateShipping({ itemOz: 8, itemDims: { l: 19, w: 7, h: 5 } });
+    expect(e.recommended!.usd).toBeLessThan(20);
+    expect(e.recommended!.dimensionalPricing).toBe(false);
+  });
+
+  it("is not offered when cutting a box saves nothing", () => {
+    // A small item sits inside a stock box without crossing any weight break,
+    // so there is no reason to reach for a knife.
+    const e = estimateShipping({ itemOz: 4, itemDims: { l: 5, w: 4, h: 2 } });
+    const cut = e.options.filter((o) => o.boxId === CUT_TO_FIT_ID);
+    for (const c of cut) {
+      const stock = e.options.find((o) => o.serviceId === c.serviceId && o.boxId !== CUT_TO_FIT_ID);
+      if (stock) expect(c.usd).toBeLessThan(stock.usd);
+    }
+  });
+
+  it("follows the item's dimensions rather than being dropped when they change", () => {
+    // Its id is stable on purpose: "cut a box to fit" stays true after an edit,
+    // where a stock size might genuinely stop fitting.
+    const a = estimateShipping({ itemOz: 8, itemDims: { l: 19, w: 7, h: 5 } });
+    const picked = a.options.find((o) => o.boxId === CUT_TO_FIT_ID);
+    if (!picked) return;
+    const b = estimateShipping({
+      itemOz: 8,
+      itemDims: { l: 21, w: 8, h: 5 },
+      selectedOptionId: picked.id,
+    });
+    expect(b.manualSelection).toBe(true);
+    expect(b.chosenPackage!.outer.l).toBeGreaterThan(a.chosenPackage!.outer.l);
+    expect(b.warnings.join(" ")).not.toMatch(/no longer fits/i);
+  });
+
+  it("refuses to make an unmailable item mailable", () => {
+    // USPS caps a parcel at 108 in long and 130 in length plus girth. A knife
+    // does not change that.
+    const e = estimateShipping({ itemOz: 400, itemDims: { l: 60, w: 40, h: 30 } });
+    expect(e.options.some((o) => o.boxId === CUT_TO_FIT_ID)).toBe(false);
+  });
+
+  it("publishes the cut box's own size", () => {
+    const a = estimateShipping({ itemOz: 8, itemDims: { l: 19, w: 7, h: 5 } });
+    const picked = a.options.find((o) => o.boxId === CUT_TO_FIT_ID);
+    if (!picked) return;
+    const e = estimateShipping({ itemOz: 8, itemDims: { l: 19, w: 7, h: 5 }, selectedOptionId: picked.id });
+    const pkg = ebayPackageFromEstimate(e)!;
+    expect(pkg.l).toBeLessThan(22);
+    expect(pkg.weightOz).toBeGreaterThan(8);
+  });
+});
+
+describe("the generated carton catalogue", () => {
+  it("has no duplicate ids", () => {
+    const ids = BOXES.map((b) => b.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("stays sorted smallest-volume-first, which selectBox depends on", () => {
+    const vols = BOXES.map((b) => volumeIn3(b.inner));
+    expect(vols).toEqual([...vols].sort((a, b) => a - b));
+  });
+
+  it("gives every carton a believable empty weight", () => {
+    for (const b of BOXES) {
+      expect(b.emptyOz).toBeGreaterThan(0);
+      // Nothing in this catalogue is heavier than the item it usually carries.
+      expect(b.emptyOz).toBeLessThan(60);
+    }
   });
 });

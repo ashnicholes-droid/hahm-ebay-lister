@@ -165,8 +165,9 @@ Every drafted listing gets a **📦 Shipping** panel. The model estimates the
 item's own weight and dimensions from the photos — reading a figure printed on
 the box or spec plate where there is one — and the app does the rest:
 
-- picks the smallest box that fits with padding (flat boxes for broad, thin
-  things; long boxes for tools and rods)
+- picks the smallest box that fits with padding, from ~110 standard corrugated
+  sizes, and prices a **cut-to-fit** carton alongside it when cutting one down
+  would be cheaper
 - prices **every USPS flat-rate container the item fits** — the three flat-rate
   envelopes (plain, legal, padded) and the five flat-rate boxes
 - adds the box's own weight and packing fill
@@ -191,9 +192,30 @@ Where the box is over a cubic foot, volume rather than the scale sets the price,
 and the panel says so explicitly — including the weight you'd have to pass
 before weight starts mattering again.
 
-A wrong box is expensive: in testing, a 13-inch cast iron skillet in the wrong
-carton estimated **$55** and a **−$16** loss; in the right flat box it was
-**$23** and **+$16**.
+### Why the box catalogue is dense
+
+A wrong box is expensive, and the expense is silent. Carriers bill on volume once
+a package passes a cubic foot, so the gap between one stock size and the next is
+paid for in cash by whoever ships the item that falls between them.
+
+An 8 oz item measuring 10×12×4 — an ordinary shape — had nothing between a
+14×11×6 (too narrow) and a 16×12×8, and the 16×12×8 crosses a cubic foot: billed
+at 169 oz of *volume* instead of its actual 23 oz, **$31.50 instead of $9.10**.
+Editing the weight changed nothing, because weight was not what set the price. A
+sweep of realistic item shapes found 560 landing in gaps like that.
+
+Two changes close it:
+
+- **~110 standard corrugated sizes** instead of 22, dense through the 12–16 inch
+  band where most household goods land.
+- **A cut-to-fit carton**, priced alongside the stock sizes whenever cutting one
+  down would actually be cheaper — because no seller would pay $78 to ship a
+  19×7×5 item in a 24×18×12 when a minute with a knife costs nothing. It's
+  suppressed when it saves nothing, and never offered for something USPS wouldn't
+  carry anyway (108″ longest side, 130″ length plus girth).
+
+A test sweeps 1,912 item shapes and fails if *any* of them is billed on volume
+when a snug box would have avoided it.
 
 ### Choosing the packaging yourself
 

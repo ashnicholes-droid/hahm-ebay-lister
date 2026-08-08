@@ -12,7 +12,16 @@
 //   • The seller gets a dollar figure for margin math, from a static table
 //     (see rates.ts) that is explicitly a baseline, not a quote.
 
-import { boxById, fillOz, fits, selectBox, type Box } from "./boxes";
+import {
+  CUT_TO_FIT_ID,
+  boxById,
+  cutToFitBox,
+  fillOz,
+  fits,
+  selectBox,
+  volumeIn3,
+  type Box,
+} from "./boxes";
 import {
   SERVICES,
   billableOz,
@@ -149,6 +158,16 @@ function outerOf(box: Box): Dimensions {
   };
 }
 
+/**
+ * USPS domestic parcel limits: 108" longest side, and 130" for length plus girth
+ * (the distance around the other two). A cut-to-fit box has no size of its own,
+ * so without this it would happily "fit" a wardrobe.
+ */
+function withinCarrierLimits(box: Box): boolean {
+  const [long, mid, short] = [box.inner.l, box.inner.w, box.inner.h].sort((a, b) => b - a);
+  return long <= 108 && long + 2 * (mid + short) <= 130;
+}
+
 const positive = (n: unknown): number | null => {
   const v = typeof n === "string" ? parseFloat(n) : (n as number);
   return Number.isFinite(v) && v > 0 ? v : null;
@@ -217,8 +236,38 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     );
   }
 
-  const box = selectBox(itemDims);
-  if (!box) {
+  // Two general cartons are considered, not one: the smallest stock size that
+  // fits, and a box cut down to the item. Whichever is cheaper wins, and both
+  // are offered. Relying on stock sizes alone is what left a 19×7×5 item paying
+  // $78 to ship in a 24×18×12 — no seller would do that rather than spend a
+  // minute with a knife.
+  const stock = selectBox(itemDims);
+  const cut = cutToFitBox(itemDims);
+  const cartons: Box[] = [];
+  if (stock) cartons.push(stock);
+  // Only when USPS would actually take it: cutting a box to fit does not make a
+  // 40-inch item mailable, and silently pricing one as a parcel would be worse
+  // than saying so.
+  if (withinCarrierLimits(cut)) cartons.push(cut);
+
+  // Per-carton physics, computed once and reused for both the priced options and
+  // the summary figures — so the box named in the summary is always the box the
+  // recommended option is actually priced from.
+  const packing = cartons.map((carton) => {
+    const cOuter = outerOf(carton);
+    const cPacked = Math.round((itemOz + carton.emptyOz + fillOz(carton, itemDims)) * 10) / 10;
+    const cDimOz = dimensionalOz(cOuter);
+    return {
+      carton,
+      outer: cOuter,
+      packedOz: cPacked,
+      billable: billableOz(cPacked, cOuter),
+      dimOz: cDimOz,
+      dimensional: cDimOz > Math.ceil(cPacked),
+    };
+  });
+
+  if (packing.length === 0) {
     warnings.push(
       `This item (${itemDims.l}×${itemDims.w}×${itemDims.h} in) is larger than the biggest box in the catalogue. It needs freight or a custom carton — price it manually.`
     );
@@ -242,35 +291,34 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     };
   }
 
-  const packedOz = Math.round((itemOz + box.emptyOz + fillOz(box, itemDims)) * 10) / 10;
-  const outer = outerOf(box);
-  const billable = billableOz(packedOz, outer);
-  const dimOz = dimensionalOz(outer);
-  const dimensional = dimOz > Math.ceil(packedOz);
-  if (dimensional) {
-    // Spell out the consequence, not just the fact. While volume is setting the
-    // price, editing the weight moves no visible number, which reads as a
-    // broken input rather than as arithmetic.
-    warnings.push(
-      `Priced on dimensional weight (${billable} oz of box volume) rather than actual (${Math.ceil(packedOz)} oz) — the box is over 1 cubic foot. Changing the item's weight won't change the cost until the packed weight passes ${billable} oz; a smaller box will.`
-    );
-  }
-
+  // Every carton in play gets priced on both weight-based services, so a
+  // cut-to-fit box that dodges dimensional weight can beat a stock box that
+  // doesn't — which is the entire reason it exists.
+  //
+  // Whether to OFFER the cut-to-fit box is then decided on price, not on a
+  // volume ratio. A ratio test looks reasonable and is subtly wrong: a
+  // 13×10×6 item needs a box 81% the volume of the stock 16×12×8, which a
+  // "must be 20% smaller" rule rejects — while the stock box crosses a cubic
+  // foot and the cut one doesn't, a $22 difference. If cutting a box saves
+  // nothing it is dropped below; if it saves anything, it is worth a minute
+  // with a knife and the seller gets to see it.
   const options: ShippingOption[] = [];
-  for (const serviceId of ["ground_advantage", "priority"] as const) {
-    if (billable > SERVICES[serviceId].maxOz) continue;
-    const usd = weightBasedRate(serviceId, billable, table);
-    if (usd === null) continue;
-    options.push({
-      id: optionId(serviceId, box.id),
-      serviceId,
-      serviceName: SERVICES[serviceId].name,
-      boxId: box.id,
-      boxName: box.name,
-      usd,
-      dimensionalPricing: dimensional,
-      flatRate: false,
-    });
+  for (const pk of packing) {
+    for (const serviceId of ["ground_advantage", "priority"] as const) {
+      if (pk.billable > SERVICES[serviceId].maxOz) continue;
+      const usd = weightBasedRate(serviceId, pk.billable, table);
+      if (usd === null) continue;
+      options.push({
+        id: optionId(serviceId, pk.carton.id),
+        serviceId,
+        serviceName: SERVICES[serviceId].name,
+        boxId: pk.carton.id,
+        boxName: pk.carton.name,
+        usd,
+        dimensionalPricing: pk.dimensional,
+        flatRate: false,
+      });
+    }
   }
 
   // Every flat-rate container the item fits, priced — envelopes included. Flat
@@ -300,6 +348,43 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     });
   }
 
+  // Drop a cut-to-fit option that costs the same as (or more than) the stock box
+  // on the same service — no one should cut cardboard for zero saving.
+  const stockPrice = new Map<string, number>();
+  for (const o of options) {
+    if (o.boxId !== CUT_TO_FIT_ID) {
+      const prev = stockPrice.get(o.serviceId);
+      if (prev === undefined || o.usd < prev) stockPrice.set(o.serviceId, o.usd);
+    }
+  }
+  const priced = options.filter(
+    (o) => o.boxId !== CUT_TO_FIT_ID || o.usd < (stockPrice.get(o.serviceId) ?? Infinity)
+  );
+  options.length = 0;
+  options.push(...priced);
+
+  // The carton the summary describes is the one behind the cheapest surviving
+  // weight-based option — never a box that was priced and then dropped.
+  const cheapestCarton = options
+    .filter((o) => !o.flatRate)
+    .sort((a, b) => a.usd - b.usd)[0];
+  const primary =
+    packing.find((pk) => pk.carton.id === cheapestCarton?.boxId) ??
+    packing.slice().sort((a, b) => volumeIn3(a.carton.inner) - volumeIn3(b.carton.inner))[0];
+  const box = primary.carton;
+  const packedOz = primary.packedOz;
+  const billable = primary.billable;
+  const dimOz = primary.dimOz;
+  const dimensional = primary.dimensional;
+  if (dimensional) {
+    // Spell out the consequence, not just the fact. While volume is setting the
+    // price, editing the weight moves no visible number, which reads as a
+    // broken input rather than as arithmetic.
+    warnings.push(
+      `Priced on dimensional weight (${billable} oz of box volume) rather than actual (${Math.ceil(packedOz)} oz) — the box is over 1 cubic foot. Changing the item's weight won't change the cost until the packed weight passes ${billable} oz; a smaller box will.`
+    );
+  }
+
   options.sort((a, b) => a.usd - b.usd);
 
   // Resolve the seller's pick. A selection that no longer fits is dropped with a
@@ -317,7 +402,11 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   }
 
   const chosen = picked ?? recommended;
-  const chosenBox = chosen ? boxById(chosen.boxId) : null;
+  // Resolve through the carton list first: the cut-to-fit box is generated for
+  // this item and is deliberately not in the global catalogue.
+  const chosenBox = chosen
+    ? cartons.find((c) => c.id === chosen.boxId) ?? boxById(chosen.boxId)
+    : null;
   const chosenPackage = chosenBox
     ? {
         boxId: chosenBox.id,
@@ -332,7 +421,7 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     itemOz,
     packedOz,
     billableOz: billable,
-    box: { id: box.id, name: box.name, outer },
+    box: { id: box.id, name: box.name, outer: primary.outer },
     itemDims,
     options,
     recommended,
