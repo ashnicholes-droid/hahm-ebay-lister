@@ -43,7 +43,18 @@ export const SERVICES: Record<ServiceId, Service> = {
     id: "priority_flat_rate",
     name: "USPS Priority Flat Rate",
     maxOz: 70 * 16,
-    flatRateBoxIds: ["usps-fr-sm", "usps-fr-md", "usps-fr-lg"],
+    // Every USPS-supplied flat-rate container. Order is cheapest-first only by
+    // coincidence; the estimator sorts priced options by cost.
+    flatRateBoxIds: [
+      "usps-fre",
+      "usps-fre-legal",
+      "usps-fre-padded",
+      "usps-fr-sm",
+      "usps-fr-md",
+      "usps-fr-md-side",
+      "usps-fr-lg",
+      "usps-fr-boardgame",
+    ],
   },
 };
 
@@ -100,9 +111,14 @@ const RATE_TABLE: RateTable = {
     { maxOz: 1120, usd: 118.0 },
   ],
   flat_rate_by_box: {
+    "usps-fre": 9.9,
+    "usps-fre-legal": 10.2,
+    "usps-fre-padded": 10.6,
     "usps-fr-sm": 10.5,
     "usps-fr-md": 18.0,
+    "usps-fr-md-side": 18.0,
     "usps-fr-lg": 23.5,
+    "usps-fr-boardgame": 23.5,
   },
 };
 

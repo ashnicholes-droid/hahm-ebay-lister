@@ -12,7 +12,7 @@
 //   • The seller gets a dollar figure for margin math, from a static table
 //     (see rates.ts) that is explicitly a baseline, not a quote.
 
-import { BOXES, PADDING_IN, fillOz, selectBox, type Box } from "./boxes";
+import { boxById, fillOz, fits, selectBox, type Box } from "./boxes";
 import {
   SERVICES,
   billableOz,
@@ -31,6 +31,8 @@ export interface Dimensions {
 }
 
 export interface ShippingOption {
+  /** Stable identity for the service + container pair, used to select one. */
+  id: string;
   serviceId: ServiceId;
   serviceName: string;
   boxId: string;
@@ -38,6 +40,13 @@ export interface ShippingOption {
   usd: number;
   /** True when volume, not the scale, set the price. */
   dimensionalPricing: boolean;
+  /** True for USPS-supplied flat-rate packaging. */
+  flatRate: boolean;
+}
+
+/** Identity of a service + container pair. */
+export function optionId(serviceId: ServiceId, boxId: string): string {
+  return `${serviceId}:${boxId}`;
 }
 
 export interface ShippingEstimate {
@@ -52,6 +61,26 @@ export interface ShippingEstimate {
   options: ShippingOption[];
   /** Cheapest workable option, or null when nothing fits. */
   recommended: ShippingOption | null;
+  /**
+   * The option actually in force: the seller's pick when they made one, else
+   * the cheapest. This — not `recommended` — is what the headline shows and what
+   * the package sent to eBay is derived from.
+   *
+   * Kept separate from `recommended` so the panel can still say "the cheapest is
+   * $9.90" next to a deliberate choice to pay more for Priority.
+   */
+  chosen: ShippingOption | null;
+  /** True when the seller picked this rather than taking the cheapest. */
+  manualSelection: boolean;
+  /**
+   * The physical package for `chosen` — which container, how big, what the scale
+   * will read with the item in it.
+   *
+   * Distinct from `box`/`packedOz` above, which always describe the general
+   * carton the weight-based options are priced from. Pick a flat-rate envelope
+   * and those two stop describing what you're actually mailing; this doesn't.
+   */
+  chosenPackage: { boxId: string; name: string; outer: Dimensions; packedOz: number } | null;
   /** Where the weight came from — evidence or a category guess. */
   basis: "photos" | "category-default";
   /**
@@ -133,6 +162,12 @@ export interface EstimateInput {
   /** Fallback when the above are missing. */
   category?: string;
   rates?: RateTable;
+  /**
+   * The seller's chosen service + container (see `optionId`). Ignored when the
+   * item no longer fits it — a selection made before the dimensions were
+   * corrected must not silently publish a package the item can't go in.
+   */
+  selectedOptionId?: string;
 }
 
 /**
@@ -195,6 +230,9 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
       itemDims,
       options: [],
       recommended: null,
+      chosen: null,
+      manualSelection: false,
+      chosenPackage: null,
       basis,
       provided,
       dimensionalOz: 0,
@@ -224,36 +262,72 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     const usd = weightBasedRate(serviceId, billable, table);
     if (usd === null) continue;
     options.push({
+      id: optionId(serviceId, box.id),
       serviceId,
       serviceName: SERVICES[serviceId].name,
       boxId: box.id,
       boxName: box.name,
       usd,
       dimensionalPricing: dimensional,
+      flatRate: false,
     });
   }
 
-  // Flat rate is worth pricing whenever the item fits a flat-rate box, even if
-  // that isn't the smallest box overall — for anything heavy it usually wins.
+  // Every flat-rate container the item fits, priced — envelopes included. Flat
+  // rate ignores weight entirely, so for anything small and heavy (a lens, brake
+  // pads, a stack of coins) an envelope beats weight-based pricing outright,
+  // while for anything light it loses. Neither is knowable in advance, which is
+  // why all of them get priced and the seller can take whichever they want.
+  //
+  // `fits` uses each container's own padding allowance: a quarter inch for an
+  // envelope, an inch and a half for a carton.
   for (const frId of SERVICES.priority_flat_rate.flatRateBoxIds ?? []) {
-    const frBox = BOXES.find((b) => b.id === frId);
-    if (!frBox) continue;
-    const i = [itemDims.l, itemDims.w, itemDims.h].sort((a, b) => b - a);
-    const bx = [frBox.inner.l, frBox.inner.w, frBox.inner.h].sort((a, b) => b - a);
-    if (!i.every((v, idx) => v + PADDING_IN <= bx[idx])) continue;
+    const frBox = boxById(frId);
+    if (!frBox || !fits(itemDims, frBox)) continue;
     const usd = flatRateFor(frId, table);
     if (usd === null) continue;
     options.push({
+      id: optionId("priority_flat_rate", frId),
       serviceId: "priority_flat_rate",
-      serviceName: `${SERVICES.priority_flat_rate.name} (${frBox.name.replace("USPS Priority Flat Rate, ", "")})`,
+      serviceName: frBox.name.startsWith("USPS")
+        ? frBox.name
+        : `${SERVICES.priority_flat_rate.name} (${frBox.name})`,
       boxId: frId,
       boxName: frBox.name,
       usd,
       dimensionalPricing: false,
+      flatRate: true,
     });
   }
 
   options.sort((a, b) => a.usd - b.usd);
+
+  // Resolve the seller's pick. A selection that no longer fits is dropped with a
+  // warning rather than honoured: dimensions get corrected after a container is
+  // chosen, and publishing a package the item demonstrably cannot go in is the
+  // one outcome worse than reverting to the cheapest that works.
+  const recommended = options[0] ?? null;
+  const picked = input.selectedOptionId
+    ? options.find((o) => o.id === input.selectedOptionId) ?? null
+    : null;
+  if (input.selectedOptionId && !picked) {
+    warnings.push(
+      "The packaging you picked no longer fits this item at these dimensions, so the cheapest option that does is being used. Pick again if you want something else."
+    );
+  }
+
+  const chosen = picked ?? recommended;
+  const chosenBox = chosen ? boxById(chosen.boxId) : null;
+  const chosenPackage = chosenBox
+    ? {
+        boxId: chosenBox.id,
+        name: chosenBox.name,
+        outer: outerOf(chosenBox),
+        packedOz:
+          Math.round((itemOz + chosenBox.emptyOz + fillOz(chosenBox, itemDims)) * 10) / 10,
+      }
+    : null;
+
   return {
     itemOz,
     packedOz,
@@ -261,7 +335,10 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
     box: { id: box.id, name: box.name, outer },
     itemDims,
     options,
-    recommended: options[0] ?? null,
+    recommended,
+    chosen,
+    manualSelection: picked !== null,
+    chosenPackage,
     basis,
     provided,
     dimensionalOz: dimensional ? dimOz : 0,
@@ -272,16 +349,16 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
 }
 
 /**
- * The package payload eBay needs. Derived from the recommended option's box so
- * what publishes matches what was estimated — the alternative is a listing
- * quoting buyers for one box while the estimate assumed another.
+ * The package payload eBay needs. Derived from the CHOSEN option's container so
+ * what publishes matches what the seller is actually going to put in the mail —
+ * the alternative is a listing quoting buyers for one box while the label goes
+ * on another.
  */
 export function ebayPackageFromEstimate(
   estimate: ShippingEstimate
-): { weightOz: number; l: number; w: number; h: number } | null {
-  const chosen = estimate.recommended;
-  const box = chosen ? BOXES.find((b) => b.id === chosen.boxId) : null;
-  if (!box) {
+): { weightOz: number; l: number; w: number; h: number; packageType?: string } | null {
+  const pkg = estimate.chosenPackage;
+  if (!pkg) {
     if (!estimate.box) return null;
     return {
       weightOz: Math.max(1, Math.ceil(estimate.packedOz)),
@@ -290,7 +367,12 @@ export function ebayPackageFromEstimate(
       h: estimate.box.outer.h,
     };
   }
-  const outer = outerOf(box);
-  const packed = Math.max(1, Math.ceil(estimate.itemOz + box.emptyOz + fillOz(box, estimate.itemDims)));
-  return { weightOz: packed, l: outer.l, w: outer.w, h: outer.h };
+  const box = boxById(pkg.boxId);
+  return {
+    weightOz: Math.max(1, Math.ceil(pkg.packedOz)),
+    l: pkg.outer.l,
+    w: pkg.outer.w,
+    h: pkg.outer.h,
+    ...(box?.ebayPackageType ? { packageType: box.ebayPackageType } : {}),
+  };
 }

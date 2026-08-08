@@ -2071,26 +2071,71 @@ textarea {
   color: var(--color-ink-faint);
 }
 
+/* The options list is a radio group, not a read-only table: a seller who wants
+   a Padded Flat Rate Envelope needs to be able to say so, not just be told what
+   the cheapest option was. */
 .ship-options {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 0.9rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  border: none;
   font-size: 0.85rem;
 }
 
-.ship-options td {
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid var(--color-border);
+.ship-options legend {
+  padding: 0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
 }
 
-.ship-options tr.best td {
+.ship-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.ship-option input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.ship-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.ship-option-name small {
+  color: var(--color-ink-soft);
+  font-size: 0.75rem;
+}
+
+.ship-option.best {
   font-weight: 700;
   background: var(--color-accent-soft);
+  border-radius: var(--radius-sm);
 }
 
-.ship-options tr.best td:first-child::before {
-  content: "✓ ";
-  color: var(--color-accent-deep);
+.ship-flat-tag {
+  font-size: 0.65rem !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--color-gold-soft);
+  color: var(--color-ink-soft) !important;
+  white-space: nowrap;
 }
 
 .ship-box {

@@ -476,3 +476,144 @@ describe("what the panel can tell the seller", () => {
     expect(w).not.toMatch(/weight,/);
   });
 });
+
+// USPS flat-rate packaging, and the seller's ability to choose it. Flat rate
+// ignores weight entirely, which is exactly why it can't be left to the
+// cheapest-wins default: for a small heavy item it wins by a wide margin, and
+// for a light one it loses, and only the seller knows which trade they want.
+describe("flat-rate containers", () => {
+  const envelopeItem = { l: 10, w: 7, h: 0.4 };
+
+  it("offers the flat-rate envelopes for something flat and small", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: envelopeItem });
+    const ids = e.options.map((o) => o.boxId);
+    expect(ids).toContain("usps-fre");
+    expect(ids).toContain("usps-fre-legal");
+    expect(ids).toContain("usps-fre-padded");
+  });
+
+  it("does not force a carton's packing allowance onto an envelope", () => {
+    // With the 1.5" box padding applied to a 0.75" envelope, nothing on earth
+    // fits one — which is how they came to be missing in the first place.
+    const env = BOXES.find((b) => b.id === "usps-fre")!;
+    expect(fits({ l: 10, w: 7, h: 0.4 }, env)).toBe(true);
+    expect(fits({ l: 10, w: 7, h: 3 }, env)).toBe(false);
+    expect(fits({ l: 14, w: 7, h: 0.2 }, env)).toBe(false);
+  });
+
+  it("wins outright for something small and heavy", () => {
+    // 4 lb of coins in a padded envelope: flat rate beats every weight break.
+    const e = estimateShipping({ itemOz: 64, itemDims: { l: 9, w: 6, h: 0.8 } });
+    expect(e.recommended?.flatRate).toBe(true);
+    expect(e.recommended?.usd).toBeLessThan(
+      e.options.find((o) => !o.flatRate)!.usd
+    );
+  });
+
+  it("loses for something light, and is still offered", () => {
+    const e = estimateShipping({ itemOz: 2, itemDims: { l: 8, w: 5, h: 0.3 } });
+    expect(e.recommended?.flatRate).toBe(false);
+    expect(e.options.some((o) => o.flatRate)).toBe(true);
+  });
+
+  it("never offers an envelope for a thick item", () => {
+    const e = estimateShipping({ itemOz: 40, itemDims: { l: 10, w: 8, h: 5 } });
+    expect(e.options.filter((o) => o.boxId.startsWith("usps-fre"))).toEqual([]);
+  });
+
+  it("prices every flat-rate container it offers", () => {
+    const e = estimateShipping({ itemOz: 30, itemDims: { l: 8, w: 5, h: 1 } });
+    for (const o of e.options.filter((x) => x.flatRate)) {
+      expect(o.usd).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("choosing the packaging", () => {
+  const item = { itemOz: 20, itemDims: { l: 9, w: 6, h: 0.6 } };
+
+  it("takes the cheapest when nothing is chosen", () => {
+    const e = estimateShipping(item);
+    expect(e.manualSelection).toBe(false);
+    expect(e.chosen).toBe(e.recommended);
+  });
+
+  it("honours a deliberate pick over the cheapest", () => {
+    const auto = estimateShipping(item);
+    const padded = auto.options.find((o) => o.boxId === "usps-fre-padded")!;
+    const e = estimateShipping({ ...item, selectedOptionId: padded.id });
+    expect(e.manualSelection).toBe(true);
+    expect(e.chosen!.boxId).toBe("usps-fre-padded");
+    // The cheapest is still reported, so the panel can show what it costs.
+    expect(e.recommended!.id).toBe(auto.recommended!.id);
+  });
+
+  it("prices the item on the chosen option, not the cheapest", () => {
+    const auto = estimateShipping(item);
+    const dearest = [...auto.options].sort((a, b) => b.usd - a.usd)[0];
+    const e = estimateShipping({ ...item, selectedOptionId: dearest.id });
+    expect(e.chosen!.usd).toBe(dearest.usd);
+    expect(e.chosen!.usd).toBeGreaterThan(e.recommended!.usd);
+  });
+
+  it("drops a selection the item no longer fits, and says so", () => {
+    const flat = estimateShipping(item);
+    const env = flat.options.find((o) => o.boxId === "usps-fre")!;
+    // Same pick, but the seller has since corrected the height to 4 inches.
+    const e = estimateShipping({
+      itemOz: 20,
+      itemDims: { l: 9, w: 6, h: 4 },
+      selectedOptionId: env.id,
+    });
+    expect(e.manualSelection).toBe(false);
+    expect(e.chosen).toBe(e.recommended);
+    expect(e.warnings.join(" ")).toMatch(/no longer fits/i);
+  });
+
+  it("ignores an unrecognised option id rather than throwing", () => {
+    const e = estimateShipping({ ...item, selectedOptionId: "nonsense:not-a-box" });
+    expect(e.chosen).toBe(e.recommended);
+  });
+
+  it("describes the package the seller actually chose", () => {
+    const auto = estimateShipping(item);
+    const padded = auto.options.find((o) => o.boxId === "usps-fre-padded")!;
+    const e = estimateShipping({ ...item, selectedOptionId: padded.id });
+    expect(e.chosenPackage!.boxId).toBe("usps-fre-padded");
+    // The general-carton figures still describe the carton — they drive the
+    // weight-based options — but they are no longer what's being mailed.
+    expect(e.box!.id).not.toBe("usps-fre-padded");
+  });
+});
+
+describe("what a chosen flat-rate container publishes", () => {
+  const item = { itemOz: 20, itemDims: { l: 9, w: 6, h: 0.6 } };
+
+  it("sends the envelope's size, not the carton's", () => {
+    const auto = estimateShipping(item);
+    const env = auto.options.find((o) => o.boxId === "usps-fre")!;
+    const e = estimateShipping({ ...item, selectedOptionId: env.id });
+    const pkg = ebayPackageFromEstimate(e)!;
+    expect(pkg.h).toBeLessThan(2);
+    expect(pkg.packageType).toBe("USPS_FLAT_RATE_ENVELOPE");
+  });
+
+  it("uses the generic package type for ordinary cartons", () => {
+    const pkg = ebayPackageFromEstimate(estimateShipping(item))!;
+    expect(pkg.packageType).toBeUndefined();
+  });
+
+  it("reaches the published payload even with no hand-entered figures", () => {
+    // Choosing packaging is itself a decision the publish step must respect;
+    // requiring a weight edit alongside it would silently drop the choice.
+    const auto = estimateShipping({ category: "media" });
+    const flat = auto.options.find((o) => o.flatRate);
+    if (!flat) return;
+    const pkg = defaultPackageWeightAndSize(
+      "media",
+      { shipping_option_id: flat.id } as ListingResult
+    );
+    const h = (pkg.dimensions as { height: number }).height;
+    expect(h).toBeLessThan(4);
+  });
+});

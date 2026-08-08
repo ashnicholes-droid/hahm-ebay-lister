@@ -34,6 +34,10 @@ export interface ListingResult {
   // pays. Undefined means "no preference": publish keeps using whatever
   // fulfillment policy the account lists first, which is the old behaviour.
   shipping_free?: boolean;
+  // The seller's chosen service + container, e.g. "priority_flat_rate:usps-fre".
+  // Absent means "whatever is cheapest", which is the default and what most
+  // items should stay on. See lib/shipping/estimate.ts `optionId`.
+  shipping_option_id?: string;
   // Multiples of an identical item. Opt-in: unless `multi_quantity` is exactly
   // true, this publishes as a single unique item and `quantity` is ignored
   // entirely. See lib/quantity.ts — nothing should read these fields raw.

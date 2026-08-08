@@ -18,6 +18,31 @@ export interface Box {
    * item, which is why the estimator prices every option and compares.
    */
   flatRate?: boolean;
+  /**
+   * Envelopes are not small boxes. USPS asks only that the contents fit inside
+   * and that the flap closes on its own adhesive, so the useful clearance is a
+   * fraction of an inch, not the 1.5" of packing room a carton needs. Applying
+   * box padding to an envelope makes every envelope look like it fits nothing.
+   */
+  paddingIn?: number;
+  /**
+   * Envelopes only: the thickest the contents may be, inches.
+   *
+   * Set this and the fit test changes shape — clearance on the two flat axes,
+   * a hard ceiling on the third. A single padding number cannot express that. A
+   * carton wants room on every side for packing material; an envelope wants a
+   * little slack side-to-side and nothing at all through the thickness, because
+   * that dimension is the flap closing rather than a wall.
+   */
+  maxThicknessIn?: number;
+  /**
+   * eBay's ShippingPackageEnum value for this container, when a specific one
+   * exists. Most packaging has none and uses SAFE_PACKAGE_TYPE — see publish.ts,
+   * where anything eBay rejects falls back to that.
+   */
+  ebayPackageType?: string;
+  /** True for USPS-supplied packaging that must not be used on other services. */
+  carrierSupplied?: boolean;
 }
 
 /**
@@ -34,13 +59,13 @@ export const FILL_OZ_PER_CUBIC_FOOT = 3;
 export const BOXES: Box[] = [
   { id: "poly-sm", name: "Poly mailer, small (10×13)", inner: { l: 12.5, w: 9.5, h: 1 }, emptyOz: 0.6 },
   { id: "box-8x6x4", name: "Box 8×6×4", inner: { l: 8, w: 6, h: 4 }, emptyOz: 3 },
-  { id: "usps-fr-sm", name: "USPS Priority Flat Rate, small", inner: { l: 8.6, w: 5.4, h: 1.6 }, emptyOz: 1.5, flatRate: true },
+  { id: "usps-fr-sm", name: "USPS Priority Flat Rate, small box", inner: { l: 8.6, w: 5.4, h: 1.6 }, emptyOz: 1.5, flatRate: true, carrierSupplied: true },
   { id: "poly-lg", name: "Poly mailer, large (14×17)", inner: { l: 16.5, w: 13.5, h: 1.5 }, emptyOz: 1.2 },
   { id: "box-10x8x6", name: "Box 10×8×6", inner: { l: 10, w: 8, h: 6 }, emptyOz: 5 },
-  { id: "usps-fr-md", name: "USPS Priority Flat Rate, medium", inner: { l: 11, w: 8.5, h: 5.5 }, emptyOz: 4, flatRate: true },
+  { id: "usps-fr-md", name: "USPS Priority Flat Rate, medium box (top-load)", inner: { l: 11, w: 8.5, h: 5.5 }, emptyOz: 4, flatRate: true, carrierSupplied: true },
   { id: "box-12x9x4", name: "Box 12×9×4", inner: { l: 12, w: 9, h: 4 }, emptyOz: 5 },
   { id: "box-12x12x8", name: "Box 12×12×8", inner: { l: 12, w: 12, h: 8 }, emptyOz: 8 },
-  { id: "usps-fr-lg", name: "USPS Priority Flat Rate, large", inner: { l: 12, w: 12, h: 5.5 }, emptyOz: 6, flatRate: true },
+  { id: "usps-fr-lg", name: "USPS Priority Flat Rate, large box", inner: { l: 12, w: 12, h: 5.5 }, emptyOz: 6, flatRate: true, carrierSupplied: true },
   { id: "box-14x11x6", name: "Box 14×11×6", inner: { l: 14, w: 11, h: 6 }, emptyOz: 9 },
   { id: "box-16x12x8", name: "Box 16×12×8", inner: { l: 16, w: 12, h: 8 }, emptyOz: 13 },
   { id: "box-18x14x10", name: "Box 18×14×10", inner: { l: 18, w: 14, h: 10 }, emptyOz: 19 },
@@ -57,6 +82,69 @@ export const BOXES: Box[] = [
   { id: "box-16x16x4", name: "Box 16×16×4 (flat)", inner: { l: 16, w: 16, h: 4 }, emptyOz: 10 },
   { id: "box-20x16x4", name: "Box 20×16×4 (flat)", inner: { l: 20, w: 16, h: 4 }, emptyOz: 12 },
   { id: "box-24x20x4", name: "Box 24×20×4 (flat)", inner: { l: 24, w: 20, h: 4 }, emptyOz: 16 },
+
+  // ── USPS Priority Flat Rate envelopes ──────────────────────────────────────
+  //
+  // One price to anywhere in the US up to 70 lb, which makes them the cheapest
+  // way to move anything small and heavy — a lens, a pair of brake pads, a stack
+  // of silver coins. Weight-based pricing loses badly on those and wins on
+  // anything light, so the estimator prices both and lets the seller pick.
+  //
+  // The height figure is a realistic thickness the flap will still close over,
+  // not a wall of a box. Padding is a quarter inch for the same reason.
+  {
+    id: "usps-fre",
+    name: "USPS Flat Rate Envelope (12½×9½)",
+    inner: { l: 12.5, w: 9.5, h: 0.75 },
+    emptyOz: 0.8,
+    flatRate: true,
+    carrierSupplied: true,
+    paddingIn: 0.5,
+    maxThicknessIn: 0.75,
+    ebayPackageType: "USPS_FLAT_RATE_ENVELOPE",
+  },
+  {
+    id: "usps-fre-legal",
+    name: "USPS Legal Flat Rate Envelope (15×9½)",
+    inner: { l: 15, w: 9.5, h: 0.75 },
+    emptyOz: 0.9,
+    flatRate: true,
+    carrierSupplied: true,
+    paddingIn: 0.5,
+    maxThicknessIn: 0.75,
+    ebayPackageType: "USPS_FLAT_RATE_ENVELOPE",
+  },
+  {
+    id: "usps-fre-padded",
+    name: "USPS Padded Flat Rate Envelope (12½×9½)",
+    inner: { l: 12.5, w: 9.5, h: 1 },
+    emptyOz: 1.8,
+    flatRate: true,
+    carrierSupplied: true,
+    paddingIn: 0.5,
+    maxThicknessIn: 1,
+    ebayPackageType: "USPS_FLAT_RATE_ENVELOPE",
+  },
+
+  // Two more flat-rate boxes with shapes nothing else covers: the side-loading
+  // medium is broad and shallow where the top-loading one is deep, and the board
+  // game box is the only flat-rate container over 15 inches long.
+  {
+    id: "usps-fr-md-side",
+    name: "USPS Priority Flat Rate, medium box (side-load)",
+    inner: { l: 13.6, w: 11.8, h: 3.4 },
+    emptyOz: 5,
+    flatRate: true,
+    carrierSupplied: true,
+  },
+  {
+    id: "usps-fr-boardgame",
+    name: "USPS Priority Flat Rate, large board game box",
+    inner: { l: 24.1, w: 11.8, h: 3.1 },
+    emptyOz: 9,
+    flatRate: true,
+    carrierSupplied: true,
+  },
 
   // Long-and-narrow, for tools, curtain rods, bats, lamp stems.
   { id: "box-20x6x6", name: "Box 20×6×6 (long)", inner: { l: 20, w: 6, h: 6 }, emptyOz: 9 },
@@ -82,10 +170,19 @@ export function volumeIn3(d: { l: number; w: number; h: number }): number {
 export function fits(
   item: { l: number; w: number; h: number },
   box: Box,
-  padding = PADDING_IN
+  padding = box.paddingIn ?? PADDING_IN
 ): boolean {
   const i = [item.l, item.w, item.h].sort((a, b) => b - a);
   const b = [box.inner.l, box.inner.w, box.inner.h].sort((a, b) => b - a);
+
+  // Envelopes: clearance across the face, a hard ceiling through the thickness.
+  // Treating the thickness like another padded axis is what made every envelope
+  // appear to fit nothing — a 0.6" item "needed" 0.85" of a 0.75" envelope.
+  if (box.maxThicknessIn !== undefined) {
+    if (i[2] > box.maxThicknessIn) return false;
+    return i[0] + padding <= b[0] && i[1] + padding <= b[1];
+  }
+
   return i.every((v, idx) => v + padding <= b[idx]);
 }
 
@@ -99,6 +196,16 @@ export function fits(
  */
 export function selectBox(item: { l: number; w: number; h: number }): Box | null {
   return BOXES.find((box) => !box.flatRate && fits(item, box)) ?? null;
+}
+
+/** Every flat-rate container, in the order a seller would scan a list. */
+export function flatRateContainers(): Box[] {
+  return BOXES.filter((b) => b.flatRate);
+}
+
+/** Look one up by id. */
+export function boxById(id: string | undefined): Box | null {
+  return BOXES.find((b) => b.id === id) ?? null;
 }
 
 /** Packing material weight for the air left around the item. */

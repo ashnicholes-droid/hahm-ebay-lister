@@ -167,6 +167,8 @@ the box or spec plate where there is one — and the app does the rest:
 
 - picks the smallest box that fits with padding (flat boxes for broad, thin
   things; long boxes for tools and rods)
+- prices **every USPS flat-rate container the item fits** — the three flat-rate
+  envelopes (plain, legal, padded) and the five flat-rate boxes
 - adds the box's own weight and packing fill
 - computes **dimensional weight**, which is what carriers actually bill on once
   a package passes one cubic foot
@@ -192,6 +194,36 @@ before weight starts mattering again.
 A wrong box is expensive: in testing, a 13-inch cast iron skillet in the wrong
 carton estimated **$55** and a **−$16** loss; in the right flat box it was
 **$23** and **+$16**.
+
+### Choosing the packaging yourself
+
+The estimator recommends the cheapest option that fits, but **you can pick any of
+them** from the radio list — the headline, packed weight, container size, margin
+figures, and what gets sent to eBay all follow your choice, not the cheapest.
+
+This matters most for flat rate, which ignores weight entirely up to 70 lb. A
+40 oz camera lens costs **$9.90** in a Flat Rate Envelope against **$11.40**
+weight-based; a 2 oz item in the same envelope would be paying roughly double for
+nothing. Neither is knowable in advance, so both get priced and you decide.
+
+Envelopes are not modelled as small boxes. A carton needs packing room on every
+side; an envelope needs a little slack across the face and nothing at all through
+the thickness, because that dimension is the flap closing. So the fit test uses a
+clearance on two axes and a hard thickness ceiling on the third — ¾″ for the
+plain and legal envelopes, 1″ for the padded one.
+
+If you later correct a dimension so your chosen container no longer fits, the
+selection is **dropped with a warning** rather than honoured. Publishing a
+package the item demonstrably cannot go into is the one outcome worse than
+silently reverting to the cheapest that works.
+
+⚠️ **Flat rate is what *you* pay at the counter, not necessarily what the buyer
+is charged.** What the buyer sees comes from your eBay shipping policy — if that
+policy offers calculated shipping, eBay prices by weight and size regardless of
+what you picked here. To charge the buyer a flat rate, either tick free shipping
+and build the postage into your price, or use an eBay policy with a fixed
+shipping cost. The panel says this on-screen whenever you select a flat-rate
+option.
 
 ### Free shipping vs. buyer pays
 

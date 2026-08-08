@@ -1,4 +1,5 @@
 import { listingQuantity, volumeDiscount } from "@/lib/quantity";
+import { estimateShipping } from "@/lib/shipping/estimate";
 import type { ItemGroup, ListingResult } from "@/lib/types";
 
 function priceNumber(value: ListingResult["suggested_price"]): string {
@@ -24,6 +25,23 @@ const CSV_COLUMNS: { header: string; get: (l: ListingResult) => string }[] = [
     },
   },
   { header: "Condition", get: (l) => (l.condition ?? "").replace(/_/g, " ") },
+  {
+    // What you'll actually put it in, so the packing list matches the listing.
+    header: "Packaging",
+    get: (l) => {
+      const e = estimateShipping({
+        itemOz: l.shipping_weight_oz,
+        itemDims: {
+          l: Number(l.shipping_length_in) || undefined,
+          w: Number(l.shipping_width_in) || undefined,
+          h: Number(l.shipping_height_in) || undefined,
+        },
+        category: l.category,
+        selectedOptionId: l.shipping_option_id,
+      });
+      return e.chosen ? `${e.chosen.serviceName} — ${e.chosenPackage?.name ?? ""}`.trim() : "";
+    },
+  },
   { header: "Brand", get: (l) => l.brand ?? "" },
   { header: "Item Type", get: (l) => l.item_type ?? "" },
   {

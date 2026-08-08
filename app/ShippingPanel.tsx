@@ -29,6 +29,7 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
           h: Number(listing.shipping_height_in) || undefined,
         },
         category: listing.category,
+        selectedOptionId: listing.shipping_option_id,
       }),
     [
       listing.shipping_weight_oz,
@@ -36,12 +37,16 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
       listing.shipping_width_in,
       listing.shipping_height_in,
       listing.category,
+      listing.shipping_option_id,
     ]
   );
 
   const price = Number(listing.suggested_price) || 0;
   const quantity = listingQuantity(listing);
-  const shipCost = estimate.recommended?.usd ?? 0;
+  // Every figure below prices what will ACTUALLY be shipped, so a deliberate
+  // choice to pay more for a flat-rate envelope shows its real effect on margin
+  // instead of the cheapest option's.
+  const shipCost = estimate.chosen?.usd ?? 0;
   const free = listing.shipping_free === true;
 
   // eBay's final value fee is roughly 13.25% + $0.40 on most categories — close
@@ -97,10 +102,10 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
     <section className={`shipping shipping-${estimate.basis}`} aria-labelledby={`ship-${groupId}`}>
       <header className="shipping-head">
         <strong id={`ship-${groupId}`}>📦 Shipping</strong>
-        {estimate.recommended ? (
+        {estimate.chosen ? (
           <span className="shipping-headline">
-            {money(estimate.recommended.usd)} · {estimate.recommended.serviceName} ·{" "}
-            {estimate.recommended.boxName}
+            {money(estimate.chosen.usd)} · {estimate.chosen.serviceName}
+            {estimate.chosen.flatRate ? "" : ` · ${estimate.chosen.boxName}`}
           </span>
         ) : (
           <span className="shipping-headline warn">No standard box fits — price manually</span>
@@ -120,43 +125,87 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         {field("shipping_height_in", "Height", "in", estimate.itemDims.h, estimate.provided.h)}
       </div>
 
-      {estimate.box && (
+      {estimate.chosenPackage && (
         <dl className="ship-summary">
           <div>
             <dt>Packed weight</dt>
             <dd>
-              {estimate.packedOz} oz
-              <small> (item + box + fill)</small>
+              {estimate.chosenPackage.packedOz} oz
+              <small> (item + packaging + fill)</small>
             </dd>
           </div>
           <div>
             <dt>Billed as</dt>
             <dd>
-              {estimate.billableOz} oz
-              {estimate.dimensionalOz > 0 && <small> (box volume, not the scale)</small>}
+              {/* Flat rate ignores weight entirely, so quoting a billable weight
+                  next to it would be describing a calculation that isn't
+                  happening. */}
+              {estimate.chosen?.flatRate ? (
+                <>
+                  flat rate<small> (weight doesn&rsquo;t matter, up to 70 lb)</small>
+                </>
+              ) : (
+                <>
+                  {estimate.billableOz} oz
+                  {estimate.dimensionalOz > 0 && <small> (box volume, not the scale)</small>}
+                </>
+              )}
             </dd>
           </div>
           <div>
-            <dt>Box</dt>
+            <dt>{estimate.chosen?.flatRate ? "Container" : "Box"}</dt>
             <dd>
-              {estimate.box.outer.l}×{estimate.box.outer.w}×{estimate.box.outer.h} in
+              {estimate.chosenPackage.outer.l}×{estimate.chosenPackage.outer.w}×
+              {estimate.chosenPackage.outer.h} in
             </dd>
           </div>
         </dl>
       )}
 
       {estimate.options.length > 0 && (
-        <table className="ship-options">
-          <tbody>
-            {estimate.options.map((o) => (
-              <tr key={`${o.serviceId}-${o.boxId}`} className={o === estimate.recommended ? "best" : ""}>
-                <td>{o.serviceName}</td>
-                <td className="ship-box">{o.boxName}</td>
-                <td className="ship-cost">{money(o.usd)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <fieldset className="ship-options">
+          <legend>Packaging &amp; service</legend>
+          <label className={`ship-option${estimate.manualSelection ? "" : " best"}`}>
+            <input
+              type="radio"
+              name={`ship-opt-${groupId}`}
+              checked={!estimate.manualSelection}
+              onChange={() => onEdit(groupId, { shipping_option_id: "" })}
+            />
+            <span className="ship-option-name">
+              Cheapest that fits
+              {estimate.recommended && (
+                <small> — currently {estimate.recommended.serviceName}</small>
+              )}
+            </span>
+            <span className="ship-cost">
+              {estimate.recommended ? money(estimate.recommended.usd) : "—"}
+            </span>
+          </label>
+
+          {estimate.options.map((o) => (
+            <label
+              key={o.id}
+              className={`ship-option${estimate.manualSelection && o.id === estimate.chosen?.id ? " best" : ""}`}
+            >
+              <input
+                type="radio"
+                name={`ship-opt-${groupId}`}
+                checked={estimate.manualSelection && o.id === estimate.chosen?.id}
+                onChange={() => onEdit(groupId, { shipping_option_id: o.id })}
+              />
+              <span className="ship-option-name">
+                {o.serviceName}
+                {o.flatRate ? (
+                  <small className="ship-flat-tag">flat rate — any weight</small>
+                ) : (
+                  <small> — {o.boxName}</small>
+                )}
+              </span>
+              <span className="ship-cost">{money(o.usd)}</span>
+            </label>
+          ))}
+        </fieldset>
       )}
 
       <div className="ship-mode">
@@ -214,6 +263,16 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
           ⚠️ {w}
         </p>
       ))}
+
+      {estimate.manualSelection && estimate.chosen?.flatRate && (
+        <p className="ship-warning">
+          ⚠️ Flat rate is what <em>you</em> will pay at the counter. What the <em>buyer</em> is
+          quoted still comes from your eBay shipping policy — if it offers calculated shipping,
+          eBay prices by weight and size, not by this flat rate. To charge the buyer the flat
+          rate, tick free shipping and build it into your price, or use an eBay policy with a
+          fixed shipping cost.
+        </p>
+      )}
 
       <p className="ship-footnote">
         Costs are from a built-in rate table ({estimate.rateSource}, {estimate.rateTableEffective}) —

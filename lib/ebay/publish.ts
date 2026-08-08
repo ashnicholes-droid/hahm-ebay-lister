@@ -281,7 +281,13 @@ export function defaultPackageWeightAndSize(
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
 
-  let derived: { weightOz: number; l: number; w: number; h: number } | null = null;
+  let derived: {
+    weightOz: number;
+    l: number;
+    w: number;
+    h: number;
+    packageType?: string;
+  } | null = null;
   if (listing) {
     const estimate = estimateShipping({
       itemOz: listing.shipping_weight_oz,
@@ -291,6 +297,7 @@ export function defaultPackageWeightAndSize(
         h: Number(listing.shipping_height_in) || undefined,
       },
       category: catKey,
+      selectedOptionId: listing.shipping_option_id,
     });
     // Use the estimate as soon as ANYTHING was actually supplied — by the model
     // or, more importantly, typed in by the seller.
@@ -302,7 +309,10 @@ export function defaultPackageWeightAndSize(
     // favour of the class profile. An edit that silently does nothing is worse
     // than no edit box at all.
     const p = estimate.provided;
-    if (p.weight || p.l || p.w || p.h) {
+    // A deliberate packaging choice is a supplied figure too. Without this, a
+    // seller who picks a Padded Flat Rate Envelope but leaves the weight to the
+    // photos publishes the class-profile carton instead of the envelope.
+    if (p.weight || p.l || p.w || p.h || estimate.manualSelection) {
       derived = ebayPackageFromEstimate(estimate);
     }
   }
@@ -325,7 +335,10 @@ export function defaultPackageWeightAndSize(
       height: pick(derived?.h, process.env.EBAY_DEFAULT_PACKAGE_HEIGHT_IN, profile.h),
       unit: "INCH",
     },
-    packageType: SAFE_PACKAGE_TYPE,
+    // Flat-rate envelopes have their own eBay enum value; everything else uses
+    // the generic type. If eBay rejects it (error 25101), the recovery ladder in
+    // publishListing retries with SAFE_PACKAGE_TYPE rather than failing.
+    packageType: derived?.packageType || SAFE_PACKAGE_TYPE,
   };
 }
 
