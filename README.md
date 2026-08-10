@@ -165,9 +165,11 @@ Every drafted listing gets a **📦 Shipping** panel. The model estimates the
 item's own weight and dimensions from the photos — reading a figure printed on
 the box or spec plate where there is one — and the app does the rest:
 
-- picks the smallest box that fits with padding, from ~110 standard corrugated
+- picks the smallest box that fits with padding, from ~160 standard corrugated
   sizes, and prices a **cut-to-fit** carton alongside it when cutting one down
   would be cheaper
+- prices **poly mailers** too, which for soft goods are usually the cheapest
+  thing on the list by a wide margin
 - prices **every USPS flat-rate container the item fits** — the three flat-rate
   envelopes (plain, legal, padded) and the five flat-rate boxes
 - adds the box's own weight and packing fill
@@ -216,6 +218,38 @@ Two changes close it:
 
 A test sweeps 1,912 item shapes and fails if *any* of them is billed on volume
 when a snug box would have avoided it.
+
+### Poly mailers
+
+A bag has no volume of its own — it takes the shape of what's inside. That makes
+it the right answer for exactly the items cartons handle worst: bulky, light, and
+not fragile.
+
+A folded wool coat measuring 14×11×4 needs an 18×14×6 carton, which crosses a
+cubic foot and gets billed on 168 oz of volume: **$31.50**. The same coat in a
+24×19 poly mailer is billed on its own volume, with no carton weight and no void
+fill: **$11.40**.
+
+Bags are modelled as bags, not as thin boxes. A mailer wraps, so what has to fit
+its flat width is the item's width **plus** its height, not each of them
+separately — and its dimensional weight comes from the item rather than from a
+container several inches larger on every axis.
+
+**A poly mailer is never recommended for something fragile.** It stays on the
+list for every item, because you know what you're packing and the app doesn't,
+but for anything outside the soft-goods categories the recommendation goes to a
+box and the panel says what the bag would have saved.
+
+### When size, not weight, sets the price
+
+Past a cubic foot, USPS bills on volume. An 18×10×11 item is charged as 216–301 oz
+whether it weighs 4 oz or 200 oz, so editing the weight moves nothing — correct
+arithmetic that reads exactly like a broken input.
+
+The panel now says so **directly under the weight field**, names the dimensional
+weight, and states the packed weight you'd have to exceed before weight starts
+mattering again. It used to say this at the bottom of the panel, below the fold,
+where nobody read it.
 
 ### Choosing the packaging yourself
 

@@ -8,7 +8,11 @@ import {
   rateTable,
   weightBasedRate,
 } from "@/lib/shipping/rates";
-import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estimate";
+import {
+  DIMENSIONAL_WARNING_PREFIX,
+  ebayPackageFromEstimate,
+  estimateShipping,
+} from "@/lib/shipping/estimate";
 import { isFreeShippingPolicy, selectFulfillmentPolicy } from "@/lib/ebay/publish";
 import { defaultPackageWeightAndSize } from "@/lib/ebay/publish";
 import type { AccountSetup } from "@/lib/ebay/publish";
@@ -670,8 +674,8 @@ describe("no item pays for a gap in the box catalogue", () => {
       { l: 13, w: 10, h: 6 },
     ]) {
       const e = estimateShipping({ itemOz: 10, itemDims: dims });
-      const cheapestCarton = e.options.filter((o) => !o.flatRate)[0];
-      if (cheapestCarton) expect(e.box!.id).toBe(cheapestCarton.boxId);
+      // Whatever is in force, the summary describes that container.
+      if (e.chosen && !e.chosen.flatRate) expect(e.chosenPackage!.boxId).toBe(e.chosen.boxId);
     }
   });
 });
@@ -746,5 +750,150 @@ describe("the generated carton catalogue", () => {
       // Nothing in this catalogue is heavier than the item it usually carries.
       expect(b.emptyOz).toBeLessThan(60);
     }
+  });
+});
+
+describe("when volume, not weight, sets the price", () => {
+  // An 18×10×11 item needs a ~3,100 in³ box. USPS bills that on volume, so the
+  // price genuinely cannot move with weight — which reads as a broken input
+  // unless the panel says so where the weight is typed.
+  const bulky = { l: 18, w: 10, h: 11 };
+
+  it("is correct arithmetic, not a bug", () => {
+    const prices = [4, 12, 40, 200].map(
+      (oz) => estimateShipping({ itemOz: oz, itemDims: bulky }).recommended!.usd
+    );
+    expect(new Set(prices).size).toBe(1);
+  });
+
+  it("still moves once the weight passes the dimensional weight", () => {
+    const light = estimateShipping({ itemOz: 12, itemDims: bulky });
+    const heavy = estimateShipping({ itemOz: 400, itemDims: bulky });
+    expect(heavy.recommended!.usd).toBeGreaterThan(light.recommended!.usd);
+  });
+
+  it("exposes the dimensional weight so the panel can explain the flat price", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: bulky });
+    expect(e.dimensionalOz).toBeGreaterThan(Math.ceil(e.chosenPackage!.packedOz));
+    expect(e.billableOz).toBe(e.dimensionalOz);
+  });
+
+  it("tags the warning so the panel can lift it out of the list", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: bulky });
+    const dim = e.warnings.filter((w) => w.startsWith(DIMENSIONAL_WARNING_PREFIX));
+    expect(dim).toHaveLength(1);
+  });
+
+  it("says nothing of the kind when the scale is what's billed", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: { l: 8, w: 6, h: 3 } });
+    expect(e.dimensionalOz).toBe(0);
+    expect(e.warnings.filter((w) => w.startsWith(DIMENSIONAL_WARNING_PREFIX))).toEqual([]);
+  });
+});
+
+describe("more than one box to choose from", () => {
+  it("offers several stock cartons, not just the single best one", () => {
+    // "I don't see box options" — the estimator picking the ideal box is not the
+    // same as the seller owning it.
+    const e = estimateShipping({ itemOz: 12, itemDims: { l: 18, w: 10, h: 11 } });
+    const cartons = new Set(e.options.filter((o) => !o.flatRate).map((o) => o.boxId));
+    expect(cartons.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("covers tall items, which had only two boxes in the whole catalogue", () => {
+    const fitting = BOXES.filter((b) => !b.flatRate && fits({ l: 18, w: 10, h: 11 }, b));
+    expect(fitting.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("keeps the list price-sorted and recommends the cheapest suitable option", () => {
+    // "Suitable" matters: with no category given, a poly bag is listed but not
+    // recommended, so the cheapest row is not always the recommendation.
+    const e = estimateShipping({ itemOz: 12, itemDims: { l: 18, w: 10, h: 11 } });
+    const costs = e.options.map((o) => o.usd);
+    expect(costs).toEqual([...costs].sort((a, b) => a - b));
+    const suitable = e.options.filter((o) => !o.polyBag).map((o) => o.usd);
+    expect(e.recommended!.usd).toBe(Math.min(...suitable));
+  });
+});
+
+// Poly mailers. The point of a bag is that it has no volume of its own — it
+// takes the item's shape — so for anything bulky and light it dodges the
+// dimensional weight a carton cannot.
+describe("poly mailers", () => {
+  const jacket = { l: 14, w: 11, h: 4 };
+
+  it("wraps rather than encloses, so width and height are added, not compared", () => {
+    const bag = BOXES.find((b) => b.id === "poly-19x14.5")!;
+    // 12 + 1 fits the 14.5 flat width...
+    expect(fits({ l: 14, w: 8, h: 4 }, bag)).toBe(true);
+    // ...but 10 + 6 does not, even though each is under 14.5 on its own.
+    expect(fits({ l: 14, w: 10, h: 6 }, bag)).toBe(false);
+    // And nothing longer than the bag goes in it.
+    expect(fits({ l: 20, w: 4, h: 2 }, bag)).toBe(false);
+  });
+
+  it("is priced on the item's own volume, not a carton's", () => {
+    const e = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    const bag = e.options.find((o) => o.polyBag)!;
+    // Against a real stock carton, not the cut-to-fit box, which can tie.
+    const stockBox = e.options.find(
+      (o) => !o.polyBag && !o.flatRate && o.boxId !== CUT_TO_FIT_ID
+    )!;
+    expect(bag.usd).toBeLessThan(stockBox.usd);
+  });
+
+  it("saves a bulky light item from dimensional weight entirely", () => {
+    // In a carton this jacket crosses a cubic foot and bills at 168 oz.
+    const e = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    expect(e.recommended!.polyBag).toBe(true);
+    expect(e.recommended!.dimensionalPricing).toBe(false);
+  });
+
+  it("adds no void fill, because there is no void", () => {
+    const e = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    // Item plus the bag itself, and nothing else.
+    expect(e.chosenPackage!.packedOz).toBeLessThan(36);
+  });
+
+  it("is never recommended for something fragile", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: { l: 18, w: 10, h: 11 }, category: "glassware" });
+    expect(e.recommended!.polyBag).toBe(false);
+    // But it stays on the list — the seller knows their item.
+    expect(e.options.some((o) => o.polyBag)).toBe(true);
+  });
+
+  it("explains itself when it declines to recommend the cheapest thing", () => {
+    const e = estimateShipping({ itemOz: 12, itemDims: { l: 18, w: 10, h: 11 }, category: "glassware" });
+    const cheapest = Math.min(...e.options.map((o) => o.usd));
+    expect(e.recommended!.usd).toBeGreaterThan(cheapest);
+    expect(e.warnings.join(" ")).toMatch(/no protection/i);
+  });
+
+  it("does not crowd the list with bigger bags that cost the same", () => {
+    const e = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    const bagIds = new Set(e.options.filter((o) => o.polyBag).map((o) => o.boxId));
+    expect(bagIds.size).toBe(1);
+  });
+
+  it("keeps a cut-to-fit box on the list even when a bag matches its price", () => {
+    // A bag and a box at the same price are not the same offer, and the box is
+    // the only right answer for anything that can be crushed.
+    const e = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    expect(e.options.some((o) => o.boxId === CUT_TO_FIT_ID)).toBe(true);
+  });
+
+  it("publishes the item's own size when a bag is chosen", () => {
+    const a = estimateShipping({ itemOz: 32, itemDims: jacket, category: "mens_coat" });
+    const bag = a.options.find((o) => o.polyBag)!;
+    const e = estimateShipping({
+      itemOz: 32,
+      itemDims: jacket,
+      category: "mens_coat",
+      selectedOptionId: bag.id,
+    });
+    const pkg = ebayPackageFromEstimate(e)!;
+    // Close to the jacket, not to a 18x14x6 carton.
+    expect(pkg.h).toBeLessThan(6);
+    expect(pkg.l).toBeLessThan(16);
   });
 });

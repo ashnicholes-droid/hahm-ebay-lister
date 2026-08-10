@@ -18,7 +18,8 @@ import {
   cutToFitBox,
   fillOz,
   fits,
-  selectBox,
+  polyMailersFor,
+  selectBoxes,
   volumeIn3,
   type Box,
 } from "./boxes";
@@ -51,7 +52,20 @@ export interface ShippingOption {
   dimensionalPricing: boolean;
   /** True for USPS-supplied flat-rate packaging. */
   flatRate: boolean;
+  /** True for a poly mailer, which is priced on the item's own volume. */
+  polyBag: boolean;
 }
+
+/**
+ * Marker for the dimensional-weight warning.
+ *
+ * The panel renders this one as a callout beside the weight field rather than in
+ * the warning list at the bottom, because "why did editing the weight do
+ * nothing" is a question you ask while looking at the weight field, and an
+ * answer 800 pixels below it is an answer nobody reads. Exported so the panel
+ * can pull it out of the list by identity instead of by guessing at its wording.
+ */
+export const DIMENSIONAL_WARNING_PREFIX = "Priced on dimensional weight";
 
 /** Identity of a service + container pair. */
 export function optionId(serviceId: ServiceId, boxId: string): string {
@@ -150,11 +164,67 @@ const DEFAULT_ITEM = { oz: 16, dims: { l: 10, w: 8, h: 3 } };
 /** Cardboard adds roughly this much to each outer dimension. */
 const WALL_IN = 0.5;
 
-function outerOf(box: Box): Dimensions {
+/**
+ * How many stock cartons to price alongside the cut-to-fit one.
+ *
+ * More than one because the estimator picking the ideal box is not the same as
+ * the seller owning it; capped because a hundred near-identical rows is not a
+ * choice, it's a wall.
+ */
+const STOCK_BOX_CHOICES = 3;
+
+/**
+ * Item classes where a poly mailer is sound packaging rather than a gamble.
+ * Soft, flat, or robust enough that nothing inside can be crushed.
+ */
+const SOFT_GOODS_CATEGORIES = new Set([
+  "womens_coat",
+  "mens_coat",
+  "womens_top",
+  "mens_top",
+  "womens_dress",
+  "womens_pants",
+  "mens_pants",
+  "womens_skirt",
+  "activewear",
+  "sleepwear",
+  "swimwear",
+  "outerwear",
+  "sweater",
+  "linens",
+  "plush",
+  "textile",
+  "fabric",
+  "accessory",
+  "scarf",
+  "hat",
+  "bag",
+]);
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * The outside of a packed container.
+ *
+ * A carton has a size of its own and the item rattles around inside it. A poly
+ * bag has no size until you fill it — it takes the item's shape plus the
+ * thickness of the film — so its dimensions, and therefore its dimensional
+ * weight, come from the item. That difference is the whole reason a bag is
+ * cheaper for something bulky and light.
+ */
+function outerOf(box: Box, item?: Dimensions): Dimensions {
+  if (box.polyBag && item) {
+    const slack = 0.5;
+    return {
+      l: round1(item.l + slack),
+      w: round1(item.w + slack),
+      h: round1(item.h + slack),
+    };
+  }
   return {
-    l: Math.round((box.inner.l + WALL_IN) * 10) / 10,
-    w: Math.round((box.inner.w + WALL_IN) * 10) / 10,
-    h: Math.round((box.inner.h + WALL_IN) * 10) / 10,
+    l: round1(box.inner.l + WALL_IN),
+    w: round1(box.inner.w + WALL_IN),
+    h: round1(box.inner.h + WALL_IN),
   };
 }
 
@@ -199,6 +269,8 @@ export interface EstimateInput {
 export function estimateShipping(input: EstimateInput): ShippingEstimate {
   const table = input.rates ?? rateTable();
   const warnings: string[] = [];
+  const softGoods = SOFT_GOODS_CATEGORIES.has(String(input.category ?? ""));
+  const recommendable = (o: ShippingOption) => !o.polyBag || softGoods;
 
   const fallback = CATEGORY_ITEM_DEFAULTS[String(input.category ?? "")] ?? DEFAULT_ITEM;
 
@@ -241,10 +313,13 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   // are offered. Relying on stock sizes alone is what left a 19×7×5 item paying
   // $78 to ship in a 24×18×12 — no seller would do that rather than spend a
   // minute with a knife.
-  const stock = selectBox(itemDims);
+  const stockBoxes = selectBoxes(itemDims, STOCK_BOX_CHOICES);
   const cut = cutToFitBox(itemDims);
-  const cartons: Box[] = [];
-  if (stock) cartons.push(stock);
+  // The smallest poly mailer that fits. Only one: bigger bags cost the same to
+  // ship (the item sets the volume either way), so listing four of them is four
+  // identical prices and no decision.
+  const poly = polyMailersFor(itemDims).slice(0, 1);
+  const cartons: Box[] = [...stockBoxes, ...poly];
   // Only when USPS would actually take it: cutting a box to fit does not make a
   // 40-inch item mailable, and silently pricing one as a parcel would be worse
   // than saying so.
@@ -254,8 +329,10 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   // the summary figures — so the box named in the summary is always the box the
   // recommended option is actually priced from.
   const packing = cartons.map((carton) => {
-    const cOuter = outerOf(carton);
-    const cPacked = Math.round((itemOz + carton.emptyOz + fillOz(carton, itemDims)) * 10) / 10;
+    const cOuter = outerOf(carton, itemDims);
+    // No void fill in a bag — there is no void.
+    const fill = carton.polyBag ? 0 : fillOz(carton, itemDims);
+    const cPacked = Math.round((itemOz + carton.emptyOz + fill) * 10) / 10;
     const cDimOz = dimensionalOz(cOuter);
     return {
       carton,
@@ -317,6 +394,7 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
         usd,
         dimensionalPricing: pk.dimensional,
         flatRate: false,
+        polyBag: Boolean(pk.carton.polyBag),
       });
     }
   }
@@ -345,14 +423,20 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
       usd,
       dimensionalPricing: false,
       flatRate: true,
+      polyBag: false,
     });
   }
 
   // Drop a cut-to-fit option that costs the same as (or more than) the stock box
   // on the same service — no one should cut cardboard for zero saving.
+  //
+  // Compared against stock CARTONS only. Comparing against a poly bag as well
+  // would drop the cut-to-fit box whenever a bag matched its price — losing the
+  // only right answer for anything fragile, since a bag and a box at the same
+  // price are not the same offer.
   const stockPrice = new Map<string, number>();
   for (const o of options) {
-    if (o.boxId !== CUT_TO_FIT_ID) {
+    if (o.boxId !== CUT_TO_FIT_ID && !o.polyBag) {
       const prev = stockPrice.get(o.serviceId);
       if (prev === undefined || o.usd < prev) stockPrice.set(o.serviceId, o.usd);
     }
@@ -366,7 +450,7 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   // The carton the summary describes is the one behind the cheapest surviving
   // weight-based option — never a box that was priced and then dropped.
   const cheapestCarton = options
-    .filter((o) => !o.flatRate)
+    .filter((o) => !o.flatRate && recommendable(o))
     .sort((a, b) => a.usd - b.usd)[0];
   const primary =
     packing.find((pk) => pk.carton.id === cheapestCarton?.boxId) ??
@@ -391,7 +475,21 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   // warning rather than honoured: dimensions get corrected after a container is
   // chosen, and publishing a package the item demonstrably cannot go in is the
   // one outcome worse than reverting to the cheapest that works.
-  const recommended = options[0] ?? null;
+  // A bag is usually the cheapest thing that "fits" a vase, and recommending one
+  // would be advice that breaks the vase. Poly stays selectable for everything —
+  // the seller knows their item — but is only recommended for goods that can
+  // take it.
+  const recommended = options.find(recommendable) ?? options[0] ?? null;
+
+  // When a bag is cheaper but isn't being recommended, say why. Otherwise the
+  // panel silently recommends $55 with $31.50 visible one row below, which
+  // reads as a bug rather than as a judgement about fragility.
+  const cheaperBag = options.find((o) => o.polyBag);
+  if (!softGoods && cheaperBag && recommended && cheaperBag.usd < recommended.usd) {
+    warnings.push(
+      `A poly mailer would cost ${(recommended.usd - cheaperBag.usd).toFixed(2)} less, but it isn't recommended for this kind of item — a bag offers no protection. Pick it below if this one can take it.`
+    );
+  }
   const picked = input.selectedOptionId
     ? options.find((o) => o.id === input.selectedOptionId) ?? null
     : null;
@@ -402,20 +500,31 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
   }
 
   const chosen = picked ?? recommended;
-  // Resolve through the carton list first: the cut-to-fit box is generated for
-  // this item and is deliberately not in the global catalogue.
-  const chosenBox = chosen
-    ? cartons.find((c) => c.id === chosen.boxId) ?? boxById(chosen.boxId)
-    : null;
-  const chosenPackage = chosenBox
+
+  // Reuse the packing entry computed above rather than recomputing it here.
+  // Recomputing was a real bug: this copy added void fill to a poly bag and took
+  // the bag's nominal size instead of the item's, so a jacket in a mailer
+  // published as a carton — the exact thing choosing a bag is meant to avoid.
+  const chosenPacking = chosen ? packing.find((pk) => pk.carton.id === chosen.boxId) : null;
+  // Flat-rate containers are not in `packing` (they are priced by box, not by
+  // weight), so they still need their own figures.
+  const flatRateBox = chosen && !chosenPacking ? boxById(chosen.boxId) : null;
+  const chosenPackage = chosenPacking
     ? {
-        boxId: chosenBox.id,
-        name: chosenBox.name,
-        outer: outerOf(chosenBox),
-        packedOz:
-          Math.round((itemOz + chosenBox.emptyOz + fillOz(chosenBox, itemDims)) * 10) / 10,
+        boxId: chosenPacking.carton.id,
+        name: chosenPacking.carton.name,
+        outer: chosenPacking.outer,
+        packedOz: chosenPacking.packedOz,
       }
-    : null;
+    : flatRateBox
+      ? {
+          boxId: flatRateBox.id,
+          name: flatRateBox.name,
+          outer: outerOf(flatRateBox, itemDims),
+          packedOz:
+            Math.round((itemOz + flatRateBox.emptyOz + fillOz(flatRateBox, itemDims)) * 10) / 10,
+        }
+      : null;
 
   return {
     itemOz,

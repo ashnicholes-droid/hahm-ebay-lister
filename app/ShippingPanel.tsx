@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { estimateShipping } from "@/lib/shipping/estimate";
+import { useMemo, useState } from "react";
+import { DIMENSIONAL_WARNING_PREFIX, estimateShipping } from "@/lib/shipping/estimate";
 import { listingQuantity } from "@/lib/quantity";
 import type { ListingResult } from "@/lib/types";
 
@@ -13,12 +13,16 @@ interface ShippingPanelProps {
 
 const money = (usd: number) => `$${usd.toFixed(2)}`;
 
+/** Options shown before the list collapses behind "show more". */
+const VISIBLE_OPTIONS = 5;
+
 function num(v: unknown): string {
   const n = typeof v === "string" ? parseFloat(v) : (v as number);
   return Number.isFinite(n) && n > 0 ? String(n) : "";
 }
 
 export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) {
+  const [showAll, setShowAll] = useState(false);
   const estimate = useMemo(
     () =>
       estimateShipping({
@@ -62,6 +66,15 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
   const netFree = canCompare ? price - shipCost - fee(price) : null;
   const netPaid = canCompare ? price - fee(price + shipCost) : null;
   const netActive = free ? netFree : netPaid;
+
+  // Show the cheapest handful, plus whatever is selected so a deliberate choice
+  // never disappears behind a "show more" button.
+  const visibleOptions = useMemo(() => {
+    if (showAll) return estimate.options;
+    const top = estimate.options.slice(0, VISIBLE_OPTIONS);
+    const sel = estimate.options.find((o) => o.id === estimate.chosen?.id);
+    return sel && !top.includes(sel) ? [...top, sel] : top;
+  }, [estimate.options, estimate.chosen, showAll]);
 
   // Every field shows the figure the estimate is ACTUALLY using, as a
   // placeholder, whenever the seller (or the photos) didn't supply one. Leaving
@@ -125,6 +138,26 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         {field("shipping_height_in", "Height", "in", estimate.itemDims.h, estimate.provided.h)}
       </div>
 
+      {/* The single most-asked question this panel has to answer: "I changed the
+          weight and nothing happened." It gets answered next to the weight
+          field, not in a warning list below the fold. */}
+      {estimate.dimensionalOz > 0 && (
+        <p className="ship-dim-note">
+          <strong>📐 Size is setting this price, not weight.</strong> Packed, this comes to{" "}
+          {estimate.chosenPackage && (
+            <>
+              {estimate.chosenPackage.outer.l}×{estimate.chosenPackage.outer.w}×
+              {estimate.chosenPackage.outer.h} in
+            </>
+          )}{" "}
+          — over a cubic foot — so USPS bills it as <strong>{estimate.dimensionalOz} oz</strong> of
+          volume however light the item actually is. Editing the weight above won&rsquo;t change the
+          cost until the packed weight passes {estimate.dimensionalOz} oz; only smaller dimensions
+          will. If the item is really smaller than {estimate.itemDims.l}×{estimate.itemDims.w}×
+          {estimate.itemDims.h} in, correct that instead.
+        </p>
+      )}
+
       {estimate.chosenPackage && (
         <dl className="ship-summary">
           <div>
@@ -183,7 +216,7 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
             </span>
           </label>
 
-          {estimate.options.map((o) => (
+          {visibleOptions.map((o) => (
             <label
               key={o.id}
               className={`ship-option${estimate.manualSelection && o.id === estimate.chosen?.id ? " best" : ""}`}
@@ -205,6 +238,13 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
               <span className="ship-cost">{money(o.usd)}</span>
             </label>
           ))}
+
+          {estimate.options.length > visibleOptions.length && (
+            <button type="button" className="ship-more" onClick={() => setShowAll(true)}>
+              Show {estimate.options.length - visibleOptions.length} more packaging option
+              {estimate.options.length - visibleOptions.length === 1 ? "" : "s"}
+            </button>
+          )}
         </fieldset>
       )}
 
@@ -258,11 +298,15 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         </p>
       )}
 
-      {estimate.warnings.map((w) => (
-        <p className="ship-warning" key={w}>
-          ⚠️ {w}
-        </p>
-      ))}
+      {/* The dimensional-weight warning is rendered above as a callout, so it is
+          filtered out here rather than said twice. */}
+      {estimate.warnings
+        .filter((w) => !w.startsWith(DIMENSIONAL_WARNING_PREFIX))
+        .map((w) => (
+          <p className="ship-warning" key={w}>
+            ⚠️ {w}
+          </p>
+        ))}
 
       {estimate.manualSelection && estimate.chosen?.flatRate && (
         <p className="ship-warning">

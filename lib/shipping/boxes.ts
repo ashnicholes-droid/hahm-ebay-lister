@@ -43,6 +43,21 @@ export interface Box {
   ebayPackageType?: string;
   /** True for USPS-supplied packaging that must not be used on other services. */
   carrierSupplied?: boolean;
+  /**
+   * A poly mailer: a bag, not a container with a shape of its own.
+   *
+   * Two things follow, and both are worth real money. It has no fixed volume —
+   * it takes the shape of what's inside, so dimensional weight is computed from
+   * the ITEM rather than from a carton several inches larger on every axis. And
+   * it weighs an ounce or two instead of ten to thirty.
+   *
+   * Fit works differently too: a bag wraps, so what matters is length along the
+   * bag and the item's WIDTH PLUS HEIGHT against the bag's flat width, not three
+   * independent axes.
+   */
+  polyBag?: { flatL: number; flatW: number };
+  /** Poly bags offer no protection; only sensible for soft or robust goods. */
+  softGoodsOnly?: boolean;
 }
 
 /**
@@ -52,6 +67,42 @@ export interface Box {
 export const PADDING_IN = 1.5;
 /** Bubble wrap / paper fill, ounces, scaled by how much air is in the box. */
 export const FILL_OZ_PER_CUBIC_FOOT = 3;
+
+/**
+ * Poly mailer sizes, as sold: flat length × flat width, in inches, with the
+ * empty weight of the bag.
+ *
+ * These matter most for exactly the items cartons handle worst — bulky, light,
+ * and not fragile. A carton for an 18×10×11 item is 20×12×13 outside and gets
+ * billed on 301 oz of volume; the same item in a bag is billed on the item's own
+ * volume and saves both that and the carton's own weight.
+ */
+const POLY_SIZES: [number, number, number][] = [
+  [9, 6, 0.4],
+  [12, 9, 0.5],
+  [13, 10, 0.6],
+  [15.5, 12, 0.8],
+  [19, 14.5, 1.1],
+  [24, 19, 1.8],
+  [24, 24, 2.2],
+  [30, 26, 3],
+  [36, 28, 3.8],
+];
+
+function polyMailer([flatL, flatW, oz]: [number, number, number]): Box {
+  // A nominal capacity, used only to keep BOXES sorted by how much each
+  // container swallows. The real fit test is the wrap rule in `fits`.
+  const half = flatW / 2;
+  return {
+    id: `poly-${flatL}x${flatW}`,
+    name: `Poly mailer ${flatL}×${flatW}`,
+    inner: { l: flatL - 1, w: half, h: half },
+    emptyOz: oz,
+    polyBag: { flatL, flatW },
+    softGoodsOnly: true,
+    paddingIn: 0,
+  };
+}
 
 /**
  * Standard corrugated carton sizes, inner dimensions in inches.
@@ -94,6 +145,19 @@ const CARTON_SIZES: [number, number, number][] = [
   [20, 16, 12], [20, 20, 4], [20, 20, 6],
   [22, 16, 4], [22, 18, 6],
   [24, 12, 4], [24, 18, 4], [24, 18, 6], [24, 18, 12], [24, 20, 4], [24, 24, 6],
+  // Tall and cube-ish. Without these the list jumps from a 12-inch-deep 20×16×12
+  // straight to a 24×18×12, so anything around a foot tall — a lamp, a boxed
+  // appliance, a vase — had two options and both were far bigger than it needed.
+  [10, 10, 12], [12, 10, 10], [12, 12, 14], [14, 10, 10], [14, 12, 8],
+  [14, 12, 10], [14, 12, 12], [14, 14, 8], [14, 14, 10], [14, 14, 12],
+  [16, 12, 10], [16, 12, 12], [16, 14, 8], [16, 14, 10], [16, 14, 12],
+  [16, 16, 8], [16, 16, 10], [16, 16, 12],
+  [18, 12, 8], [18, 12, 10], [18, 12, 12], [18, 14, 8], [18, 14, 12],
+  [18, 16, 10], [18, 16, 12], [18, 18, 10], [18, 18, 12],
+  [20, 12, 6], [20, 12, 8], [20, 12, 10], [20, 12, 12], [20, 14, 8],
+  [20, 14, 10], [20, 14, 12], [20, 16, 8], [20, 16, 10], [20, 20, 10], [20, 20, 12],
+  [22, 14, 10], [22, 14, 12], [22, 16, 10], [22, 16, 12], [22, 18, 12],
+  [24, 14, 10], [24, 14, 12], [24, 16, 10], [24, 16, 12], [24, 20, 12],
   // Long and narrow: tools, rods, bats, lamp stems, curtain poles.
   [18, 6, 4], [20, 6, 6], [22, 4, 4], [24, 4, 4], [24, 6, 6],
   [26, 6, 6], [30, 4, 4], [30, 6, 6], [36, 6, 6], [36, 8, 8], [40, 8, 8],
@@ -131,8 +195,7 @@ function carton([l, w, h]: [number, number, number]): Box {
 // selectBox's "first that fits" is genuinely "smallest that fits" and stays
 // that way when someone adds a box to the middle of this list.
 export const BOXES: Box[] = [
-  { id: "poly-sm", name: "Poly mailer, small (10×13)", inner: { l: 12.5, w: 9.5, h: 1 }, emptyOz: 0.6 },
-  { id: "poly-lg", name: "Poly mailer, large (14×17)", inner: { l: 16.5, w: 13.5, h: 1.5 }, emptyOz: 1.2 },
+  ...POLY_SIZES.map(polyMailer),
   { id: "usps-fr-sm", name: "USPS Priority Flat Rate, small box", inner: { l: 8.6, w: 5.4, h: 1.6 }, emptyOz: 1.5, flatRate: true, carrierSupplied: true },
   { id: "usps-fr-md", name: "USPS Priority Flat Rate, medium box (top-load)", inner: { l: 11, w: 8.5, h: 5.5 }, emptyOz: 4, flatRate: true, carrierSupplied: true },
   { id: "usps-fr-lg", name: "USPS Priority Flat Rate, large box", inner: { l: 12, w: 12, h: 5.5 }, emptyOz: 6, flatRate: true, carrierSupplied: true },
@@ -227,6 +290,16 @@ export function fits(
   const i = [item.l, item.w, item.h].sort((a, b) => b - a);
   const b = [box.inner.l, box.inner.w, box.inner.h].sort((a, b) => b - a);
 
+  // Poly bags wrap rather than enclose. The longest axis runs along the bag; the
+  // other two go around it, so what has to fit the bag's flat width is their
+  // SUM, not each of them separately. Treating a bag as a box with three
+  // independent axes is why a 19×14.5 mailer looked unable to take a folded
+  // jacket.
+  if (box.polyBag) {
+    const seal = 1;
+    return i[0] + seal <= box.polyBag.flatL && i[1] + i[2] + seal <= box.polyBag.flatW;
+  }
+
   // Envelopes: clearance across the face, a hard ceiling through the thickness.
   // Treating the thickness like another padded axis is what made every envelope
   // appear to fit nothing — a 0.6" item "needed" 0.85" of a 0.75" envelope.
@@ -247,7 +320,33 @@ export function fits(
  * are still considered — just not as a generic carton.
  */
 export function selectBox(item: { l: number; w: number; h: number }): Box | null {
-  return BOXES.find((box) => !box.flatRate && fits(item, box)) ?? null;
+  return BOXES.find((box) => !box.flatRate && !box.polyBag && fits(item, box)) ?? null;
+}
+
+/** Every poly mailer the item fits, smallest first. */
+export function polyMailersFor(item: { l: number; w: number; h: number }): Box[] {
+  return BOXES.filter((b) => b.polyBag && fits(item, b));
+}
+
+/**
+ * The smallest general-purpose boxes the item fits, cheapest-first by volume.
+ *
+ * More than one, because "the estimator already picked the best box" is not the
+ * same as "you own that box". A seller with a stack of 20×16×12 needs to see it
+ * priced next to the ideal one and decide, rather than being shown a single
+ * carton and no way to say they have something else.
+ */
+export function selectBoxes(
+  item: { l: number; w: number; h: number },
+  limit: number
+): Box[] {
+  const out: Box[] = [];
+  for (const box of BOXES) {
+    if (box.flatRate || box.polyBag || !fits(item, box)) continue;
+    out.push(box);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /**

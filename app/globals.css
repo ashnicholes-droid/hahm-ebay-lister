@@ -2377,3 +2377,34 @@ textarea {
 .ebay-quantity .k {
   color: var(--color-ink-faint);
 }
+
+/* Dimensional-weight callout. Sits directly under the weight/size fields
+   because that is where the question "why did my edit do nothing" is asked. */
+.ship-dim-note {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--color-gold);
+  border-radius: var(--radius-sm);
+  background: var(--color-gold-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--color-ink);
+}
+
+.ship-more {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-accent-deep);
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.ship-more:hover {
+  background: var(--color-accent-soft);
+}
