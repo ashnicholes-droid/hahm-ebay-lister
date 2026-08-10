@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.69.0",
+    "openai": "^7.1.0",
     "next": "^15.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
