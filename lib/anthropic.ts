@@ -1,42 +1,49 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
-let client: Anthropic | null = null;
+let client: OpenAI | null = null;
 
-export function getClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+export function getClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+
   if (!apiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Add it in Vercel → Settings → Environment Variables (or in .env.local for local dev)."
+      "OPENAI_API_KEY is not set. Add it in Vercel → Settings → Environment Variables."
     );
   }
+
   if (!client) {
-    client = new Anthropic({ apiKey });
+    client = new OpenAI({ apiKey });
   }
+
   return client;
 }
 
-// Mirrors _load_model_json() in the Python script: strip code fences, then fall
-// back to grabbing the outermost {...} block.
+// Parse JSON returned by the model, even if it is wrapped in markdown fences.
 export function parseModelJson<T = unknown>(raw: string): T {
   let text = (raw || "").trim();
-  text = text.replace(/^```(?:json)?\s*/gm, "").replace(/\s*```$/gm, "");
+
+  text = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
   try {
     return JSON.parse(text) as T;
   } catch {
-    const match = text.match(/\{[\s\S]*\}/);
+    const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+
     if (match) {
       return JSON.parse(match[0]) as T;
     }
+
     throw new Error("Model did not return valid JSON.");
   }
 }
 
-// ── Account-level Anthropic failures ─────────────────────────────────────────
-// A bad/missing key, missing model access, or exhausted credits makes EVERY
-// call fail, so retrying or degrading is pointless — it just surfaces a vague
-// error. Detect these and throw a typed error so routes can show the real cause.
+// Kept for compatibility with existing route error handling.
 export class AnthropicAuthError extends Error {
   status: number;
+
   constructor(message: string, status: number) {
     super(message);
     this.name = "AnthropicAuthError";
@@ -44,29 +51,45 @@ export class AnthropicAuthError extends Error {
   }
 }
 
-export function anthropicAuthError(e: unknown): AnthropicAuthError | null {
+export function anthropicAuthError(error: unknown): AnthropicAuthError | null {
   const status =
-    e && typeof e === "object" && "status" in e
-      ? Number((e as { status?: number }).status)
+    error &&
+    typeof error === "object" &&
+    "status" in error
+      ? Number((error as { status?: number }).status)
       : undefined;
+
   const message =
-    e && typeof e === "object" && "message" in e
-      ? String((e as { message?: unknown }).message ?? "")
+    error &&
+    typeof error === "object" &&
+    "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
       : "";
-  if (status === 401)
+
+  if (status === 401) {
     return new AnthropicAuthError(
-      "Anthropic rejected your API key (401). Check that ANTHROPIC_API_KEY is set correctly in your environment variables.",
+      "OpenAI rejected the API key (401). Check OPENAI_API_KEY in your environment variables.",
       401
     );
-  if (status === 403)
+  }
+
+  if (status === 403) {
     return new AnthropicAuthError(
-      "Your Anthropic API key isn't permitted to use this model (403). Check the key's access in the Anthropic Console.",
+      "OpenAI API access was denied (403). Check the API key and project permissions.",
       403
     );
-  if (status === 402 || /credit balance|too low|billing|payment|insufficient|quota/i.test(message))
+  }
+
+  if (status === 429) {
     return new AnthropicAuthError(
-      "Your Anthropic account can't cover this request — add credits/billing in the Anthropic Console, then try again.",
-      402
+      "OpenAI rate limit or quota reached (429). Check billing/usage and try again.",
+      429
     );
+  }
+
+  if (message.toLowerCase().includes("openai")) {
+    return new AnthropicAuthError(message, status ?? 500);
+  }
+
   return null;
 }
