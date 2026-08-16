@@ -154,6 +154,27 @@ export function ListingPreview({ group, photoById, onClose }: ListingPreviewProp
                     <span className="ebay-cond-notes"> — {preview.conditionNotes}</span>
                   )}
                 </p>
+                {preview.allowedConditions.length > 0 && (
+                  <details className="ebay-cond-allowed">
+                    <summary>
+                      {preview.allowedConditions.length} condition
+                      {preview.allowedConditions.length === 1 ? "" : "s"} this category accepts
+                    </summary>
+                    <ul>
+                      {preview.allowedConditions.map((c) => (
+                        <li
+                          key={c.id}
+                          className={c.enumValue === preview.conditionEnum ? "current" : ""}
+                        >
+                          {c.label}
+                          {c.approvalOnly && (
+                            <span className="ebay-cond-gated"> needs eBay approval</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 <p className="ebay-price">{formatPrice(preview.price, preview.currency)}</p>
                 {preview.volumeDiscount && (
                   <p className="ebay-multibuy">

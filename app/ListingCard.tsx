@@ -7,19 +7,76 @@ import { AccuracyPanel } from "./AccuracyPanel";
 import { ListingPreview } from "./ListingPreview";
 import { QuantityPanel } from "./QuantityPanel";
 import { ShippingPanel } from "./ShippingPanel";
-import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
+import type { ItemGroup, ListingResult, Photo, PublishDebug } from "@/lib/types";
 
 const TITLE_LIMIT = 80;
 
-// eBay's pre-owned condition tiers, matching the values the model returns.
-const CONDITIONS: { value: string; label: string }[] = [
-  { value: "NEW_WITH_TAGS", label: "New with tags" },
-  { value: "NEW_NO_TAGS", label: "New without tags" },
-  { value: "EXCELLENT", label: "Pre-owned · Excellent" },
-  { value: "VERY_GOOD", label: "Pre-owned · Very good" },
-  { value: "GOOD", label: "Pre-owned · Good" },
-  { value: "FAIR", label: "Pre-owned · Fair" },
+/**
+ * The grades a seller can choose, grouped the way eBay groups them.
+ *
+ * This list used to hold six pre-owned tiers and nothing else, which meant an
+ * open-box item and a refurbished one had no honest home — both had to be filed
+ * as "new without tags" or as used, and the distinction that makes them worth
+ * more was lost. `note` says what a grade actually implies, because "Seller
+ * Refurbished" is a claim about work performed, not a synonym for tidy.
+ */
+const CONDITION_GROUPS: {
+  label: string;
+  options: { value: string; label: string; note?: string }[];
+}[] = [
+  {
+    label: "New",
+    options: [
+      { value: "NEW_WITH_TAGS", label: "New with tags / sealed" },
+      { value: "NEW_NO_TAGS", label: "New without tags" },
+      {
+        value: "OPEN_BOX",
+        label: "Open box",
+        note: "Never used, but the packaging was opened. Worth more than used — eBay lists it separately.",
+      },
+    ],
+  },
+  {
+    label: "Refurbished",
+    options: [
+      {
+        value: "SELLER_REFURBISHED",
+        label: "Seller refurbished",
+        note: "You (or a third party) restored it to working order. Only claim this if work was actually done.",
+      },
+      {
+        value: "CERTIFIED_REFURBISHED",
+        label: "Certified refurbished",
+        note: "Manufacturer-backed with a warranty. eBay must approve your account for this — otherwise the listing is rejected.",
+      },
+    ],
+  },
+  {
+    label: "Pre-owned",
+    options: [
+      { value: "EXCELLENT", label: "Excellent" },
+      { value: "VERY_GOOD", label: "Very good" },
+      { value: "GOOD", label: "Good" },
+      { value: "FAIR", label: "Fair" },
+    ],
+  },
+  {
+    label: "Not working",
+    options: [
+      {
+        value: "FOR_PARTS",
+        label: "For parts or not working",
+        note: "Buyers cannot open a not-as-described case for faults you list here.",
+      },
+    ],
+  },
 ];
+
+const CONDITION_NOTES: Record<string, string> = Object.fromEntries(
+  CONDITION_GROUPS.flatMap((g) => g.options.filter((o) => o.note).map((o) => [o.value, o.note!]))
+);
+
+const ALL_CONDITIONS = CONDITION_GROUPS.flatMap((g) => g.options);
 
 function formatPrice(value: ListingResult["suggested_price"]): string {
   const n = typeof value === "string" ? parseFloat(value) : value;
@@ -57,6 +114,74 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+/**
+ * Everything eBay said about a rejection.
+ *
+ * The one-line message above is eBay's first sentence, and on its own it is
+ * often unactionable — the part that names the actual problem lives in
+ * `longMessage` and in `parameters` (which aspect is missing, which condition
+ * ids the category will accept). All of it is here, collapsed by default, with
+ * a copy button so it can be pasted into a search or a support ticket.
+ */
+function EbayErrorDetail({ debug }: { debug: PublishDebug }) {
+  const text = useMemo(() => JSON.stringify(debug, null, 2), [debug]);
+  return (
+    <details className="ebay-debug">
+      <summary>
+        Show eBay&rsquo;s full response
+        <small>
+          {" "}
+          — {debug.stage}, HTTP {debug.httpStatus}
+          {debug.errors.length > 1 ? `, ${debug.errors.length} errors` : ""}
+        </small>
+      </summary>
+
+      <dl className="ebay-debug-meta">
+        {debug.categoryId && (
+          <div>
+            <dt>Category</dt>
+            <dd>{debug.categoryId}</dd>
+          </div>
+        )}
+        {debug.conditionSent && (
+          <div>
+            <dt>Condition sent</dt>
+            <dd>{debug.conditionSent}</dd>
+          </div>
+        )}
+      </dl>
+
+      {debug.errors.map((e, i) => (
+        <div className="ebay-debug-err" key={`${e.errorId}-${i}`}>
+          <p className="ebay-debug-id">
+            eBay error {e.errorId}
+            {e.category ? ` · ${e.category}` : ""}
+            {e.domain ? ` · ${e.domain}` : ""}
+          </p>
+          {e.longMessage && <p>{e.longMessage}</p>}
+          {e.message && e.message !== e.longMessage && <p>{e.message}</p>}
+          {e.parameters && e.parameters.length > 0 && (
+            <ul className="ebay-debug-params">
+              {e.parameters.map((p, j) => (
+                <li key={`${p.name}-${j}`}>
+                  <span className="k">{p.name || "value"}</span>
+                  <span>{p.value}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+
+      {debug.raw && <pre className="ebay-debug-raw">{debug.raw}</pre>}
+
+      <div className="copy-row">
+        <CopyButton text={text} label="details" />
+      </div>
+    </details>
+  );
+}
+
 interface ListingCardProps {
   group: ItemGroup;
   photoById: (id: string) => Photo | undefined;
@@ -80,6 +205,8 @@ export function ListingCard({
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [newSpecKey, setNewSpecKey] = useState("");
+  const [newSpecValue, setNewSpecValue] = useState("");
   const listing = group.listing;
   const cover = photoById(group.photoIds[0]);
   const accuracy = reportStatus(group.verification);
@@ -88,6 +215,24 @@ export function ListingCard({
     const entries = Object.entries(listing?.item_specifics ?? {});
     return entries.filter(([k, v]) => v && v.trim() !== "" && !k.startsWith("---"));
   }, [listing?.item_specifics]);
+
+  // Item specifics are edited in place. An emptied value is removed outright
+  // rather than sent to eBay as a blank, which publishes as a visible empty row.
+  const setSpecific = (key: string, value: string) => {
+    const next = { ...(listing?.item_specifics ?? {}) };
+    if (value.trim() === "") delete next[key];
+    else next[key] = value;
+    onEdit(group.id, { item_specifics: next });
+  };
+
+  const addSpecific = () => {
+    const key = newSpecKey.trim();
+    const value = newSpecValue.trim();
+    if (!key || !value) return;
+    onEdit(group.id, { item_specifics: { ...(listing?.item_specifics ?? {}), [key]: value } });
+    setNewSpecKey("");
+    setNewSpecValue("");
+  };
 
   const titleLen = listing?.title?.length ?? 0;
 
@@ -242,7 +387,7 @@ export function ListingCard({
                 </span>
               )}
             </div>
-            <div className="stat editable">
+            <div className="stat editable stat-condition">
               <label className="k" htmlFor={`cond-${group.id}`}>
                 Condition
               </label>
@@ -253,17 +398,24 @@ export function ListingCard({
               >
                 {/* Keep an unexpected model value selectable rather than losing it. */}
                 {listing.condition &&
-                  !CONDITIONS.some((c) => c.value === listing.condition) && (
+                  !ALL_CONDITIONS.some((c) => c.value === listing.condition) && (
                     <option value={listing.condition}>
                       {listing.condition.replace(/_/g, " ")}
                     </option>
                   )}
-                {CONDITIONS.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                {CONDITION_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.options.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
+              {CONDITION_NOTES[listing.condition ?? ""] && (
+                <span className="cond-note">{CONDITION_NOTES[listing.condition!]}</span>
+              )}
             </div>
             {listing.brand && (
               <div className="stat">
@@ -307,6 +459,25 @@ export function ListingCard({
           <QuantityPanel listing={listing} groupId={group.id} onEdit={onEdit} />
 
           <div className="result-field">
+            <label htmlFor={`cnotes-${group.id}`}>
+              Condition notes
+              <small>
+                {" "}
+                — eBay shows this under the condition. Flaws named here are much harder to
+                dispute later.
+              </small>
+            </label>
+            <textarea
+              id={`cnotes-${group.id}`}
+              className="cond-notes"
+              rows={3}
+              value={listing.condition_notes ?? ""}
+              placeholder="e.g. Light scuff on the base, pictured. No chips or cracks."
+              onChange={(e) => onEdit(group.id, { condition_notes: e.target.value })}
+            />
+          </div>
+
+          <div className="result-field">
             <label>Description</label>
             <textarea
               value={listing.description}
@@ -318,19 +489,64 @@ export function ListingCard({
             </div>
           </div>
 
-          {specifics.length > 0 && (
-            <details className="specifics-details">
-              <summary>{specifics.length} item specifics</summary>
-              <div className="specifics">
-                {specifics.map(([k, v]) => (
-                  <div className="row" key={k}>
-                    <span className="k">{k}</span>
-                    <span>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
+          <details className="specifics-details">
+            <summary>
+              {specifics.length} item specific{specifics.length === 1 ? "" : "s"} — editable
+            </summary>
+            <p className="specifics-hint">
+              These are what buyers filter search by, so a wrong or missing one costs views.
+              Clear a value to drop it from the listing.
+            </p>
+            <div className="specifics">
+              {specifics.map(([k, v]) => (
+                <label className="row" key={k}>
+                  <span className="k">{k}</span>
+                  <input
+                    type="text"
+                    value={v}
+                    onChange={(e) => setSpecific(k, e.target.value)}
+                    aria-label={k}
+                  />
+                  <button
+                    type="button"
+                    className="spec-remove"
+                    title={`Remove ${k}`}
+                    onClick={() => setSpecific(k, "")}
+                  >
+                    ×
+                  </button>
+                </label>
+              ))}
+            </div>
+            <div className="spec-add">
+              <input
+                type="text"
+                placeholder="Add a specific (e.g. Model)"
+                value={newSpecKey}
+                onChange={(e) => setNewSpecKey(e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="Value"
+                value={newSpecValue}
+                onChange={(e) => setNewSpecValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSpecific();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={!newSpecKey.trim() || !newSpecValue.trim()}
+                onClick={addSpecific}
+              >
+                + Add
+              </button>
+            </div>
+          </details>
 
           <ShippingPanel listing={listing} groupId={group.id} onEdit={onEdit} />
 
@@ -403,7 +619,10 @@ export function ListingCard({
                 )}
               </button>
               {group.postStatus === "error" && group.postError && (
-                <p className="post-result err">⚠️ {group.postError}</p>
+                <>
+                  <p className="post-result err">⚠️ {group.postError}</p>
+                  {group.postDebug && <EbayErrorDetail debug={group.postDebug} />}
+                </>
               )}
             </div>
           ) : (

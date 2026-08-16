@@ -32,7 +32,7 @@ import { ebayPackageFromEstimate, estimateShipping } from "@/lib/shipping/estima
 import { listingQuantity, quantityWarnings, volumeDiscount } from "@/lib/quantity";
 import { applyVolumeDiscount } from "./promotions";
 import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
-import type { ListingResult } from "@/lib/types";
+import type { ListingResult, PublishDebug } from "@/lib/types";
 
 // ── Constants (from the Python script) ───────────────────────────────────────
 
@@ -73,7 +73,27 @@ const CONDITION_ALIASES: Record<string, string> = {
   NEW_WITHOUT_BOX: "NEW_NO_TAGS",
   NEW_NO_TAGS: "NEW_NO_TAGS",
   NEW_OTHER: "NEW_NO_TAGS",
-  OPEN_BOX: "NEW_NO_TAGS",
+  // Open box is its own grade, not a synonym for "new without tags". They map to
+  // the same eBay id in apparel but not in electronics, where "Open box" is a
+  // recognised, higher-value listing than a used one — collapsing them was
+  // costing the distinction on exactly the items that trade on it.
+  OPEN_BOX: "OPEN_BOX",
+  OPENED_BOX: "OPEN_BOX",
+  BOX_OPENED: "OPEN_BOX",
+  // Refurbished tiers. eBay treats these as a family distinct from both new and
+  // used, and there was previously no way to reach any of them.
+  REFURBISHED: "SELLER_REFURBISHED",
+  SELLER_REFURBISHED: "SELLER_REFURBISHED",
+  RENEWED: "SELLER_REFURBISHED",
+  RECONDITIONED: "SELLER_REFURBISHED",
+  CERTIFIED_REFURBISHED: "CERTIFIED_REFURBISHED",
+  MANUFACTURER_REFURBISHED: "CERTIFIED_REFURBISHED",
+  EXCELLENT_REFURBISHED: "CERTIFIED_REFURBISHED",
+  FOR_PARTS: "FOR_PARTS",
+  FOR_PARTS_OR_NOT_WORKING: "FOR_PARTS",
+  PARTS_ONLY: "FOR_PARTS",
+  NOT_WORKING: "FOR_PARTS",
+  BROKEN: "FOR_PARTS",
   LIKE_NEW: "EXCELLENT",
   PREOWNED_EXCELLENT: "EXCELLENT",
   PRE_OWNED_EXCELLENT: "EXCELLENT",
@@ -102,6 +122,11 @@ const CONDITION_ID_ENUM: Record<number, string> = {
   1000: "NEW",
   1500: "NEW_OTHER",
   1750: "NEW_WITH_DEFECTS",
+  2000: "CERTIFIED_REFURBISHED",
+  2010: "EXCELLENT_REFURBISHED",
+  2020: "VERY_GOOD_REFURBISHED",
+  2030: "GOOD_REFURBISHED",
+  2500: "SELLER_REFURBISHED",
   2750: "LIKE_NEW",
   2990: "PRE_OWNED_EXCELLENT",
   3000: "USED_EXCELLENT",
@@ -112,25 +137,52 @@ const CONDITION_ID_ENUM: Record<number, string> = {
   7000: "FOR_PARTS_OR_NOT_WORKING",
 };
 
+/**
+ * Conditions eBay gates behind seller approval.
+ *
+ * "Certified Refurbished" (2000) and the graded refurbished tiers are only
+ * available to sellers eBay has admitted to the programme; everyone else gets a
+ * publish rejection. Listed here so the app can say that up front instead of
+ * letting eBay refuse it with a message that doesn't mention approval.
+ */
+const APPROVAL_ONLY_CONDITION_IDS = new Set([2000, 2010, 2020, 2030]);
+
 const GENERAL_CONDITION_ID_PREFERENCES: Record<string, number[]> = {
   NEW_WITH_TAGS: [1000, 1500, 1750],
   NEW_NO_TAGS: [1500, 1000, 1750],
+  OPEN_BOX: [1500, 1000, 2750],
+  // Seller Refurbished first: it is the tier any seller may use. The graded
+  // refurbished ids need eBay's approval, so they come after and only apply if
+  // the category says they're accepted.
+  SELLER_REFURBISHED: [2500, 2030, 2020, 2010, 2000],
+  CERTIFIED_REFURBISHED: [2000, 2010, 2500],
   EXCELLENT: [3000, 2750, 4000, 5000],
   VERY_GOOD: [4000, 3000, 5000, 2750],
   GOOD: [5000, 4000, 3000, 6000],
   FAIR: [6000, 5000, 4000, 3000],
+  FOR_PARTS: [7000],
 };
 
 const APPAREL_CONDITION_ID_PREFERENCES: Record<string, number[]> = {
   NEW_WITH_TAGS: [1000, 1500, 1750],
   NEW_NO_TAGS: [1500, 1000, 1750],
+  OPEN_BOX: [1500, 1000],
+  // Apparel has no refurbished tier at all; fall back to new-other rather than
+  // sending an id the category will reject.
+  SELLER_REFURBISHED: [1500, 3000, 2990],
+  CERTIFIED_REFURBISHED: [1500, 3000, 2990],
   EXCELLENT: [2990, 3000, 3010],
   // eBay has no apparel "Very Good" tier. Use Good before overgrading as Excellent.
   VERY_GOOD: [3000, 2990, 3010],
   GOOD: [3000, 3010, 2990],
   FAIR: [3010, 3000, 2990],
+  FOR_PARTS: [3010, 3000],
 };
 
+// Fallbacks tried after the grade's own preferences are exhausted. Refurbished
+// ids are deliberately absent: landing an ordinary used item on "Refurbished"
+// because nothing else fit would be a false claim about the item, not a
+// harmless downgrade.
 const GENERAL_SAFE_CONDITION_IDS = [3000, 4000, 5000, 6000, 2750, 1500, 1000, 1750, 7000];
 const APPAREL_SAFE_CONDITION_IDS = [3000, 2990, 3010, 1500, 1000, 1750];
 
@@ -401,8 +453,81 @@ function conditionIdsForGrade(
   };
   for (const id of preferred) add(id);
   for (const id of safeIds) add(id);
-  for (const id of acceptedIds) add(id);
+  // Last-resort sweep of everything the category accepts. Refurbished ids are
+  // excluded unless the seller actually asked for refurbished: arriving there
+  // because nothing else fit would advertise a repair that never happened.
+  const wantsRefurb = grade === "SELLER_REFURBISHED" || grade === "CERTIFIED_REFURBISHED";
+  for (const id of acceptedIds) {
+    if (!wantsRefurb && (APPROVAL_ONLY_CONDITION_IDS.has(id) || id === 2500)) continue;
+    add(id);
+  }
   return out.length ? out : preferred;
+}
+
+/** eBay's buyer-facing wording for a condition enum. */
+export const CONDITION_ENUM_LABELS: Record<string, string> = {
+  NEW: "New",
+  NEW_OTHER: "New (open box)",
+  NEW_WITH_DEFECTS: "New with defects",
+  CERTIFIED_REFURBISHED: "Certified Refurbished",
+  EXCELLENT_REFURBISHED: "Excellent - Refurbished",
+  VERY_GOOD_REFURBISHED: "Very Good - Refurbished",
+  GOOD_REFURBISHED: "Good - Refurbished",
+  SELLER_REFURBISHED: "Seller Refurbished",
+  LIKE_NEW: "Open box / Like new",
+  PRE_OWNED_EXCELLENT: "Pre-owned · Excellent",
+  USED_EXCELLENT: "Pre-owned · Good",
+  PRE_OWNED_FAIR: "Pre-owned · Fair",
+  USED_VERY_GOOD: "Pre-owned · Very Good",
+  USED_GOOD: "Pre-owned · Good",
+  USED_ACCEPTABLE: "Pre-owned · Acceptable",
+  FOR_PARTS_OR_NOT_WORKING: "For parts or not working",
+};
+
+/**
+ * What this category will actually accept, as enums with their buyer-facing
+ * labels — the answer to "why can't I post this as refurbished".
+ */
+export function acceptedConditionsFor(
+  acceptedIds: Set<number>
+): { id: number; enumValue: string; label: string; approvalOnly: boolean }[] {
+  return [...acceptedIds]
+    .filter((id) => CONDITION_ID_ENUM[id])
+    .sort((a, b) => a - b)
+    .map((id) => ({
+      id,
+      enumValue: CONDITION_ID_ENUM[id],
+      label: CONDITION_ENUM_LABELS[CONDITION_ID_ENUM[id]] || CONDITION_ID_ENUM[id],
+      approvalOnly: APPROVAL_ONLY_CONDITION_IDS.has(id),
+    }));
+}
+
+/**
+ * Does the grade the seller asked for survive contact with this category?
+ *
+ * Returns the wording eBay will display and, when they differ, a warning. A
+ * silent step-down is how "Open box" ended up showing as "Pre-owned – Good"
+ * with nothing on screen to say so.
+ */
+export function conditionOutcome(
+  grade: string | undefined,
+  acceptedIds: Set<number>,
+  catKey: string
+): { enumValue: string; label: string; requested: string; downgraded: boolean } {
+  const requested = normalizeConditionInput(grade);
+  const enumValue = conditionCandidates(grade, acceptedIds, catKey)[0] || "USED_GOOD";
+  const wantedFirst = (GENERAL_CONDITION_ID_PREFERENCES[requested] ||
+    GENERAL_CONDITION_ID_PREFERENCES.GOOD)[0];
+  const apparel = isApparelConditionPolicy(acceptedIds) || APPAREL_CATEGORIES.has(catKey);
+  const prefs = apparel ? APPAREL_CONDITION_ID_PREFERENCES : GENERAL_CONDITION_ID_PREFERENCES;
+  const idealId = (prefs[requested] || prefs.GOOD)[0] ?? wantedFirst;
+  const ideal = CONDITION_ID_ENUM[idealId];
+  return {
+    enumValue,
+    label: CONDITION_ENUM_LABELS[enumValue] || enumValue,
+    requested,
+    downgraded: Boolean(ideal) && ideal !== enumValue,
+  };
 }
 
 // Ordered eBay Inventory condition enums to try for an internal grade. The grade
@@ -638,6 +763,46 @@ function primaryEbayError(r: EbayResp): { errorId: number; message: string } {
     };
   }
   return { errorId: 0, message: (r.text || "").slice(0, 300) };
+}
+
+/**
+ * Everything eBay returned about a failure, in a shape safe to show the seller.
+ *
+ * Only eBay's own error payload is copied — no tokens, no request headers, and
+ * nothing from the environment. `parameters` is the field that usually contains
+ * the actual answer ("the allowed condition ids are 1000, 1500, 2500…") and was
+ * previously dropped on the floor.
+ */
+export function collectDebug(
+  stage: string,
+  sku: string,
+  r: EbayResp,
+  extra?: { conditionSent?: string; categoryId?: string }
+): PublishDebug {
+  const raw = Array.isArray(r.json?.errors) ? r.json.errors : [];
+  return {
+    stage,
+    httpStatus: r.status,
+    sku,
+    ...(extra?.conditionSent ? { conditionSent: extra.conditionSent } : {}),
+    ...(extra?.categoryId ? { categoryId: extra.categoryId } : {}),
+    errors: raw.slice(0, 10).map((e: any) => ({
+      errorId: Number(e?.errorId || 0),
+      ...(e?.domain ? { domain: String(e.domain) } : {}),
+      ...(e?.category ? { category: String(e.category) } : {}),
+      ...(e?.message ? { message: String(e.message).slice(0, 600) } : {}),
+      ...(e?.longMessage ? { longMessage: String(e.longMessage).slice(0, 600) } : {}),
+      ...(Array.isArray(e?.parameters) && e.parameters.length
+        ? {
+            parameters: e.parameters.slice(0, 12).map((p: any) => ({
+              name: String(p?.name ?? ""),
+              value: String(p?.value ?? "").slice(0, 300),
+            })),
+          }
+        : {}),
+    })),
+    ...(raw.length === 0 && r.text ? { raw: r.text.slice(0, 1200) } : {}),
+  };
 }
 
 // One structured log line per publish failure, so Vercel Function Logs actually
@@ -1056,7 +1221,17 @@ export interface PublishResult {
   // retrieved, so the listing published with generic specifics). Surfaced in
   // the UI so degraded listings stop failing silently.
   warnings?: string[];
+  // Everything eBay said about a failure, not just the first sentence of it.
+  //
+  // The one-line `error` above is deliberately short, and that is exactly what
+  // made rejections unactionable: eBay puts the useful part in `longMessage`
+  // and `parameters` (which aspect, which condition ids the category allows),
+  // and returns several errors at once. All of it is kept here and shown behind
+  // a disclosure, so a confusing rejection can be read rather than guessed at.
+  debug?: PublishDebug;
 }
+
+export type { PublishDebug } from "@/lib/types";
 
 // EBAY_STRICT_QUALITY=1 turns quality warnings into publish failures: better a
 // stopped listing than one that quietly published without searchable specifics.
@@ -1329,6 +1504,7 @@ export async function publishListing(
       ![200, 201, 204].includes(r.status) &&
       (errorIds(r).includes(25021) || errorIds(r).includes(25059))
     ) {
+      const wanted = inventoryItem.condition;
       for (const alt of condCandidates) {
         if (alt === inventoryItem.condition) continue;
         // Loud on purpose: a silent step-down is how "Excellent" items ended
@@ -1341,10 +1517,28 @@ export async function publishListing(
         if ([200, 201, 204].includes(r.status)) break;
         if (!errorIds(r).includes(25021) && !errorIds(r).includes(25059)) break;
       }
+      // The log line was never enough. A listing that quietly went live under a
+      // different condition than the one chosen is a misdescription the seller
+      // has to be told about, on the card, not in Vercel's function logs.
+      if ([200, 201, 204].includes(r.status) && inventoryItem.condition !== wanted) {
+        const shown = CONDITION_ENUM_LABELS[inventoryItem.condition] || inventoryItem.condition;
+        const asked = CONDITION_ENUM_LABELS[wanted] || wanted;
+        warnings.push(
+          `eBay's category ${catId} doesn't accept "${asked}", so this listed as "${shown}". If that's wrong for the item, change the category or the condition and repost.`
+        );
+      }
     }
     if (![200, 201, 204].includes(r.status)) {
       logPublishFailure("inventory item", sku, r);
-      return { success: false, sku, error: publishErrorMessage("Inventory item failed", r) };
+      return {
+        success: false,
+        sku,
+        error: publishErrorMessage("Inventory item failed", r),
+        debug: collectDebug("inventory item", sku, r, {
+          conditionSent: inventoryItem.condition,
+          categoryId: catId,
+        }),
+      };
     }
   }
 
@@ -1440,7 +1634,15 @@ export async function publishListing(
     const existing = extractExistingOfferId(r);
     if (!existing) {
       logPublishFailure("offer creation", sku, r);
-      return { success: false, sku, error: publishErrorMessage("Offer creation failed", r) };
+      return {
+        success: false,
+        sku,
+        error: publishErrorMessage("Offer creation failed", r),
+        debug: collectDebug("offer creation", sku, r, {
+          conditionSent: inventoryItem.condition,
+          categoryId: offerBody.categoryId,
+        }),
+      };
     }
     // Update the pre-existing offer instead.
     const upd = await withTransientRetry(
@@ -1454,12 +1656,28 @@ export async function publishListing(
     );
     if (![200, 201, 204].includes(upd.status)) {
       logPublishFailure("offer update", sku, upd);
-      return { success: false, sku, error: publishErrorMessage("Offer update failed", upd) };
+      return {
+        success: false,
+        sku,
+        error: publishErrorMessage("Offer update failed", upd),
+        debug: collectDebug("offer update", sku, upd, {
+          conditionSent: inventoryItem.condition,
+          categoryId: offerBody.categoryId,
+        }),
+      };
     }
     offerId = existing;
   } else if (![200, 201].includes(r.status)) {
     logPublishFailure("offer creation", sku, r);
-    return { success: false, sku, error: publishErrorMessage("Offer creation failed", r) };
+    return {
+      success: false,
+      sku,
+      error: publishErrorMessage("Offer creation failed", r),
+      debug: collectDebug("offer creation", sku, r, {
+        conditionSent: inventoryItem.condition,
+        categoryId: offerBody.categoryId,
+      }),
+    };
   } else {
     offerId = r.json?.offerId || "";
   }
@@ -1648,5 +1866,9 @@ async function publishOfferInner(
     sku,
     offerId,
     error: publishErrorMessage("Publish failed", r),
+    debug: collectDebug("publish", sku, r, {
+      conditionSent: ctx.inventoryItem?.condition,
+      categoryId: ctx.catId,
+    }),
   };
 }

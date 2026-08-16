@@ -108,6 +108,25 @@ export interface CompsSummary {
   listPrice?: number;
 }
 
+/** Mirrors PublishDebug in lib/ebay/publish.ts — kept here so client code can
+ *  hold it without importing the server publish module. */
+export interface PublishDebug {
+  stage: string;
+  httpStatus: number;
+  sku: string;
+  conditionSent?: string;
+  categoryId?: string;
+  errors: {
+    errorId: number;
+    domain?: string;
+    category?: string;
+    message?: string;
+    longMessage?: string;
+    parameters?: { name: string; value: string }[];
+  }[];
+  raw?: string;
+}
+
 export interface ItemGroup {
   id: string;
   sku: string; // bin reference, e.g. "K75-A"
@@ -122,6 +141,11 @@ export interface ItemGroup {
   postStatus?: PostStatus;
   listingId?: string;
   postError?: string;
+  // Everything eBay said about the failure — its error ids, long messages, and
+  // the `parameters` that usually name the actual problem (which aspect, which
+  // condition ids the category allows). Shown behind a disclosure on the card
+  // so an unclear rejection can be read instead of guessed at.
+  postDebug?: PublishDebug;
   // Non-fatal quality warnings from the last publish (e.g. schema unavailable)
   postWarnings?: string[];
   // Accuracy check over the listing as it currently stands (see lib/verification.ts).

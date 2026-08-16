@@ -14,6 +14,7 @@
 // submission, which is what publish.ts's recovery loops exist for).
 
 import {
+  acceptedConditionsFor,
   buildAspects,
   conditionCandidates,
   reconcileAspects,
@@ -81,6 +82,15 @@ export interface ListingPreview {
   specifics: PreviewSpecific[];
   /** Required specifics eBay wants for this category that the listing lacks. */
   missingRequired: string[];
+  /**
+   * Every condition this eBay category accepts, with eBay's own wording.
+   *
+   * The direct answer to "why can't I list this as refurbished": categories
+   * publish their own condition policy, and one that has no refurbished tier
+   * will reject it however it's spelled. Empty when eBay's metadata wasn't
+   * reachable, which is different from "the category allows nothing".
+   */
+  allowedConditions: { id: number; enumValue: string; label: string; approvalOnly: boolean }[];
   /** Units eBay will show as available. 1 for an ordinary single item. */
   quantity: number;
   /** The multi-buy tier a buyer will see, when one applies. */
@@ -213,10 +223,23 @@ export async function buildListingPreview(input: PreviewInput): Promise<ListingP
   const discount = volumeDiscount(listing);
   warnings.push(...quantityWarnings(listing));
 
+  const allowedConditions = acceptedConditionsFor(acceptedConds);
+  // Say it once, clearly, at the point the seller is looking at the condition —
+  // rather than letting eBay reject the publish with a message that never
+  // mentions the category's policy.
+  if (allowedConditions.length && !allowedConditions.some((c) => c.enumValue === conditionEnum)) {
+    warnings.push(
+      `This category doesn't accept the condition you chose. It allows: ${allowedConditions
+        .map((c) => c.label)
+        .join(", ")}.`
+    );
+  }
+
   return {
     sku,
     title,
     titleClipped: rawTitle.length > 80,
+    allowedConditions,
     quantity,
     volumeDiscount: discount
       ? { ...discount, unitPrice: price === null ? null : discountedUnitPrice(price, discount) }

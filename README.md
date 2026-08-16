@@ -119,6 +119,59 @@ cookie is signed with it — so that's your "log every device out" button.
 
 ---
 
+## Condition, and what eBay will actually accept
+
+The condition dropdown covers eBay's real grades, grouped the way eBay groups
+them — **New** (with tags, without tags, **open box**), **Refurbished** (seller
+or certified), **Pre-owned** (excellent → fair), and **for parts**. Open box and
+refurbished used to have no home at all: both collapsed onto "new without tags"
+or a used tier, losing the distinction on exactly the items that trade on it.
+
+Grades that mean something specific say so on screen. "Seller refurbished" is a
+claim that work was done. "Certified refurbished" needs eBay to have approved
+your account, and without that approval the listing is rejected — the app says
+that before you post rather than letting eBay say it afterwards.
+
+**Categories publish their own condition policy**, and that is usually the real
+answer to "why can't I list this as refurbished": a category with no refurbished
+tier will reject it however it's spelled. The eBay preview lists every condition
+the chosen category accepts, marks the one you're using, and flags the ones
+behind eBay approval. If your grade isn't on that list, the preview says so
+before you post.
+
+If eBay still rejects a condition at publish time, the app steps down to one the
+category accepts — and now **tells you it did**, on the card. That step-down
+used to happen silently, which is how an "Open box" item could go live reading
+"Pre-owned – Good".
+
+### Everything else about the item is editable too
+
+Title, price, condition, size, **condition notes**, description, and **item
+specifics** — edit a value, delete one, or add your own key/value pair. Item
+specifics are what buyers filter search by, so a wrong or missing one costs
+views; they were previously display-only.
+
+---
+
+## When eBay rejects a listing
+
+eBay's one-line rejection is often unactionable, because the part that names the
+actual problem lives in fields the message doesn't show: `longMessage`, and a
+`parameters` list that typically contains the answer outright (*which* aspect is
+missing, *which* condition ids the category allows). eBay also returns several
+errors at once, and only the first was being shown.
+
+Every failed post now carries a **"Show eBay's full response"** disclosure with
+all of it — each error's id, domain, category, both message forms, and every
+parameter — plus what the app sent (category id and condition), and a copy
+button. Only eBay's own error payload is included: no tokens, no headers,
+nothing from your environment.
+
+Server-side, each failure still logs one structured line to your Vercel function
+logs.
+
+---
+
 ## Multiples of the same item
 
 Most of what goes through this app is one-of-a-kind, so **every listing defaults

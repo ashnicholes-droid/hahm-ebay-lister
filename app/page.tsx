@@ -26,6 +26,7 @@ import type {
   ItemGroup,
   ListingResult,
   Photo,
+  PublishDebug,
   SortResponse,
 } from "@/lib/types";
 
@@ -709,7 +710,9 @@ export default function Home() {
         .slice(0, MAX_PUBLISH_PHOTOS);
       setGroups((prev) =>
         prev.map((g) =>
-          g.id === groupId ? { ...g, postStatus: "posting", postError: undefined } : g
+          g.id === groupId
+            ? { ...g, postStatus: "posting", postError: undefined, postDebug: undefined }
+            : g
         )
       );
       try {
@@ -755,6 +758,7 @@ export default function Home() {
           error?: string;
           alreadyListed?: boolean;
           warnings?: string[];
+          debug?: PublishDebug;
         } | null = null;
         let hadTransientRetry = false;
         for (let attempt = 0; ; attempt++) {
@@ -778,7 +782,15 @@ export default function Home() {
         if (data && !data.success && data.alreadyListed && hadTransientRetry && data.listingId) {
           data = { success: true, listingId: data.listingId };
         }
-        if (!data?.success) throw new Error(data?.error || "eBay rejected the listing.");
+        if (!data?.success) {
+          // Carry eBay's full reply onto the card. Thrown errors only carry a
+          // string, so the detail is stashed before throwing.
+          const err = new Error(data?.error || "eBay rejected the listing.") as Error & {
+            debug?: PublishDebug;
+          };
+          err.debug = data?.debug;
+          throw err;
+        }
         const allWarnings = [...uploadWarnings, ...(data.warnings ?? [])];
         setGroups((prev) =>
           prev.map((g) =>
@@ -796,7 +808,12 @@ export default function Home() {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, postStatus: "error", postError: (e as Error).message }
+              ? {
+                  ...g,
+                  postStatus: "error",
+                  postError: (e as Error).message,
+                  postDebug: (e as Error & { debug?: PublishDebug }).debug,
+                }
               : g
           )
         );

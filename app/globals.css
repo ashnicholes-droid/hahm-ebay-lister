@@ -2408,3 +2408,220 @@ textarea {
 .ship-more:hover {
   background: var(--color-accent-soft);
 }
+
+/* ── Condition, specifics, and eBay error detail ──────────────────────────── */
+
+.cond-note {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+}
+
+.cond-notes {
+  min-height: 4.5rem;
+}
+
+.specifics-hint {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+.specifics .row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) 1.6fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+}
+
+.specifics .row input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+}
+
+.specifics .row input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.spec-remove {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-ink-faint);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.spec-remove:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.spec-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.spec-add input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.5rem;
+}
+
+.spec-add button {
+  flex: none;
+}
+
+/* eBay's own words about a rejection, collapsed until asked for. */
+.ebay-debug {
+  margin-top: 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.ebay-debug summary {
+  cursor: pointer;
+  color: var(--color-ink-soft);
+}
+
+.ebay-debug summary small {
+  color: var(--color-ink-faint);
+}
+
+.ebay-debug-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin: 0.6rem 0 0;
+}
+
+.ebay-debug-meta div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ebay-debug-meta dt {
+  color: var(--color-ink-faint);
+}
+
+.ebay-debug-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ebay-debug-err {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border);
+  line-height: 1.5;
+}
+
+.ebay-debug-err p {
+  margin: 0 0 0.35rem;
+}
+
+.ebay-debug-id {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.ebay-debug-params {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ebay-debug-params li {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) 1fr;
+  gap: 0.5rem;
+}
+
+.ebay-debug-params .k {
+  color: var(--color-ink-faint);
+}
+
+.ebay-debug-raw {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.72rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* What the eBay category will actually accept — the answer to "why can't I
+   list this as refurbished". */
+.ebay-cond-allowed {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
+}
+
+.ebay-cond-allowed summary {
+  cursor: pointer;
+  color: var(--color-ink-faint);
+}
+
+.ebay-cond-allowed ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.ebay-cond-allowed li.current {
+  font-weight: 700;
+  color: var(--color-accent-deep);
+}
+
+.ebay-cond-gated {
+  color: var(--color-ink-faint);
+  font-style: italic;
+}
+
+/* Condition needs more room than the other stats: the option labels are long
+   ("Certified refurbished") and each one carries an explanatory note. */
+.stat-condition {
+  grid-column: span 2;
+}
+
+@media (max-width: 560px) {
+  .stat-condition {
+    grid-column: span 1;
+  }
+}
