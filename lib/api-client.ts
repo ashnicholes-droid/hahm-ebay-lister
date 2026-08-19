@@ -50,21 +50,60 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * Is this 401 about OUR session, or about something else?
+ *
+ * Routes return 401 for two unrelated reasons: the app's session cookie has
+ * expired (the guard, which tags its reply ACCESS_CODE_REQUIRED), and eBay
+ * isn't connected. Only the first is fixed by re-entering an access code.
+ * Without this check, hitting Post with eBay disconnected popped a password
+ * prompt that could not possibly help.
+ *
+ * The response is cloned because reading the body consumes it, and the caller
+ * still needs it.
+ */
+async function isSessionExpiry(res: Response): Promise<boolean> {
+  if (res.status !== 401) return false;
+  try {
+    const data = (await res.clone().json()) as { code?: string };
+    return data?.code === "ACCESS_CODE_REQUIRED";
+  } catch {
+    // A 401 with no readable body is more likely the guard than a route, and
+    // prompting is recoverable where silently failing is not.
+    return true;
+  }
+}
+
+async function recoverSession(attempt: number): Promise<boolean> {
+  const entered = window.prompt(
+    attempt === 0
+      ? "Your session expired. Re-enter your access code to keep going — your photos and listings are safe."
+      : "That didn't match — try again:"
+  );
+  if (!entered || !entered.trim()) return false;
+  return login(entered.trim());
+}
+
+/**
  * POST to an API route, recovering in place from an expired session.
  */
 export async function apiPost(path: string, body: unknown): Promise<Response> {
   let res = await doFetch(path, body);
 
   // Up to two attempts: covers a plain expiry and one mistyped code.
-  for (let attempt = 0; attempt < 2 && res.status === 401; attempt++) {
-    const entered = window.prompt(
-      attempt === 0
-        ? "Your session expired. Re-enter your access code to keep going — your photos and listings are safe."
-        : "That didn't match — try again:"
-    );
-    if (!entered || !entered.trim()) return res; // cancelled — surface the 401
-    if (!(await login(entered.trim()))) continue;
+  for (let attempt = 0; attempt < 2 && (await isSessionExpiry(res)); attempt++) {
+    if (!(await recoverSession(attempt))) return res; // cancelled — surface the 401
     res = await doFetch(path, body);
+  }
+  return res;
+}
+
+/** GET from an API route, with the same in-place session recovery. */
+export async function apiGet(path: string): Promise<Response> {
+  const get = () => fetch(path, { credentials: "same-origin" });
+  let res = await get();
+  for (let attempt = 0; attempt < 2 && (await isSessionExpiry(res)); attempt++) {
+    if (!(await recoverSession(attempt))) return res;
+    res = await get();
   }
   return res;
 }

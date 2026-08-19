@@ -26,6 +26,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
 - 🔢 **Multiples** — tick a box for quantity and an optional multi-buy discount;
   everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
+- 🏷️ **Seller view** — see every live listing with watchers/views, and change
+  prices (the only way to edit listings this app posted)
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -116,6 +118,57 @@ successful login clears the counter, so ordinary typos don't accumulate.
 
 Rotating `APP_SECRET` invalidates every outstanding session immediately — the
 cookie is signed with it — so that's your "log every device out" button.
+
+---
+
+## Seller view: your live listings
+
+A separate screen at **`/listings`**, linked from the header. Not a tab inside
+the posting flow — that flow holds your photos in browser memory, so navigating
+in and out of it would destroy an in-progress batch. This screen is about
+listings that are already live; the posting flow is about drafts.
+
+It shows every active listing with **watchers, views, impressions, and quantity
+sold**, and lets you **change a price per item** — type, Enter or Save, done.
+
+### Why this screen has to exist
+
+Listings created through eBay's Sell Inventory API are *managed* by that API.
+eBay restricts Seller Hub's quick-edit pencil on them and rejects the older
+Trading revise call for them too. So for anything this app posted, editing in
+the app isn't a convenience — it's the only way to change the price.
+
+Listings you created elsewhere aren't inventory-managed and can't be edited
+here. Rather than guessing which is which, the app asks: a SKU that resolves to
+an offer is inventory-managed, one that doesn't isn't. Those rows show their
+price as plain text with a note pointing you to Seller Hub.
+
+### What it does carefully
+
+- **The price you see after saving is what eBay reports back**, not what you
+  typed. eBay's update returns "accepted", which is not the same as "the live
+  listing now shows this", and that distinction is the whole point of the
+  screen.
+- **Prices are validated before any API call** — a misplaced decimal comes back
+  as a sentence immediately rather than as an eBay error id four requests later.
+- **A stat eBay didn't report shows "—", never "0".** "eBay didn't say" and
+  "nobody is watching" are different facts, and showing the second for the first
+  is how a seller writes off a listing that's doing fine.
+- **Offer ids are resolved only for the row being edited.** Prefetching them for
+  the whole page would cost one API call per listing to draw one screen.
+
+### Views need one more permission
+
+Watch counts come from the listings call and work today. **Views and impressions
+need eBay's `sell.analytics.readonly` scope**, which existing connections don't
+have — reconnect once (the same reconnect that enables multi-buy discounts) and
+those columns fill in. Until then they show "—" with the reason stated once at
+the top, and everything else works.
+
+⚠️ Like the promotions module, this is written from eBay's API docs and hasn't
+been exercised against a live seller account. The read path is harmless if
+wrong; the price write is validated, confirmed by reading the offer back, and
+per-item only — there is deliberately no bulk repricing.
 
 ---
 

@@ -854,6 +854,11 @@ export default function Home() {
           <h1>Listing Writer</h1>
           <p>Upload a pile of photos · auto-sort into items · write every listing.</p>
         </div>
+        {/* The seller view is a route, not a tab: this page holds photos in
+            memory, so anything that navigates has to be a deliberate leave. */}
+        <a className="btn-ghost nav-link" href="/listings">
+          🏷️ My listings
+        </a>
       </header>
 
       {setupError && (

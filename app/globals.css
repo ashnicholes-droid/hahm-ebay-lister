@@ -2625,3 +2625,237 @@ textarea {
     grid-column: span 1;
   }
 }
+
+/* ── Seller view: live listings ───────────────────────────────────────────── */
+
+.nav-link {
+  margin-left: auto;
+  flex: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.lm-intro {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-ink-soft);
+}
+
+.lm-toolbar {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.lm-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lm-rows {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.lm-row {
+  display: grid;
+  /* The stats block needs a real minimum: at four columns inside ~180px the
+     labels ("IMPRESSIONS") overlapped each other. */
+  grid-template-columns: 56px minmax(0, 1.7fr) minmax(170px, 0.9fr) minmax(180px, 0.85fr);
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-sunk);
+}
+
+.lm-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.lm-thumb.placeholder {
+  display: block;
+}
+
+.lm-main {
+  min-width: 0;
+}
+
+.lm-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.lm-title:hover {
+  color: var(--color-accent-deep);
+  text-decoration: underline;
+}
+
+.lm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--color-ink-faint);
+}
+
+.lm-tag {
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+}
+
+.lm-tag.warn {
+  background: var(--color-gold-soft);
+  color: var(--color-ink-soft);
+}
+
+/* Deliberately 2x2 rather than a 4-wide row: at four columns the labels either
+   collide or truncate ("IMPRESSIO..."), and a stat whose name you can't read is
+   not a stat. */
+.lm-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(74px, 1fr));
+  gap: 0.35rem 0.6rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.lm-stats > div {
+  min-width: 0;
+}
+
+.lm-stats dt {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-stats dd {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.lm-stats dd small {
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--color-ink-faint);
+}
+
+.lm-price-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.5rem;
+}
+
+.lm-price {
+  min-width: 0;
+}
+
+.lm-price-row input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  /* Chrome's number spinners eat the last character of a 5-digit price. */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.lm-price-row input::-webkit-outer-spin-button,
+.lm-price-row input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.lm-price-row input:focus {
+  outline: none;
+}
+
+.lm-save {
+  flex: none;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+}
+
+.lm-price-static {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.lm-ok {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--color-accent-deep);
+}
+
+.lm-err {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--color-danger);
+}
+
+.lm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--color-ink-soft);
+}
+
+@media (max-width: 720px) {
+  .lm-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb main"
+      "stats stats"
+      "price price";
+  }
+  .lm-thumb {
+    grid-area: thumb;
+    width: 48px;
+    height: 48px;
+  }
+  .lm-main {
+    grid-area: main;
+  }
+  .lm-stats {
+    grid-area: stats;
+  }
+  .lm-price {
+    grid-area: price;
+  }
+}

@@ -41,7 +41,15 @@ const CORE_SCOPES = [
 /** Only needed for multi-buy discounts, which are opt-in per listing. */
 export const EBAY_MARKETING_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.marketing";
 
-export const EBAY_SCOPES = [...CORE_SCOPES, EBAY_MARKETING_SCOPE].join(" ");
+/**
+ * Read-only, and only for the views/impressions column in the listings view.
+ * Watch counts come from the Trading call and need nothing extra, so the whole
+ * screen still works without this — the views column just explains itself.
+ */
+export const EBAY_ANALYTICS_SCOPE =
+  "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly";
+
+export const EBAY_SCOPES = [...CORE_SCOPES, EBAY_MARKETING_SCOPE, EBAY_ANALYTICS_SCOPE].join(" ");
 
 /** The scope set granted to connections made before marketing was requested. */
 export const EBAY_SCOPES_LEGACY = CORE_SCOPES.join(" ");
