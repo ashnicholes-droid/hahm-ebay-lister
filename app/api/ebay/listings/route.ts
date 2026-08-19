@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
       traffic: {
         unavailable: traffic.unavailable,
         windowDays: traffic.windowDays,
+        // Only when something went wrong. A working report carries no debug.
+        ...(traffic.debug ? { debug: traffic.debug } : {}),
       },
     });
   } catch (e) {

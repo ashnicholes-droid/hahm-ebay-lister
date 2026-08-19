@@ -2859,3 +2859,46 @@ textarea {
     grid-area: price;
   }
 }
+
+/* Who pays the postage. "Free" is the one that costs the seller money, so it's
+   the one that gets the warm colour — that is the question being asked next to
+   a price field. */
+.lm-ship {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lm-ship-free {
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+}
+
+.lm-ship-paid {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+}
+
+.lm-ship-unknown {
+  background: var(--color-surface-sunk);
+  color: var(--color-ink-faint);
+  border: 1px dashed var(--color-border);
+}
+
+.lm-net {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--color-ink-soft);
+}
+
+.lm-net.approx {
+  color: var(--color-ink-faint);
+}
+
+.lm-traffic-debug {
+  margin-top: 0.6rem;
+  background: var(--color-surface);
+}

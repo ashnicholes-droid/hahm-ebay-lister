@@ -154,3 +154,72 @@ describe("Best Offer terms", () => {
     expect(validateBestOffer({ enabled: false, autoAcceptPrice: 999 }, 50)).toEqual({ ok: true });
   });
 });
+
+// Who pays the postage. Getting this wrong on screen is worse than omitting it:
+// a seller who thinks the buyer covers shipping will price too low.
+describe("shipping arrangement", () => {
+  const withShipping = (inner: string) =>
+    responseXml(ITEM.replace("</Item>", `<ShippingDetails>${inner}</ShippingDetails></Item>`));
+
+  it("reads an explicit free-shipping flag", async () => {
+    const page = await parseViaFetch(
+      withShipping(`<ShippingType>Flat</ShippingType>
+        <ShippingServiceOptions>
+          <ShippingService>USPSGround</ShippingService>
+          <ShippingServiceCost currencyID="USD">0.0</ShippingServiceCost>
+          <FreeShipping>true</FreeShipping>
+        </ShippingServiceOptions>`)
+    );
+    expect(page.listings[0].shipping).toBe("free");
+    expect(page.listings[0].shippingCost).toBe(0);
+    expect(page.listings[0].shippingService).toBe("USPSGround");
+  });
+
+  it("treats a zero cost as free even without the flag", async () => {
+    const page = await parseViaFetch(
+      withShipping(`<ShippingType>Flat</ShippingType>
+        <ShippingServiceOptions>
+          <ShippingServiceCost currencyID="USD">0.00</ShippingServiceCost>
+        </ShippingServiceOptions>`)
+    );
+    expect(page.listings[0].shipping).toBe("free");
+  });
+
+  it("reads a flat amount the buyer pays", async () => {
+    const page = await parseViaFetch(
+      withShipping(`<ShippingType>Flat</ShippingType>
+        <ShippingServiceOptions>
+          <ShippingServiceCost currencyID="USD">6.10</ShippingServiceCost>
+        </ShippingServiceOptions>`)
+    );
+    expect(page.listings[0].shipping).toBe("flat");
+    expect(page.listings[0].shippingCost).toBe(6.1);
+  });
+
+  it("recognises calculated shipping", async () => {
+    const page = await parseViaFetch(
+      withShipping(`<ShippingType>Calculated</ShippingType>
+        <ShippingServiceOptions><ShippingService>USPSPriority</ShippingService></ShippingServiceOptions>`)
+    );
+    expect(page.listings[0].shipping).toBe("calculated");
+    expect(page.listings[0].shippingCost).toBeNull();
+  });
+
+  it("treats flat-domestic-calculated-international as flat domestically", async () => {
+    // The domestic buyer sees a fixed price; only the overseas one is quoted.
+    const page = await parseViaFetch(
+      withShipping(`<ShippingType>FlatDomesticCalculatedInternational</ShippingType>
+        <ShippingServiceOptions>
+          <ShippingServiceCost currencyID="USD">7.25</ShippingServiceCost>
+        </ShippingServiceOptions>`)
+    );
+    expect(page.listings[0].shipping).toBe("flat");
+    expect(page.listings[0].shippingCost).toBe(7.25);
+  });
+
+  it("says unknown rather than guessing when eBay sent no shipping details", async () => {
+    const page = await parseViaFetch(responseXml(ITEM));
+    expect(page.listings[0].shipping).toBe("unknown");
+    expect(page.listings[0].shippingCost).toBeNull();
+  });
+});

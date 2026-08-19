@@ -157,6 +157,27 @@ price as plain text with a note pointing you to Seller Hub.
 - **Offer ids are resolved only for the row being edited.** Prefetching them for
   the whole page would cost one API call per listing to draw one screen.
 
+### Shipping, next to the price
+
+Every row shows who pays the postage — **Free shipping — you pay**, **Buyer pays
+$6.10**, or **Buyer pays — calculated** — and a net figure that updates as you
+type a new price. The three arrangements genuinely differ:
+
+| Arrangement | eBay's fee is charged on | Shown as |
+|---|---|---|
+| Buyer pays a flat $S | price + S (you keep the S) | exact net |
+| Free shipping | the price alone | net **before** your label cost |
+| Calculated | price + whatever the buyer is quoted | net before eBay's cut of their shipping |
+
+Free shipping actually nets *more* before postage, because the fee is smaller —
+and then the label eats the difference. The app won't guess what your label
+costs on a live listing, so that figure is excluded and labelled rather than
+invented.
+
+A listing whose shipping details eBay didn't return reads **"Shipping
+unknown"**. Telling a seller the buyer covers postage when they actually absorb
+it is worse than saying nothing.
+
 ### Views need one more permission
 
 Watch counts come from the listings call and work today. **Views and impressions
@@ -164,6 +185,12 @@ need eBay's `sell.analytics.readonly` scope**, which existing connections don't
 have — reconnect once (the same reconnect that enables multi-buy discounts) and
 those columns fill in. Until then they show "—" with the reason stated once at
 the top, and everything else works.
+
+If they still don't appear after reconnecting, the notice carries a **"What eBay
+actually returned"** disclosure with the HTTP status, the exact request, and
+eBay's own error text. An earlier version collapsed every failure into one
+generic sentence, which made a broken report impossible to diagnose from the
+screen — the same mistake the publish path used to make.
 
 ⚠️ Like the promotions module, this is written from eBay's API docs and hasn't
 been exercised against a live seller account. The read path is harmless if

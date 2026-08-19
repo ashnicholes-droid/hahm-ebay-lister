@@ -13,6 +13,7 @@
 // actually being edited (see revise.ts).
 
 import { EBAY_TRADING } from "./config";
+import type { ShippingArrangement } from "@/lib/fees";
 import { tradingAck, xmlBlocks, xmlNumber, xmlText } from "./xml";
 
 /** eBay caps this at 200; anything larger is silently reduced by them. */
@@ -37,6 +38,16 @@ export interface SellerListing {
   startTime: string;
   bestOfferEnabled: boolean;
   format: string;
+  /**
+   * Who pays postage, and how much. This is the difference between a price
+   * change that nets you more and one that quietly costs you money, so it sits
+   * next to the price field rather than being left for the seller to remember.
+   */
+  shipping: ShippingArrangement;
+  /** What the buyer is charged, when it's a fixed amount. */
+  shippingCost: number | null;
+  /** The first domestic service on the listing, for context. */
+  shippingService: string;
 }
 
 export interface SellerListingsPage {
@@ -66,6 +77,43 @@ function requestXml(page: number, pageSize: number): string {
 </GetMyeBaySellingRequest>`;
 }
 
+/**
+ * How postage is arranged on a live listing.
+ *
+ * eBay expresses this three ways at once and they can disagree, so they are
+ * checked in order of how explicit they are: an outright FreeShipping flag, then
+ * the ShippingType, then the cost itself. A listing whose ShippingDetails eBay
+ * didn't return comes back "unknown" rather than being guessed at — telling a
+ * seller their buyer pays postage when they actually eat it is worse than
+ * saying nothing.
+ */
+function parseShipping(block: string): {
+  shipping: ShippingArrangement;
+  shippingCost: number | null;
+  shippingService: string;
+} {
+  const details = xmlBlocks(block, "ShippingDetails")[0] ?? "";
+  if (!details) return { shipping: "unknown", shippingCost: null, shippingService: "" };
+
+  const option = xmlBlocks(details, "ShippingServiceOptions")[0] ?? "";
+  const service = xmlText(option, "ShippingService");
+  const cost = xmlNumber(option, "ShippingServiceCost");
+  const type = xmlText(details, "ShippingType");
+  const flaggedFree = xmlText(option, "FreeShipping").toLowerCase() === "true";
+
+  if (flaggedFree) return { shipping: "free", shippingCost: 0, shippingService: service };
+  // "Calculated" and "FlatDomesticCalculatedInternational" both mean the
+  // domestic buyer is quoted from weight and size at checkout.
+  if (/calculated/i.test(type) && !/^FlatDomestic/i.test(type)) {
+    return { shipping: "calculated", shippingCost: null, shippingService: service };
+  }
+  if (cost === 0) return { shipping: "free", shippingCost: 0, shippingService: service };
+  if (cost !== null && cost > 0) {
+    return { shipping: "flat", shippingCost: cost, shippingService: service };
+  }
+  return { shipping: "unknown", shippingCost: null, shippingService: service };
+}
+
 function parseListing(block: string): SellerListing | null {
   const itemId = xmlText(block, "ItemID");
   if (!itemId) return null;
@@ -86,6 +134,7 @@ function parseListing(block: string): SellerListing | null {
 
   return {
     itemId,
+    ...parseShipping(block),
     title: xmlText(block, "Title"),
     sku: xmlText(block, "SKU"),
     price,

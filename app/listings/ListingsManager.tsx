@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api-client";
+import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
 
 // The seller view: your live eBay listings, with the one edit that Seller Hub
 // won't let you make on them.
@@ -27,6 +28,9 @@ interface SellerListing {
   imageUrl: string;
   viewUrl: string;
   bestOfferEnabled: boolean;
+  shipping: ShippingArrangement;
+  shippingCost: number | null;
+  shippingService: string;
 }
 
 interface ListingsResponse {
@@ -35,7 +39,7 @@ interface ListingsResponse {
   page?: number;
   totalPages?: number;
   totalItems?: number;
-  traffic?: { unavailable?: string; windowDays: number };
+  traffic?: { unavailable?: string; windowDays: number; debug?: unknown };
   error?: string;
 }
 
@@ -47,6 +51,43 @@ const money = (v: number | null, currency: string) => {
 
 /** A stat that eBay didn't report reads "—", never "0". */
 const stat = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(v));
+
+/**
+ * Who pays the postage, at a glance.
+ *
+ * "free" is the one that costs the seller money, so it is the one styled to
+ * catch the eye — that is the whole question being asked next to a price field.
+ */
+function ShippingBadge({ listing }: { listing: SellerListing }) {
+  const { shipping, shippingCost, shippingService } = listing;
+  const title = shippingService || undefined;
+  if (shipping === "free") {
+    return (
+      <span className="lm-ship lm-ship-free" title={title}>
+        Free shipping — you pay
+      </span>
+    );
+  }
+  if (shipping === "flat") {
+    return (
+      <span className="lm-ship lm-ship-paid" title={title}>
+        Buyer pays {money(shippingCost, listing.currency)}
+      </span>
+    );
+  }
+  if (shipping === "calculated") {
+    return (
+      <span className="lm-ship lm-ship-paid" title={title}>
+        Buyer pays — calculated
+      </span>
+    );
+  }
+  return (
+    <span className="lm-ship lm-ship-unknown" title="eBay didn't return shipping details for this listing">
+      Shipping unknown
+    </span>
+  );
+}
 
 function PriceEditor({
   listing,
@@ -69,6 +110,16 @@ function PriceEditor({
   }, [listing.price]);
 
   const changed = value.trim() !== "" && Number(value) !== listing.price;
+
+  // Recomputed as they type, from the price in the box rather than the one
+  // currently live — the question is "what would this price net me", and
+  // answering it about the old price would be useless.
+  const typed = Number(value);
+  const net = netAtPrice(
+    Number.isFinite(typed) ? typed : 0,
+    listing.shipping,
+    listing.shippingCost ?? 0
+  );
 
   const save = async () => {
     if (!changed) return;
@@ -124,6 +175,11 @@ function PriceEditor({
           {state === "saving" ? "Saving…" : "Save"}
         </button>
       </div>
+      {/* No net figure beside a rejected price — quoting proceeds for an amount
+          eBay just refused reads as if it were going to happen. */}
+      {!error && (
+        <span className={`lm-net${net.postageExcluded ? " approx" : ""}`}>{net.label}</span>
+      )}
       {state === "saved" && <span className="lm-ok">✓ Live on eBay</span>}
       {error && <span className="lm-err">{error}</span>}
     </div>
@@ -182,7 +238,15 @@ export function ListingsManager() {
       </p>
 
       {data?.traffic?.unavailable && (
-        <p className="note note-warn">{data.traffic.unavailable}</p>
+        <div className="note note-warn">
+          <p style={{ margin: 0 }}>{data.traffic.unavailable}</p>
+          {data.traffic.debug != null && (
+            <details className="ebay-debug lm-traffic-debug">
+              <summary>What eBay actually returned</summary>
+              <pre className="ebay-debug-raw">{JSON.stringify(data.traffic.debug, null, 2)}</pre>
+            </details>
+          )}
+        </div>
       )}
 
       {data && !data.ok && (
@@ -234,6 +298,7 @@ export function ListingsManager() {
               <div className="lm-meta">
                 {l.sku && <span className="sku-tag">{l.sku}</span>}
                 <span>#{l.itemId}</span>
+                <ShippingBadge listing={l} />
                 {l.bestOfferEnabled && <span className="lm-tag">Best Offer on</span>}
                 {!l.sku && (
                   <span className="lm-tag warn" title="Without a SKU there's no offer to look up">
@@ -270,6 +335,9 @@ export function ListingsManager() {
             ) : (
               <div className="lm-price">
                 <span className="lm-price-static">{money(l.price, l.currency)}</span>
+                <span className="lm-net approx">
+                  {netAtPrice(l.price ?? 0, l.shipping, l.shippingCost ?? 0).label}
+                </span>
               </div>
             )}
           </article>
