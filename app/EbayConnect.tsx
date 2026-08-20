@@ -126,7 +126,11 @@ export function EbayConnect() {
             onToggle={(e) => setShowScopes((e.target as HTMLDetailsElement).open)}
           >
             <summary>
-              Permissions ({extras.length + 1} of {OPTIONAL_SCOPE_IDS.length + 1})
+              {/* Counts the boxes below and nothing else. Folding the
+                  always-on listing scopes into the total made two extras read
+                  as "3 of 3", which is a count of something the list doesn't
+                  show. */}
+              Extra permissions ({extras.length} of {OPTIONAL_SCOPE_IDS.length})
               <small> — open this if eBay says invalid_scope</small>
             </summary>
             <p className="ebay-scopes-note">
