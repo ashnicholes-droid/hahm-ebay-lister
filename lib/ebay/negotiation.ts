@@ -132,8 +132,17 @@ function ebaySentence(debug: NegotiationDebug, fallback: string): string {
   return said || `${fallback} (HTTP ${debug.httpStatus})`;
 }
 
-const SCOPE_HINT =
-  "Sending offers needs eBay's negotiation permission, which this connection doesn't have. Disconnect and reconnect eBay once to add it.";
+/**
+ * A 403 here is NOT a missing optional permission.
+ *
+ * The Negotiation API runs on `sell.inventory`, which every connection has —
+ * there is no separate negotiation scope, despite an earlier version of this
+ * app inventing one. So a refusal means something about the account or the
+ * marketplace, and saying "reconnect to add a permission" would send the seller
+ * off to fix something that isn't broken.
+ */
+const ACCESS_HINT =
+  "eBay refused access to offers on this account. Offers use the same permission as listing, so this isn't something reconnecting will fix — it's usually the account not being eligible to send offers on this marketplace. The details below are eBay's own words.";
 
 /**
  * Which listings currently have buyers worth offering to.
@@ -155,7 +164,7 @@ export async function fetchEligibleItems(accessToken: string): Promise<EligibleI
       const r = await negotiationRequest(accessToken, "GET", path);
 
       if (r.status === 401 || r.status === 403) {
-        return { listingIds, unavailable: SCOPE_HINT, debug: collectDebug(path, r) };
+        return { listingIds, unavailable: ACCESS_HINT, debug: collectDebug(path, r) };
       }
       if (!r.ok) {
         const debug = collectDebug(path, r);
@@ -251,7 +260,7 @@ export async function sendOfferToInterestedBuyers(
     const debug = collectDebug(path, r);
 
     if (r.status === 401 || r.status === 403) {
-      return { ok: false, error: SCOPE_HINT, debug };
+      return { ok: false, error: ACCESS_HINT, debug };
     }
     if (!r.ok) {
       return { ok: false, error: ebaySentence(debug, "eBay refused the offer"), debug };

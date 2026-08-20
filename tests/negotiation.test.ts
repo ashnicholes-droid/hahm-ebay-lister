@@ -84,11 +84,14 @@ describe("which listings can take an offer", () => {
     expect(r.unavailable).toBeUndefined();
   });
 
-  it("names the missing permission on a 403", async () => {
+  it("does not blame a missing permission on a 403", async () => {
+    // Offers run on sell.inventory, which every connection has. Telling the
+    // seller to reconnect would send them to fix something that isn't broken —
+    // and there is no `sell.negotiation` scope to add.
     stub({ errors: [{ errorId: 1100, message: "Insufficient permissions" }] }, 403);
     const r = await fetchEligibleItems("token");
-    expect(r.unavailable).toMatch(/negotiation permission/i);
-    expect(r.unavailable).toMatch(/reconnect/i);
+    expect(r.unavailable).toMatch(/same permission as listing/i);
+    expect(r.unavailable).not.toMatch(/reconnect(ing)? eBay once/i);
   });
 
   it("relays eBay's own sentence on other failures", async () => {

@@ -123,17 +123,23 @@ cookie is signed with it — so that's your "log every device out" button.
 
 ## eBay permissions, and `invalid_scope`
 
-Listing needs four eBay scopes and always works. Three more are optional:
+Listing needs four eBay scopes and always works. Two more are optional:
 
 | Permission | Enables |
 |---|---|
 | Promotions (`sell.marketing`) | multi-buy discounts |
 | Traffic reports (`sell.analytics.readonly`) | views and impressions in the seller view |
-| Offers to buyers (`sell.negotiation`) | sending discounts to watchers |
+
+**Sending offers to watchers needs neither.** eBay's Negotiation API runs on
+`sell.inventory`, which is already in the core set — so offers work on any
+connection, with no reconnect. An earlier version of this app requested a
+`sell.negotiation` scope that does not exist, and because eBay rejects an entire
+authorization over one unknown scope, that broke connecting altogether.
 
 **eBay rejects the *entire* authorization if any one scope isn't available to
-your developer keyset** — you get `{"error_id":"invalid_scope"}` on eBay's own
-page and never make it back to the app. So the extras are individually
+your developer keyset — or isn't a real scope at all** — you get
+`{"error_id":"invalid_scope"}` on eBay's own page and never make it back to the
+app. So the extras are individually
 droppable. Open **Permissions** on the connect bar, untick them one at a time to
 find the culprit, or hit **"Just listing, no extras"** to connect with core
 access. Everything except that one capability keeps working.

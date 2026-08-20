@@ -39,13 +39,17 @@ export const EBAY_OPTIONAL_SCOPES: OptionalScope[] = [
     label: "Traffic reports (read-only)",
     enables: "the views and impressions columns in the seller view",
   },
-  {
-    id: "negotiation",
-    scope: "https://api.ebay.com/oauth/api_scope/sell.negotiation",
-    label: "Offers to buyers",
-    enables: "sending discount offers to people watching a listing",
-  },
 ];
+
+// NOT here, deliberately: there is no `sell.negotiation` scope. It was invented,
+// and because eBay rejects an entire authorize request over one unknown scope,
+// it broke the ability to connect at all.
+//
+// eBay's Negotiation API — find_eligible_items and send_offer_to_interested_
+// buyers, the "send offers to watchers" feature — runs on `sell.inventory` and
+// `sell.inventory.readonly`, both of which are in CORE_SCOPES above. Offers need
+// no extra permission and no reconnect.
+//   https://developer.ebay.com/api-docs/sell/negotiation/resources/offer/methods/sendOfferToInterestedBuyers
 
 export const OPTIONAL_SCOPE_IDS = EBAY_OPTIONAL_SCOPES.map((s) => s.id);
 

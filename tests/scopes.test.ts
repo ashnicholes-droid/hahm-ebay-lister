@@ -25,10 +25,22 @@ describe("core access can never be taken out by an extra", () => {
   });
 
   it("drops one extra without disturbing the others", () => {
-    const without = scopeString(OPTIONAL_SCOPE_IDS.filter((id) => id !== "negotiation"));
+    const without = scopeString(OPTIONAL_SCOPE_IDS.filter((id) => id !== "analytics"));
     expect(without).toContain("sell.marketing");
-    expect(without).toContain("sell.analytics.readonly");
-    expect(without).not.toContain("sell.negotiation");
+    expect(without).not.toContain("sell.analytics.readonly");
+  });
+
+  it("never asks for a scope eBay doesn't have", () => {
+    // `sell.negotiation` does not exist. Requesting it got the whole authorize
+    // request rejected, which took out the ability to connect at all.
+    expect(scopeString(OPTIONAL_SCOPE_IDS)).not.toContain("sell.negotiation");
+    expect(EBAY_SCOPES).not.toContain("sell.negotiation");
+  });
+
+  it("keeps the scope offers actually run on in the core set", () => {
+    // The Negotiation API uses sell.inventory / sell.inventory.readonly, so
+    // sending offers needs no extra permission and no reconnect.
+    expect(CORE_SCOPES).toContain("https://api.ebay.com/oauth/api_scope/sell.inventory");
   });
 
   it("ignores an id it doesn't recognise rather than passing it to eBay", () => {
@@ -42,7 +54,7 @@ describe("core access can never be taken out by an extra", () => {
 
 describe("remembering what a connection was granted", () => {
   it("round-trips a scope string back to its optional ids", () => {
-    for (const ids of [[], ["marketing"], ["analytics", "negotiation"], OPTIONAL_SCOPE_IDS]) {
+    for (const ids of [[], ["marketing"], ["analytics"], OPTIONAL_SCOPE_IDS]) {
       expect(optionalIdsFromScopeString(scopeString(ids)).sort()).toEqual([...ids].sort());
     }
   });
