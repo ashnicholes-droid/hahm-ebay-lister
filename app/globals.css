@@ -2663,6 +2663,9 @@ textarea {
   /* The stats block needs a real minimum: at four columns inside ~180px the
      labels ("IMPRESSIONS") overlapped each other. */
   grid-template-columns: 56px minmax(0, 1.7fr) minmax(170px, 0.9fr) minmax(180px, 0.85fr);
+  grid-template-areas:
+    "thumb main stats price"
+    "offer offer offer offer";
   align-items: center;
   gap: 0.9rem;
   padding: 0.7rem;
@@ -2672,6 +2675,7 @@ textarea {
 }
 
 .lm-thumb {
+  grid-area: thumb;
   width: 56px;
   height: 56px;
   object-fit: cover;
@@ -2685,6 +2689,7 @@ textarea {
 }
 
 .lm-main {
+  grid-area: main;
   min-width: 0;
 }
 
@@ -2728,6 +2733,7 @@ textarea {
    collide or truncate ("IMPRESSIO..."), and a stat whose name you can't read is
    not a stat. */
 .lm-stats {
+  grid-area: stats;
   display: grid;
   grid-template-columns: repeat(2, minmax(74px, 1fr));
   gap: 0.35rem 0.6rem;
@@ -2772,6 +2778,7 @@ textarea {
 }
 
 .lm-price {
+  grid-area: price;
   min-width: 0;
 }
 
@@ -2842,7 +2849,8 @@ textarea {
     grid-template-areas:
       "thumb main"
       "stats stats"
-      "price price";
+      "price price"
+      "offer offer";
   }
   .lm-thumb {
     grid-area: thumb;
@@ -2901,4 +2909,160 @@ textarea {
 .lm-traffic-debug {
   margin-top: 0.6rem;
   background: var(--color-surface);
+}
+
+/* ── Send an offer to watchers ────────────────────────────────────────────── */
+
+/* Spans the whole row rather than sharing the price column: the open form is a
+   handful of fields, and 180px is not enough for any of them. */
+.lm-offer {
+  grid-area: offer;
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.lm-offer summary {
+  cursor: pointer;
+  color: var(--color-accent-deep);
+  font-weight: 600;
+}
+
+.lm-offer summary small {
+  font-weight: 400;
+  color: var(--color-ink-faint);
+}
+
+.lm-offer-body {
+  margin-top: 0.5rem;
+  padding: 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  gap: 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.lm-offer-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.5rem;
+}
+
+/* These three explain or act on the whole form, so they get their own lines. */
+.lm-offer-preview,
+.lm-offer-warn,
+.lm-offer-body > .lm-err {
+  grid-column: 1 / -1;
+}
+
+.lm-offer-fields label,
+.lm-offer-msg {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.lm-offer-fields span:first-child,
+.lm-offer-msg span:first-child {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+}
+
+.lm-offer-msg small {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.lm-offer-input {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.4rem;
+}
+
+.lm-offer-input input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.lm-offer-input input:focus {
+  outline: none;
+}
+
+.lm-offer-input em {
+  flex: none;
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--color-ink-faint);
+}
+
+.lm-offer-fields select,
+.lm-offer-msg input {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  min-width: 0;
+  width: 100%;
+}
+
+.lm-offer-counter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-ink-soft);
+}
+
+.lm-offer-counter input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-accent);
+}
+
+.lm-offer-preview {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+}
+
+.lm-offer-send {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  justify-content: center;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+/* An offer can't be withdrawn. Say so where the button is, not in a footnote. */
+.lm-offer-warn {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--color-ink-faint);
+}
+
+.lm-offer-sent {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--color-accent-deep);
 }

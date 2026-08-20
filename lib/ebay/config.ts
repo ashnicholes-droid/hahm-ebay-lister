@@ -49,7 +49,19 @@ export const EBAY_MARKETING_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.m
 export const EBAY_ANALYTICS_SCOPE =
   "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly";
 
-export const EBAY_SCOPES = [...CORE_SCOPES, EBAY_MARKETING_SCOPE, EBAY_ANALYTICS_SCOPE].join(" ");
+/**
+ * Sending offers to watchers. Grouped with the others so one reconnect covers
+ * everything rather than asking the seller back a third time.
+ */
+export const EBAY_NEGOTIATION_SCOPE =
+  "https://api.ebay.com/oauth/api_scope/sell.negotiation";
+
+export const EBAY_SCOPES = [
+  ...CORE_SCOPES,
+  EBAY_MARKETING_SCOPE,
+  EBAY_ANALYTICS_SCOPE,
+  EBAY_NEGOTIATION_SCOPE,
+].join(" ");
 
 /** The scope set granted to connections made before marketing was requested. */
 export const EBAY_SCOPES_LEGACY = CORE_SCOPES.join(" ");

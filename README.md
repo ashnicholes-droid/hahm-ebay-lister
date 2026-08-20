@@ -26,8 +26,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
 - 🔢 **Multiples** — tick a box for quantity and an optional multi-buy discount;
   everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
-- 🏷️ **Seller view** — see every live listing with watchers/views, and change
-  prices (the only way to edit listings this app posted)
+- 🏷️ **Seller view** — see every live listing with watchers/views, change prices
+  (the only way to edit listings this app posted), and send offers to watchers
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -156,6 +156,29 @@ price as plain text with a note pointing you to Seller Hub.
   is how a seller writes off a listing that's doing fine.
 - **Offer ids are resolved only for the row being edited.** Prefetching them for
   the whole page would cost one API call per listing to draw one screen.
+
+### Sending offers to watchers
+
+Rows eBay says are eligible get a **💌 Send an offer** control: a percentage, how
+long it runs, an optional note, and whether buyers may counter. The button
+states the price the buyer will actually see — *Send offer at $34.13* — not the
+percentage, and the net figure beside it folds in the shipping arrangement, so a
+discount on a free-shipping listing shows what it really leaves you.
+
+**Eligibility is eBay's answer, not an inference from watch counts.** eBay
+applies its own rules about how recently interest was shown and how many offers
+a listing has already had, so a watched listing without the button isn't a bug —
+guessing eligibility would produce a button that fails when pressed.
+
+Guard rails, because an offer cannot be unsent:
+
+- eBay's **5% minimum** is enforced before the call, with a sentence rather than
+  an error id. Whole numbers only, which is what eBay accepts.
+- A cap at 60% catches the misplaced decimal.
+- The form is behind a disclosure and the warning sits with the button: *this
+  goes to everyone watching and can't be withdrawn.*
+- A 2xx from eBay with no offer in the body is **not** reported as sent — that
+  would invite a duplicate.
 
 ### Shipping, next to the price
 
