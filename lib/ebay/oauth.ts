@@ -1,15 +1,8 @@
 // eBay OAuth: authorize URL, code exchange, and token refresh.
 // Ported from _get_oauth_code / _exchange_code / _refresh_token in the script.
 
-import {
-  EBAY_OAUTH_URL,
-  EBAY_TOKEN_URL,
-  EBAY_SCOPES,
-  EBAY_SCOPES_LEGACY,
-  basicAuthHeader,
-  getEbayCreds,
-  type EbayCreds,
-} from "./config";
+import { EBAY_OAUTH_URL, EBAY_TOKEN_URL, basicAuthHeader, getEbayCreds, type EbayCreds } from "./config";
+import { EBAY_SCOPES, EBAY_SCOPES_LEGACY, scopeString } from "./scopes";
 
 export interface TokenResponse {
   access_token: string;
@@ -22,13 +15,16 @@ export interface TokenResponse {
 // Step 1: the URL we send the user to so they can authorize the app.
 // `redirect_uri` is the RuName (per eBay's flow); the RuName's configured
 // "auth accepted URL" is what the browser actually returns to.
-export function buildAuthorizeUrl(state: string): string {
+export function buildAuthorizeUrl(state: string, optionalScopeIds?: readonly string[]): string {
   const creds = getEbayCreds();
   const params = new URLSearchParams({
     client_id: creds.clientId,
     redirect_uri: creds.ruName,
     response_type: "code",
-    scope: EBAY_SCOPES,
+    // Core plus whichever extras were asked for. eBay rejects the whole request
+    // if any one scope isn't available to the keyset, so the caller has to be
+    // able to drop them individually.
+    scope: optionalScopeIds ? scopeString(optionalScopeIds) : EBAY_SCOPES,
     state,
   });
   return `${EBAY_OAUTH_URL}?${params.toString()}`;
@@ -103,26 +99,29 @@ export function exchangeCode(code: string): Promise<TokenResponse> {
 
 // Mint a fresh short-lived access token from a stored refresh token.
 //
-// eBay refuses a refresh that requests a scope the refresh token was never
-// granted, so a token minted before `sell.marketing` was added to EBAY_SCOPES
-// cannot be refreshed with the current set. That would have disconnected every
-// existing user the moment the scope was added — a self-inflicted outage for an
-// opt-in feature. So an `invalid_scope` rejection is retried once with the
-// legacy set, which is exactly what those older tokens hold.
+// `grantedScopes` is what eBay actually issued for this connection. eBay refuses
+// a refresh naming a scope the token was never granted, so asking for this
+// build's full wish list would break every connection made with fewer.
 //
-// The cost of the fallback is that multi-buy discounts stay unavailable on an
-// old connection until the seller reconnects; publish reports that per listing
-// rather than failing.
-export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+// The fallback stays for connections stored before scopes were recorded, and for
+// anything else that surprises us: an invalid_scope rejection is retried once
+// with the core set, which is the only set every connection is guaranteed to
+// have. The cost is that optional capabilities go quiet until reconnecting —
+// which is much better than losing the connection.
+export async function refreshAccessToken(
+  refreshToken: string,
+  grantedScopes?: string
+): Promise<TokenResponse> {
   const creds = getEbayCreds();
+  const scope = grantedScopes?.trim() || EBAY_SCOPES_LEGACY;
   try {
     return await postToken(creds, {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: EBAY_SCOPES,
+      scope,
     });
   } catch (e) {
-    if (!/invalid_scope/i.test((e as Error).message)) throw e;
+    if (!/invalid_scope/i.test((e as Error).message) || scope === EBAY_SCOPES_LEGACY) throw e;
     return postToken(creds, {
       grant_type: "refresh_token",
       refresh_token: refreshToken,

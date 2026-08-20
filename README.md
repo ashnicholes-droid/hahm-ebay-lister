@@ -121,6 +121,31 @@ cookie is signed with it — so that's your "log every device out" button.
 
 ---
 
+## eBay permissions, and `invalid_scope`
+
+Listing needs four eBay scopes and always works. Three more are optional:
+
+| Permission | Enables |
+|---|---|
+| Promotions (`sell.marketing`) | multi-buy discounts |
+| Traffic reports (`sell.analytics.readonly`) | views and impressions in the seller view |
+| Offers to buyers (`sell.negotiation`) | sending discounts to watchers |
+
+**eBay rejects the *entire* authorization if any one scope isn't available to
+your developer keyset** — you get `{"error_id":"invalid_scope"}` on eBay's own
+page and never make it back to the app. So the extras are individually
+droppable. Open **Permissions** on the connect bar, untick them one at a time to
+find the culprit, or hit **"Just listing, no extras"** to connect with core
+access. Everything except that one capability keeps working.
+
+The scopes a connection was actually granted are stored with it and replayed on
+every refresh, because eBay also refuses a *refresh* that names a scope the
+token never had. Connecting with two of the three extras keeps both of them
+working indefinitely; the app doesn't quietly re-ask for the third and lose the
+lot.
+
+---
+
 ## Seller view: your live listings
 
 A separate screen at **`/listings`**, linked from the header. Not a tab inside

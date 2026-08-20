@@ -3066,3 +3066,58 @@ textarea {
   line-height: 1.4;
   color: var(--color-accent-deep);
 }
+
+/* Which eBay permissions to request. Visible because eBay rejects the whole
+   authorization when one isn't available to your keyset, and the only way out
+   is to ask for fewer. */
+.ebay-scopes {
+  flex-basis: 100%;
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ebay-scopes summary {
+  cursor: pointer;
+  color: var(--color-ink-soft);
+}
+
+.ebay-scopes summary small {
+  color: var(--color-ink-faint);
+}
+
+.ebay-scopes-note {
+  margin: 0.5rem 0 0.6rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.ebay-scopes-note code {
+  padding: 0.05rem 0.25rem;
+  border-radius: 4px;
+  background: var(--color-surface-sunk);
+  font-size: 0.95em;
+}
+
+.ebay-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.ebay-scope input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.15rem;
+  accent-color: var(--color-accent);
+}
+
+.ebay-scope-min {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+}

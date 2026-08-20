@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiPost } from "@/lib/api-client";
+import { EBAY_OPTIONAL_SCOPES, OPTIONAL_SCOPE_IDS } from "@/lib/ebay/scopes";
 
 interface Status {
   configured: boolean;
@@ -13,6 +14,12 @@ export function EbayConnect() {
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pasteValue, setPasteValue] = useState("");
+  // Every optional permission is requested by default. They can be dropped
+  // individually because eBay refuses the ENTIRE authorization if one of them
+  // isn't available to your developer keyset — the whole request comes back
+  // {"error_id":"invalid_scope"} and you can't connect at all.
+  const [extras, setExtras] = useState<string[]>(OPTIONAL_SCOPE_IDS);
+  const [showScopes, setShowScopes] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,7 +58,7 @@ export function EbayConnect() {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await apiPost("/api/ebay/auth", {});
+      const r = await apiPost("/api/ebay/auth", { optionalScopes: extras });
       const data = (await r.json()) as { ok: boolean; url?: string; error?: string };
       if (!data.ok || !data.url) throw new Error(data.error || "Couldn't start eBay authorization.");
       window.open(data.url, "_blank", "noopener,noreferrer");
@@ -112,6 +119,50 @@ export function EbayConnect() {
           >
             Open eBay ↗
           </button>
+
+          <details
+            className="ebay-scopes"
+            open={showScopes}
+            onToggle={(e) => setShowScopes((e.target as HTMLDetailsElement).open)}
+          >
+            <summary>
+              Permissions ({extras.length + 1} of {OPTIONAL_SCOPE_IDS.length + 1})
+              <small> — open this if eBay says invalid_scope</small>
+            </summary>
+            <p className="ebay-scopes-note">
+              Listing always works. The extras below are separate eBay permissions, and{" "}
+              <strong>
+                eBay refuses the whole authorization if your developer keyset doesn&rsquo;t have one
+                of them
+              </strong>{" "}
+              — that&rsquo;s what <code>invalid_scope</code> means. Untick them one at a time to
+              find the culprit; everything else keeps working without it.
+            </p>
+            {EBAY_OPTIONAL_SCOPES.map((o) => (
+              <label className="ebay-scope" key={o.id}>
+                <input
+                  type="checkbox"
+                  checked={extras.includes(o.id)}
+                  onChange={(e) =>
+                    setExtras((prev) =>
+                      e.target.checked ? [...prev, o.id] : prev.filter((x) => x !== o.id)
+                    )
+                  }
+                />
+                <span>
+                  <strong>{o.label}</strong> — {o.enables}
+                </span>
+              </label>
+            ))}
+            <button
+              type="button"
+              className="btn-ghost ebay-scope-min"
+              onClick={() => setExtras([])}
+              disabled={extras.length === 0}
+            >
+              Just listing, no extras
+            </button>
+          </details>
           <div className="ebay-paste">
             <label htmlFor="ebay-paste">
               <strong>Step 2:</strong> after you click <em>Agree</em>, copy the

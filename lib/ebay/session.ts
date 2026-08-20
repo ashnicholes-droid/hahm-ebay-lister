@@ -4,16 +4,35 @@
 // Short-lived access tokens are minted on demand from it, so nothing sensitive
 // is exposed to the browser and there's no database to manage.
 
+import { optionalIdsFromScopeString } from "./scopes";
 import { refreshAccessToken } from "./oauth";
 
 export const EBAY_COOKIE = "ebay_conn";
 export const EBAY_STATE_COOKIE = "ebay_oauth_state";
+/**
+ * Which optional scopes the pending authorize asked for.
+ *
+ * The paste-the-URL connect step happens in a separate request from the one
+ * that built the authorize URL, so the choice has to survive the round trip —
+ * otherwise the connection is stored without knowing what it was granted, and
+ * the next refresh guesses.
+ */
+export const EBAY_SCOPE_COOKIE = "ebay_oauth_scopes";
 // Browsers cap persistent cookies at ~400 days; eBay refresh tokens last ~18mo.
 export const EBAY_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
 
 interface Connection {
   refreshToken: string;
   refreshExpiresAt: number; // epoch ms
+  /**
+   * The scope string eBay actually granted this connection.
+   *
+   * Stored because a refresh has to ask for what was granted, not what this
+   * build would like: eBay refuses a refresh naming a scope the token never
+   * had. Absent on connections made before this was recorded, which the refresh
+   * treats as "core only".
+   */
+  scopes?: string;
 }
 
 async function aesKey(): Promise<CryptoKey> {
@@ -51,6 +70,13 @@ export async function sealConnection(conn: Connection): Promise<string> {
   return Buffer.from(out).toString("base64url");
 }
 
+/** The optional capabilities this connection actually holds. */
+export async function connectionScopes(sealed: string | undefined): Promise<string[] | null> {
+  const conn = await openConnection(sealed);
+  if (!conn) return null;
+  return optionalIdsFromScopeString(conn.scopes);
+}
+
 export async function openConnection(
   sealed: string | undefined
 ): Promise<Connection | null> {
@@ -71,9 +97,13 @@ export async function openConnection(
 }
 
 // Build a Connection from a fresh token-exchange response.
-export function connectionFromToken(refreshToken: string, refreshExpiresIn?: number): Connection {
+export function connectionFromToken(
+  refreshToken: string,
+  refreshExpiresIn?: number,
+  scopes?: string
+): Connection {
   const ttl = (refreshExpiresIn ?? 47304000) * 1000; // default ~18 months
-  return { refreshToken, refreshExpiresAt: Date.now() + ttl };
+  return { refreshToken, refreshExpiresAt: Date.now() + ttl, ...(scopes ? { scopes } : {}) };
 }
 
 // Access tokens live ~2h. Minting one per publish means an extra eBay
@@ -89,7 +119,9 @@ export async function accessTokenFromCookie(
   if (!conn) return null;
   const cached = tokenCache.get(conn.refreshToken);
   if (cached && cached.expiresAt > Date.now()) return cached.token;
-  const token = await refreshAccessToken(conn.refreshToken);
+  // Ask for exactly what this connection was granted. Asking for more gets the
+  // whole refresh refused; asking for less silently drops capabilities.
+  const token = await refreshAccessToken(conn.refreshToken, conn.scopes);
   if (tokenCache.size > 100) tokenCache.clear(); // bound memory
   tokenCache.set(conn.refreshToken, {
     token: token.access_token,

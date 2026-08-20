@@ -4,9 +4,11 @@ import { guardApiRequest } from "@/lib/api-guard";
 import {
   EBAY_COOKIE,
   EBAY_COOKIE_MAX_AGE,
+  EBAY_SCOPE_COOKIE,
   connectionFromToken,
   sealConnection,
 } from "@/lib/ebay/session";
+import { OPTIONAL_SCOPE_IDS, scopeString } from "@/lib/ebay/scopes";
 
 export const dynamic = "force-dynamic";
 
@@ -56,8 +58,15 @@ export async function POST(req: NextRequest) {
     if (!token.refresh_token) {
       throw new Error("eBay didn't return a refresh token (the code may have expired — try again).");
     }
+    // Record what this connection was actually granted, so refreshes ask for
+    // exactly that rather than for whatever the current build wants.
+    const requested = (req.cookies.get(EBAY_SCOPE_COOKIE)?.value ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => OPTIONAL_SCOPE_IDS.includes(s));
+    const granted = scopeString(requested);
     const sealed = await sealConnection(
-      connectionFromToken(token.refresh_token, token.refresh_token_expires_in)
+      connectionFromToken(token.refresh_token, token.refresh_token_expires_in, granted)
     );
     const res = NextResponse.json({ ok: true });
     res.cookies.set(EBAY_COOKIE, sealed, {

@@ -25,46 +25,35 @@ export const EBAY_MARKETPLACE_ID = process.env.EBAY_MARKETPLACE_ID || "EBAY_US";
 export const EBAY_CATEGORY_TREE_ID = process.env.EBAY_CATEGORY_TREE_ID || "0";
 export const EBAY_CURRENCY = process.env.EBAY_CURRENCY || "USD";
 
-// Scopes needed to list. Anyone who connected before `sell.marketing` was added
-// holds a refresh token WITHOUT it, and eBay refuses a refresh that asks for a
-// scope the token was never granted. So the two sets are kept separate: new
-// consents get everything, and refresh falls back to the legacy set when eBay
-// says no (see refreshAccessToken). Without that fallback, adding a scope would
-// silently disconnect every existing user's eBay account.
-const CORE_SCOPES = [
-  "https://api.ebay.com/oauth/api_scope",
-  "https://api.ebay.com/oauth/api_scope/sell.inventory",
-  "https://api.ebay.com/oauth/api_scope/sell.account",
-  "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
-];
-
-/** Only needed for multi-buy discounts, which are opt-in per listing. */
-export const EBAY_MARKETING_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.marketing";
-
-/**
- * Read-only, and only for the views/impressions column in the listings view.
- * Watch counts come from the Trading call and need nothing extra, so the whole
- * screen still works without this — the views column just explains itself.
- */
-export const EBAY_ANALYTICS_SCOPE =
-  "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly";
-
-/**
- * Sending offers to watchers. Grouped with the others so one reconnect covers
- * everything rather than asking the seller back a third time.
- */
-export const EBAY_NEGOTIATION_SCOPE =
-  "https://api.ebay.com/oauth/api_scope/sell.negotiation";
-
-export const EBAY_SCOPES = [
-  ...CORE_SCOPES,
-  EBAY_MARKETING_SCOPE,
-  EBAY_ANALYTICS_SCOPE,
-  EBAY_NEGOTIATION_SCOPE,
-].join(" ");
-
-/** The scope set granted to connections made before marketing was requested. */
-export const EBAY_SCOPES_LEGACY = CORE_SCOPES.join(" ");
+// eBay OAuth scopes.
+//
+// Two hard lessons are encoded in lib/ebay/scopes.ts, which holds the actual
+// list:
+//
+// 1. eBay rejects an ENTIRE authorize request if any single scope in it isn't
+//    available to your developer keyset — `{"error_id":"invalid_scope"}`, at
+//    eBay's own page, before the browser ever comes back. So an optional
+//    capability bundled into one all-or-nothing string can take out the ability
+//    to connect at all. That happened. Optional scopes are individually
+//    droppable and the connect screen lets you drop them.
+//
+// 2. eBay refuses a refresh that asks for a scope the refresh token was never
+//    granted, so the refresh asks for what was actually granted rather than
+//    what this build would like. The granted set is stored with the connection
+//    (see session.ts) and replayed on refresh.
+//
+// Re-exported here so existing imports keep working; the list itself lives in
+// scopes.ts because the connect UI is a client component and must not pull in
+// anything that reads credentials.
+export {
+  EBAY_OPTIONAL_SCOPES,
+  EBAY_SCOPES,
+  EBAY_SCOPES_LEGACY,
+  OPTIONAL_SCOPE_IDS,
+  optionalIdsFromScopeString,
+  scopeString,
+  type OptionalScope,
+} from "./scopes";
 
 export interface EbayCreds {
   clientId: string;
