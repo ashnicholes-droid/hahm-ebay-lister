@@ -3121,3 +3121,16 @@ textarea {
   font-size: 0.78rem;
   padding: 0.3rem 0.7rem;
 }
+
+/* Offers get a line whether or not any are available — the control itself only
+   appears on eligible rows, so silence reads as "the feature isn't there". */
+.lm-offer-status {
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}

@@ -544,15 +544,31 @@ export function ListingsManager() {
         </div>
       )}
 
+      {/* Say something about offers even when none are available.
+          Previously the eligible count only rendered above zero and the "Send
+          an offer" control only appears on eligible rows, so an account with
+          nothing eligible saw no mention of the feature anywhere and could
+          only conclude it hadn't shipped. */}
+      {data?.ok && data.offers?.eligibleCount !== undefined && !data.offers.unavailable && (
+        <p className="lm-offer-status">
+          {data.offers.eligibleCount > 0 ? (
+            <>
+              💌 <strong>{data.offers.eligibleCount}</strong> listing
+              {data.offers.eligibleCount === 1 ? "" : "s"} can take an offer right now — look for{" "}
+              <strong>Send an offer</strong> on those rows.
+            </>
+          ) : (
+            <>
+              💌 <strong>No listings can take an offer right now.</strong> eBay only allows one on a
+              listing someone has recently watched or carted and that hasn&rsquo;t just had one, so
+              the <strong>Send an offer</strong> control appears on those rows when it applies —
+              eBay decides that, not this app.
+            </>
+          )}
+        </p>
+      )}
+
       <p className="footnote">
-        {data?.offers?.eligibleCount !== undefined && data.offers.eligibleCount > 0 && (
-          <>
-            {data.offers.eligibleCount} listing
-            {data.offers.eligibleCount === 1 ? "" : "s"} can take an offer right now — eBay decides
-            that, not this app, so a watched listing without the button has already had one
-            recently or falls outside eBay&rsquo;s window.{" "}
-          </>
-        )}
         Views and impressions cover the last {data?.traffic?.windowDays ?? 30} days. Watch counts
         are live. Changing a price here updates the listing on eBay immediately — the figure shown
         after saving is what eBay reports back, not what was typed.

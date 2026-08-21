@@ -190,7 +190,13 @@ price as plain text with a note pointing you to Seller Hub.
 
 ### Sending offers to watchers
 
-Rows eBay says are eligible get a **💌 Send an offer** control: a percentage, how
+The seller view (`/listings`) carries a line about offers on every load — how
+many listings can take one, or that none can and why. The control itself only
+appears on eligible rows, so without that line an account with nothing eligible
+would see no mention of the feature at all.
+
+Rows eBay says are eligible get a **💌 Send an offer** control, under the price
+editor: a percentage, how
 long it runs, an optional note, and whether buyers may counter. The button
 states the price the buyer will actually see — *Send offer at $34.13* — not the
 percentage, and the net figure beside it folds in the shipping arrangement, so a
