@@ -9,6 +9,17 @@ import { groupByQrDelimiters, type GroupingWarning } from "@/lib/qrGrouping";
 import { decoderName, loadImageForScan, scanQrSku } from "@/lib/qrScan";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
 import {
+  clearBatch,
+  isQuotaError,
+  peekSession,
+  prunePhotos,
+  restoreBatch,
+  savePhotos,
+  savedAgo,
+  saveSession,
+  type SavedSession,
+} from "@/lib/batchStore";
+import {
   buildReport,
   reportStatus,
   runRuleChecks,
@@ -156,6 +167,12 @@ export default function Home() {
   const [importing, setImporting] = useState<string | null>(null);
   const [qrWarnings, setQrWarnings] = useState<GroupingWarning[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // A batch found in local storage from a previous visit. Never restored
+  // silently: repopulating the screen with someone's old work uninvited is its
+  // own kind of surprise, and they may well want a clean start.
+  const [recoverable, setRecoverable] = useState<SavedSession | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const restoredRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // How many of the loaded photos carry a QR inventory label.
@@ -173,6 +190,84 @@ export default function Home() {
   useEffect(() => {
     groupsRef.current = groups;
   }, [groups]);
+
+  // ── Keeping the batch alive across a closed tab ───────────────────────────
+  //
+  // Look once, on mount, for work left behind by a previous visit.
+  useEffect(() => {
+    let cancelled = false;
+    peekSession().then((found) => {
+      if (!cancelled && found) setRecoverable(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Photo bytes are written once, when they arrive, and never rewritten — they
+  // are the bulk of the batch and nothing later changes them.
+  useEffect(() => {
+    if (photos.length === 0) return;
+    savePhotos(photos).catch((e) => {
+      setSaveError(
+        isQuotaError(e)
+          ? "This browser is out of storage, so the batch isn't being saved. Post what you have, or start a smaller batch — everything on screen still works."
+          : "The batch couldn't be saved locally, so closing this tab would lose it."
+      );
+    });
+  }, [photos]);
+
+  // The session is small and changes constantly, so it is debounced. Saving on
+  // every keystroke of a description would be pointless write amplification.
+  useEffect(() => {
+    if (photos.length === 0 && groups.length === 0) return;
+    const t = setTimeout(() => {
+      saveSession({
+        step,
+        groups,
+        orphanIds,
+        binPrefix,
+        skuStart,
+        intakeMode,
+        photoIds: photos.map((p) => p.id),
+      }).catch(() => {
+        /* the photo effect above already surfaces a storage failure */
+      });
+      // Drop photo records nothing references any more, so removing pictures
+      // actually frees the space rather than just hiding them.
+      prunePhotos(photos.map((p) => p.id));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [step, groups, orphanIds, binPrefix, skuStart, intakeMode, photos]);
+
+  const resumeBatch = useCallback(async () => {
+    // Guard against a double click restoring twice and duplicating photos.
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const restored = await restoreBatch();
+      if (!restored) return;
+      setPhotos(restored.photos);
+      setGroups(restored.session.groups);
+      setOrphanIds(restored.session.orphanIds ?? []);
+      setBinPrefix(restored.session.binPrefix ?? "");
+      setSkuStart(restored.session.skuStart ?? 0);
+      setIntakeMode((restored.session.intakeMode as IntakeMode) ?? "qr");
+      setStep((restored.session.step as Step) ?? "upload");
+      setRecoverable(null);
+    } catch {
+      setError("That saved batch couldn't be read back. Starting fresh.");
+      await clearBatch();
+      setRecoverable(null);
+    } finally {
+      restoredRef.current = false;
+    }
+  }, []);
+
+  const discardSaved = useCallback(async () => {
+    await clearBatch();
+    setRecoverable(null);
+  }, []);
 
   // Keep eBay connection status in sync (also after the connect bar updates).
   // This probe doubles as the deployment health check: it's the first call the
@@ -867,6 +962,40 @@ export default function Home() {
         </p>
       )}
 
+      {/* Offered, never applied automatically. Silently repopulating the screen
+          with work from a previous session is its own kind of surprise. */}
+      {recoverable && (
+        <div className="resume-bar" role="status">
+          <div>
+            <strong>You have an unfinished batch</strong> from {savedAgo(recoverable.savedAt)} —{" "}
+            {recoverable.photoIds.length} photo
+            {recoverable.photoIds.length === 1 ? "" : "s"}
+            {recoverable.groups.length > 0 && (
+              <>
+                {" "}
+                and {recoverable.groups.length} item
+                {recoverable.groups.length === 1 ? "" : "s"}
+              </>
+            )}
+            .
+          </div>
+          <div className="resume-actions">
+            <button type="button" className="btn btn-primary" onClick={resumeBatch}>
+              Pick up where I left off
+            </button>
+            <button type="button" className="btn-ghost" onClick={discardSaved}>
+              Discard it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {saveError && (
+        <p className="note note-warn" role="alert">
+          {saveError}
+        </p>
+      )}
+
       <EbayConnect />
 
       {step === "upload" && (
@@ -1152,9 +1281,38 @@ export default function Home() {
         />
       )}
 
+      {(photos.length > 0 || groups.length > 0) && (
+        <div className="batch-clear">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  "Clear this batch? The photos and listings on screen will be discarded, including the saved copy. Anything already posted to eBay stays posted."
+                )
+              ) {
+                return;
+              }
+              await clearBatch();
+              setPhotos([]);
+              setGroups([]);
+              setOrphanIds([]);
+              setQrWarnings([]);
+              setError(null);
+              setSaveError(null);
+              setStep("upload");
+            }}
+          >
+            🗑 Clear this batch
+          </button>
+        </div>
+      )}
+
       <p className="footnote">
-        Your photos are sent securely to sort and write listings, and are not
-        stored. One-click posting to eBay is coming in the next phase.
+        Your photos are sent securely to sort and write listings, and are not stored on the server.
+        This batch is saved <strong>in this browser</strong> so closing the tab doesn&rsquo;t lose
+        it — clear it above when you&rsquo;re done.
       </p>
     </main>
   );

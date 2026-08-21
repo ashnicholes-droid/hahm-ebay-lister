@@ -33,6 +33,38 @@ own eBay developer keys, so you're in full control and there's no middleman.
 
 ---
 
+## Your batch survives a closed tab
+
+Everything about an in-progress batch — the photos, the written listings, every
+edit and accuracy verdict — used to live only in the page's memory. Reload, close
+the tab, or let a phone reclaim the page and an hour of work was gone with no
+warning. For a tool meant to run forty items at a time that isn't a missing
+feature, it's data loss.
+
+The batch is now written to **IndexedDB in your browser** as you work. Come back
+and you get an offer:
+
+> **You have an unfinished batch** from 20 minutes ago — 38 photos and 12 items.
+> [Pick up where I left off] [Discard it]
+
+Nothing is restored until you ask. Silently repopulating the screen with old work
+is its own kind of surprise, and you may well want a clean start.
+
+Details that matter:
+
+- Photo bytes are written once at import and never rewritten; the session
+  (listings, edits, step) is small and debounced. Otherwise editing a title
+  would rewrite sixty megabytes.
+- Anything caught mid-flight when the tab died — an item that was "writing", a
+  post that was "posting" — comes back idle. It can't still be running, and
+  leaving it would show a spinner that never resolves.
+- Removing photos frees their storage rather than just hiding them.
+- If the browser runs out of room, the app says so and keeps working — it
+  doesn't fail silently or crash.
+- Nothing leaves your device. **🗑 Clear this batch** wipes it when you're done.
+
+---
+
 ## Bulk listing with QR labels
 
 The fastest, most reliable way to work a big pile of inventory.
