@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
+import { triageListing, triageSummary, type Triage } from "@/lib/triage";
 import {
   MAX_OFFER_MESSAGE,
   MIN_DISCOUNT_PERCENT,
@@ -40,6 +41,7 @@ interface SellerListing {
   shippingService: string;
   /** eBay says this listing currently has buyers worth offering to. */
   offerEligible?: boolean;
+  startTime?: string;
 }
 
 interface ListingsResponse {
@@ -350,6 +352,10 @@ export function ListingsManager() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState("");
+  // Sorting by what needs attention is opt-in. eBay's own order (ending
+  // soonest) is what a seller expects on arrival, and silently reordering
+  // someone's inventory is disorienting.
+  const [sortStuck, setSortStuck] = useState(false);
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -376,11 +382,30 @@ export function ListingsManager() {
     );
   };
 
-  const listings = (data?.listings ?? []).filter((l) => {
+  // Judged once per render pass and carried with the row, so the sort and the
+  // badge can never disagree about a listing.
+  const judged = (data?.listings ?? []).map((l) => ({
+    listing: l,
+    triage: triageListing({
+      startTime: l.startTime ?? "",
+      impressions: l.impressions ?? null,
+      views: l.views ?? null,
+      watchCount: l.watchCount,
+      quantitySold: l.quantitySold,
+    }),
+  }));
+
+  const filtered = judged.filter(({ listing: l }) => {
     const q = filter.trim().toLowerCase();
     if (!q) return true;
     return l.title.toLowerCase().includes(q) || l.sku.toLowerCase().includes(q);
   });
+
+  const listings = sortStuck
+    ? [...filtered].sort((a, b) => b.triage.priority - a.triage.priority)
+    : filtered;
+
+  const stuckCount = filtered.filter((j) => j.triage.priority > 0).length;
 
   return (
     <section className="panel">
@@ -434,10 +459,27 @@ export function ListingsManager() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
+        <button
+          type="button"
+          className={`btn-ghost${sortStuck ? " active" : ""}`}
+          onClick={() => setSortStuck((v) => !v)}
+          disabled={stuckCount === 0}
+          title={
+            stuckCount === 0
+              ? "Nothing on this page looks stuck"
+              : "Bring the listings worth acting on to the top"
+          }
+        >
+          {sortStuck ? "✓ Needs attention first" : `⚠ Needs attention (${stuckCount})`}
+        </button>
         <button type="button" className="btn-ghost" onClick={() => load(page)} disabled={loading}>
           {loading ? "Loading…" : "↻ Refresh"}
         </button>
       </div>
+
+      {data?.ok && judged.length > 0 && (
+        <p className="lm-triage-summary">{triageSummary(judged.map((j) => j.triage))}</p>
+      )}
 
       {loading && !data && (
         <div className="loading-card">
@@ -453,7 +495,7 @@ export function ListingsManager() {
       )}
 
       <div className="lm-rows">
-        {listings.map((l) => (
+        {listings.map(({ listing: l, triage }) => (
           <article className="lm-row" key={l.itemId}>
             {l.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -470,6 +512,11 @@ export function ListingsManager() {
                 {l.sku && <span className="sku-tag">{l.sku}</span>}
                 <span>#{l.itemId}</span>
                 <ShippingBadge listing={l} />
+                {triage.priority > 0 && (
+                  <span className={`lm-triage lm-triage-${triage.verdict}`} title={triage.evidence}>
+                    {triage.headline}
+                  </span>
+                )}
                 {l.bestOfferEnabled && <span className="lm-tag">Best Offer on</span>}
                 {!l.sku && (
                   <span className="lm-tag warn" title="Without a SKU there's no offer to look up">
@@ -510,6 +557,15 @@ export function ListingsManager() {
                   {netAtPrice(l.price ?? 0, l.shipping, l.shippingCost ?? 0).label}
                 </span>
               </div>
+            )}
+
+            {/* The evidence, spelled out. A verdict the seller can't check is
+                one they have to take on faith, and this one costs money to act
+                on. */}
+            {triage.priority > 0 && (
+              <p className="lm-triage-note">
+                <strong>{triage.evidence}</strong> {triage.suggestion}
+              </p>
             )}
 
             {/* Full width, below the row. Squeezed into the price column the

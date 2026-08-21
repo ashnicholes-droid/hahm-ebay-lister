@@ -2665,6 +2665,7 @@ textarea {
   grid-template-columns: 56px minmax(0, 1.7fr) minmax(170px, 0.9fr) minmax(180px, 0.85fr);
   grid-template-areas:
     "thumb main stats price"
+    "note note note note"
     "offer offer offer offer";
   align-items: center;
   gap: 0.9rem;
@@ -2850,6 +2851,7 @@ textarea {
       "thumb main"
       "stats stats"
       "price price"
+      "note note"
       "offer offer";
   }
   .lm-thumb {
@@ -3168,4 +3170,58 @@ textarea {
 .batch-clear {
   margin-top: 2rem;
   text-align: center;
+}
+
+/* ── Triage: which listings aren't working ────────────────────────────────── */
+
+.lm-triage-summary {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--color-ink-soft);
+}
+
+.lm-triage {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Watchers who haven't bought is the one with a ready action, so it leads. */
+.lm-triage-watched-not-bought {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+}
+
+.lm-triage-invisible,
+.lm-triage-poor-clickthrough {
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+}
+
+.lm-triage-stale {
+  background: var(--color-surface-sunk);
+  color: var(--color-ink-soft);
+  border: 1px solid var(--color-border);
+}
+
+.lm-triage-note {
+  grid-area: note;
+  margin: 0.5rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.lm-triage-note strong {
+  color: var(--color-ink);
+}
+
+.btn-ghost.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
 }

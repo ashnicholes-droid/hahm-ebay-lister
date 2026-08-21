@@ -249,6 +249,31 @@ Guard rails, because an offer cannot be unsent:
 - A 2xx from eBay with no offer in the body is **not** reported as sent — that
   would invite a duplicate.
 
+### Which listings aren't working
+
+The seller view already had the numbers — age, impressions, views, watchers,
+sold — and showed them as four figures per row, leaving you to scan two hundred
+of them. It now turns the same data into a judgement, and separates the three
+different ways a listing fails, because they need opposite fixes:
+
+| Verdict | What it means | What to do |
+|---|---|---|
+| **Barely showing in search** | 45 impressions in 50 days | A findability problem. Fix title keywords and item specifics — a price cut won't help |
+| **Seen but not clicked** | 4,200 impressions, 11 views | The search tile isn't working. Usually the main photo or the price |
+| **N watchers, no sale** | People want it and haven't committed | The strongest case for an offer — and the control is right there |
+| **N days old, no sale** | Traffic, no watchers | Interest without commitment. Lower the price or end it |
+
+**⚠ Needs attention (4)** in the toolbar brings them to the top; it's opt-in,
+because eBay's own order is what you expect on arrival and silently reordering
+your inventory is disorienting.
+
+Every rule is deliberately conservative, and every verdict shows the numbers
+behind it rather than a score. A listing wrongly called dead gets its price cut
+for no reason, and a weak nudge on something that's simply young trains you to
+ignore the column. Nothing under two weeks old is ever judged, anything that has
+sold is left alone, and where eBay's traffic figures are missing it falls back to
+age and watchers rather than guessing.
+
 ### Shipping, next to the price
 
 Every row shows who pays the postage — **Free shipping — you pay**, **Buyer pays
