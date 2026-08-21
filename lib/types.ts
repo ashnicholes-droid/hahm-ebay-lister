@@ -93,10 +93,30 @@ export type PostStatus = "idle" | "posting" | "posted" | "error";
 
 // Market price check from active eBay comps (see lib/ebay/comps.ts). Advisory:
 // shown beside the AI's estimate so the seller prices with real data in view.
+/** One comparable active listing, reduced to what a buyer actually pays. */
+export interface Comp {
+  title: string;
+  /** The asking price on its own. */
+  itemPrice: number;
+  /** What the buyer is charged for postage; null when quoted at checkout. */
+  shippingCost: number | null;
+  shippingType: "free" | "flat" | "calculated" | "unknown";
+  /** itemPrice + postage. Null when postage isn't knowable from here. */
+  delivered: number | null;
+  condition: string;
+  url: string;
+  imageUrl: string;
+}
+
 export interface CompsSummary {
   ok: boolean;
   query: string;
+  /** Every comp that survived filtering, including ones with no delivered price. */
   count: number;
+  /** How many actually fed the band — the rest quote postage at checkout. */
+  pricedCount?: number;
+  /** The comps themselves, cheapest delivered first, for the review popup. */
+  comps?: Comp[];
   median?: number;
   trimmedMean?: number;
   low?: number;
@@ -106,6 +126,8 @@ export interface CompsSummary {
   // Median with the deployment's PRICE_MARKUP_PERCENT applied — what the
   // "use median" button should set. Absent when no markup is configured.
   listPrice?: number;
+  /** The deployment's storewide markup, so the card can apply it to its own rule. */
+  markupPercent?: number;
 }
 
 /** Mirrors PublishDebug in lib/ebay/publish.ts — kept here so client code can

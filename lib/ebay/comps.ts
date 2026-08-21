@@ -3,17 +3,29 @@
 // The analysis model's suggested_price is a visual guess with no market data
 // behind it. This module grounds it: search active eBay listings for the same
 // kind of item, filter out bad comps (lots, wrong condition, parts,
-// reproductions), and compute a median/trimmed price band with a confidence
-// score. Active asking prices run higher than sold prices (eBay's sold-comps
-// API requires special approval), so this is a sanity band, not gospel — the
-// UI presents it beside the AI estimate and the seller decides.
+// reproductions), and compute a price band with a confidence score.
+//
+// ⚠️ These are ASKING prices, not sold prices, and that gap is real — asking
+// prices skew high because the ones that were priced right already sold. eBay
+// has no open sold-price API: findCompletedItems was decommissioned in February
+// 2025, and the Marketplace Insights API that replaced it is a restricted
+// release eBay is not currently admitting new developers to. So this is a
+// sanity band, not gospel, and every label says "asking".
+//
+// What this DOES get right is the delivered price. A $20 item with $8 postage
+// and a $26 item with free postage are not a $6 difference, and comparing the
+// item prices alone quietly misprices everything. Each comp is therefore
+// reduced to what a buyer actually pays — item + postage — and comps whose
+// postage is calculated at checkout (so unknowable from here) are kept for
+// display but excluded from the band rather than silently counted as free.
 
 import { EBAY_CURRENCY, EBAY_MARKETPLACE_ID } from "./config";
-import type { CompsSummary, ListingResult } from "@/lib/types";
+import type { ShippingArrangement } from "@/lib/fees";
+import type { Comp, CompsSummary, ListingResult } from "@/lib/types";
 
 const EBAY_BROWSE_SEARCH = "https://api.ebay.com/buy/browse/v1/item_summary/search";
 
-export type { CompsSummary };
+export type { Comp, CompsSummary };
 
 // Comps that poison the statistics: multi-item lots when ours is one item,
 // parts/repair listings, reproductions, and empty-box scams. (No "x 12"-style
@@ -41,15 +53,44 @@ interface BrowseItem {
   title?: string;
   price?: { value?: string; currency?: string };
   conditionId?: string;
+  condition?: string;
   itemGroupType?: string;
+  itemWebUrl?: string;
+  image?: { imageUrl?: string };
+  shippingOptions?: {
+    shippingCostType?: string;
+    shippingCost?: { value?: string; currency?: string };
+  }[];
 }
 
-export function filterComps(
-  items: BrowseItem[],
-  listingCondition: string | undefined
-): number[] {
+/**
+ * How postage is arranged on one comp.
+ *
+ * Deliberately the same four-way distinction lib/fees.ts already uses for the
+ * seller's own listings, so "free" means the same thing on both screens.
+ */
+export function compShipping(it: BrowseItem): {
+  shippingType: ShippingArrangement;
+  shippingCost: number | null;
+} {
+  const opt = it.shippingOptions?.[0];
+  if (!opt) return { shippingType: "unknown", shippingCost: null };
+
+  const cost = Number(opt.shippingCost?.value);
+  const hasCost = Number.isFinite(cost) && cost >= 0;
+  // A calculated quote depends on the buyer's address, so there is no single
+  // delivered price to compare against. Saying so beats inventing one.
+  if (/CALCULATED/i.test(String(opt.shippingCostType || "")) && !hasCost) {
+    return { shippingType: "calculated", shippingCost: null };
+  }
+  if (!hasCost) return { shippingType: "unknown", shippingCost: null };
+  if (cost === 0) return { shippingType: "free", shippingCost: 0 };
+  return { shippingType: "flat", shippingCost: cost };
+}
+
+export function filterComps(items: BrowseItem[], listingCondition: string | undefined): Comp[] {
   const wantNew = isNewGrade(listingCondition);
-  const prices: number[] = [];
+  const comps: Comp[] = [];
   for (const it of items) {
     const price = Number(it.price?.value);
     if (!Number.isFinite(price) || price <= 0) continue;
@@ -62,9 +103,20 @@ export function filterComps(
       const compIsNew = NEW_CONDITION_IDS.has(condId);
       if (compIsNew !== wantNew) continue;
     }
-    prices.push(price);
+    const { shippingType, shippingCost } = compShipping(it);
+    comps.push({
+      title: String(it.title || "").slice(0, 140),
+      itemPrice: round2(price),
+      shippingType,
+      shippingCost,
+      // Null, not a guess: a calculated quote has no single delivered figure.
+      delivered: shippingCost === null ? null : round2(price + shippingCost),
+      condition: String(it.condition || ""),
+      url: String(it.itemWebUrl || ""),
+      imageUrl: String(it.image?.imageUrl || ""),
+    });
   }
-  return prices;
+  return comps;
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -78,12 +130,21 @@ function percentile(sorted: number[], p: number): number {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// Median, 10–90% band, trimmed mean, and a confidence heuristic based on how
-// many valid comps exist and how tightly they cluster.
-export function compStats(prices: number[]): Omit<CompsSummary, "ok" | "query" | "basis"> {
-  const sorted = [...prices].sort((a, b) => a - b);
+/**
+ * Median, 10–90% band, trimmed mean, and a confidence heuristic.
+ *
+ * Takes comps rather than bare numbers so the band can be built from DELIVERED
+ * prices. Comps whose postage is calculated at checkout carry no delivered
+ * figure and are excluded from the maths — counting them at their item price
+ * would drag the whole band down by however much postage costs, which is
+ * exactly the error this is meant to remove. They are still returned for
+ * display, and `pricedCount` says how many actually fed the band.
+ */
+export function compStats(comps: Comp[]): Omit<CompsSummary, "ok" | "query" | "basis"> {
+  const priced = comps.filter((c) => c.delivered !== null);
+  const sorted = priced.map((c) => c.delivered as number).sort((a, b) => a - b);
   const count = sorted.length;
-  if (count === 0) return { count: 0, confidence: 0 };
+  if (count === 0) return { count: 0, pricedCount: 0, confidence: 0 };
 
   const median = percentile(sorted, 0.5);
   const low = percentile(sorted, 0.1);
@@ -100,7 +161,8 @@ export function compStats(prices: number[]): Omit<CompsSummary, "ok" | "query" |
   const confidence = Math.round(volumeScore * tightness * 100) / 100;
 
   return {
-    count,
+    count: comps.length,
+    pricedCount: count,
     median: round2(median),
     trimmedMean: round2(trimmedMean),
     low: round2(low),
@@ -122,7 +184,15 @@ export async function searchComps(
   listing: ListingResult
 ): Promise<CompsSummary> {
   const query = buildCompQuery(listing);
-  const empty: CompsSummary = { ok: false, query, count: 0, confidence: 0, basis: "" };
+  const empty: CompsSummary = {
+    ok: false,
+    query,
+    count: 0,
+    pricedCount: 0,
+    confidence: 0,
+    basis: "",
+    comps: [],
+  };
   if (!query) return empty;
 
   const wantNew = isNewGrade(listing.condition);
@@ -144,15 +214,24 @@ export async function searchComps(
   if (!resp.ok) return empty;
   const data = await resp.json().catch(() => null);
   const items: BrowseItem[] = data?.itemSummaries ?? [];
-  const prices = filterComps(items, listing.condition);
-  const stats = compStats(prices);
+  const comps = filterComps(items, listing.condition);
+  const stats = compStats(comps);
+
+  const unpriced = comps.length - (stats.pricedCount ?? 0);
   const summary: CompsSummary = {
-    ok: stats.count > 0,
+    ok: (stats.pricedCount ?? 0) > 0,
     query,
     ...stats,
+    // Cheapest first: the recommendation is anchored to the bottom of the
+    // market, so that is the end of the list worth reading.
+    comps: [...comps].sort((a, b) => (a.delivered ?? Infinity) - (b.delivered ?? Infinity)),
     basis:
-      stats.count > 0
-        ? `${stats.count} active ${wantNew ? "new" : "pre-owned"} listings matching “${query}” (asking prices, not sold)`
+      (stats.pricedCount ?? 0) > 0
+        ? `${stats.pricedCount} active ${wantNew ? "new" : "pre-owned"} listings matching “${query}”, ` +
+          `priced as delivered (item + postage). Asking prices, not sold prices` +
+          (unpriced > 0
+            ? ` — ${unpriced} more matched but quote postage at checkout, so they're listed without a delivered price.`
+            : ".")
         : "",
   };
   if (compsCache.size > COMPS_CACHE_MAX) compsCache.clear();

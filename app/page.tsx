@@ -743,8 +743,15 @@ export default function Home() {
         void (async () => {
           try {
             const res = await apiPost("/api/ebay/comps", { listing: data.listing });
-            const d = (await readJson(res)) as { ok?: boolean; comps?: CompsSummary };
+            const d = (await readJson(res)) as {
+              ok?: boolean;
+              comps?: CompsSummary;
+              markupPercent?: number;
+            };
             if (d.ok && d.comps?.ok) {
+              // Carried on the summary so the card can apply the seller's
+              // pricing rule and the storewide markup together.
+              d.comps.markupPercent = d.markupPercent ?? 0;
               // Comps are what turn the price rule from "no market data" into a
               // real verdict, so recompute once they land.
               setGroups((prev) =>
@@ -951,6 +958,9 @@ export default function Home() {
         </div>
         {/* The seller view is a route, not a tab: this page holds photos in
             memory, so anything that navigates has to be a deliberate leave. */}
+        <a className="btn-ghost nav-link" href="/settings">
+          ⚙ Pricing
+        </a>
         <a className="btn-ghost nav-link" href="/listings">
           🏷️ My listings
         </a>

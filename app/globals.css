@@ -3416,3 +3416,314 @@ textarea {
   background: var(--color-accent-soft);
   color: var(--color-accent-deep);
 }
+
+/* ── Comps review dialog ──────────────────────────────────────────────────── */
+
+/* A real <dialog>: Escape, focus trapping and the backdrop come for free, and
+   it is inert to screen readers when closed. The preview sheet predates this
+   and still hand-rolls its overlay. */
+.comps-dialog {
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: min(84vh, 50rem);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  overflow: auto;
+}
+
+.comps-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.comps-dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.7rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.comps-dialog-head h3 {
+  margin: 0;
+}
+
+.comps-dialog-head p {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+/* The biggest caveat in the whole feature, said where the decision happens
+   rather than hidden in a tooltip. */
+.comps-caveat {
+  margin: 0.8rem 1.1rem 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-gold-soft);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.comps-rec {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.8rem 1.1rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+}
+
+.comps-rec .k {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.comps-rec strong {
+  font-size: 1.5rem;
+  font-family: var(--font-display);
+}
+
+.comps-rec small {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-ink-soft);
+}
+
+.comps-thin {
+  color: var(--color-danger) !important;
+  font-weight: 600;
+}
+
+.comps-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.8rem 1.1rem 0.4rem;
+  font-size: 0.74rem;
+  color: var(--color-ink-soft);
+}
+
+.comps-sort button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.comps-sort button.active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+/* Wide content scrolls inside its own box rather than pushing the dialog. */
+.comps-table-wrap {
+  overflow-x: auto;
+  padding: 0 1.1rem;
+}
+
+.comps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.comps-table th {
+  text-align: left;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.comps-table td {
+  padding: 0.4rem 0.5rem 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.comps-table td:first-child {
+  min-width: 16rem;
+  font-variant-numeric: normal;
+}
+
+.comps-table td small {
+  color: var(--color-ink-faint);
+}
+
+/* A comp with no delivered price didn't feed the band; it should not read as
+   though it did. */
+.comps-table tr.unpriced td {
+  opacity: 0.6;
+}
+
+.comps-footnote {
+  margin: 0.7rem 1.1rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+/* ── Pricing settings ─────────────────────────────────────────────────────── */
+
+.ps-grid {
+  display: grid;
+  gap: 1.1rem;
+  margin-top: 1rem;
+}
+
+.ps-field {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ps-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.ps-control {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ps-control input[type="range"] {
+  flex: 1;
+  max-width: 22rem;
+}
+
+.ps-control input[type="number"] {
+  width: 5.5rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.ps-control output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.ps-field small {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+  max-width: 46rem;
+}
+
+.ps-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.ps-radios label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.ps-preview {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  grid-template-columns: minmax(14rem, 1fr) minmax(0, 1.4fr);
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .ps-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ps-rec {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+}
+
+.ps-rec .k {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.ps-rec strong {
+  display: block;
+  font-size: 1.9rem;
+  font-family: var(--font-display);
+  line-height: 1.2;
+}
+
+.ps-rec small {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.ps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-table th {
+  text-align: left;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  padding: 0.3rem 0.6rem 0.3rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ps-table td {
+  padding: 0.3rem 0.6rem 0.3rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* The comp the recommendation is anchored to, so the setting is legible as a
+   position in an actual market rather than an abstract percentile. */
+.ps-table tr.anchor td {
+  background: var(--color-accent-soft);
+  font-weight: 700;
+}

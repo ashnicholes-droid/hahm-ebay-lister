@@ -34,16 +34,19 @@ export async function POST(req: NextRequest) {
   try {
     const token = await appToken();
     const comps = await searchComps(token, body.listing);
-    // The band stays raw market truth; the "use median" affordance carries the
-    // deployment's storewide markup so it matches analysis-suggested pricing.
+    // The band stays raw market truth. The markup travels alongside it so the
+    // card can apply the seller's pricing rule and the storewide markup in one
+    // place — the recommendation depends on settings that live in the browser,
+    // so the server can't compute the final figure.
     const markup = priceMarkupPercent();
     if (markup > 0 && comps.median !== undefined && comps.median > 0) {
       return NextResponse.json({
         ok: true,
+        markupPercent: markup,
         comps: { ...comps, listPrice: applyPriceMarkup(comps.median, markup) },
       });
     }
-    return NextResponse.json({ ok: true, comps });
+    return NextResponse.json({ ok: true, markupPercent: 0, comps });
   } catch (e) {
     // Comps are advisory — never let a market-check failure look like an outage.
     console.warn(`[ebay/comps] lookup failed: ${(e as Error).message}`);

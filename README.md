@@ -26,6 +26,9 @@ own eBay developer keys, so you're in full control and there's no middleman.
 - 🔢 **Multiples** — tick a box for quantity and an optional multi-buy discount;
   everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
+- 💲 **Market-based pricing** — comps compared on delivered price (item +
+  postage), suggestions anchored near the bottom of the market with a margin you
+  set, and a popup listing every comp so you can check them
 - 🏷️ **Seller view** — see every live listing with watchers/views, change prices
   (the only way to edit listings this app posted), record what you paid, send
   offers to watchers, and end or relist dead stock
@@ -387,6 +390,98 @@ wrong; the price write is validated, confirmed by reading the offer back, and
 per-item only — there is deliberately no bulk repricing.
 
 ---
+
+## Pricing: what to charge, and why
+
+### Delivered price, not item price
+
+Comps used to be compared on the item price alone, which is quietly wrong. A
+$20 item with $9 postage is **dearer** than a $26 one with free postage, and
+ranking them by item price gets that exactly backwards. Every comp is now
+reduced to what a buyer actually pays — **item + postage** — and the band, the
+recommendation and the popup all work in delivered prices.
+
+Comps that quote postage at checkout have no single delivered price, so they
+are shown for context but **excluded from the band**. Counting them at their
+item price would drag the whole thing down by however much postage costs, which
+is the error this was built to remove.
+
+### Anchored to the bottom, not the middle
+
+The old rule was "use the median". That is the wrong anchor for clearing stock:
+a median-priced listing sits in the middle of a page of identical items and
+waits. The suggestion is now anchored near the **bottom** of the delivered-price
+range and lifted by a margin you control.
+
+**⚙ Pricing** in the header opens the settings:
+
+| Setting | Default | What it does |
+|---|---|---|
+| What counts as "the bottom" | 10th percentile | Cheaper than 90% of the market, while ignoring the handful of outliers at the very bottom — those are usually damaged, mis-titled, or a mistake |
+| How far above that to sit | +5% | Your margin over the anchor. Negative is allowed: undercutting everyone is a real strategy |
+| Compare on | Delivered | Or item price only, if you always ship free and think in item prices |
+| Round to | $X.99 | Or .95, whole dollars, or don't round |
+
+Every control is shown against a worked example that updates as you change it,
+with the comp your anchor lands nearest marked **← anchor**. A percentile is
+abstract; "on this market that means $23.10" is not, and the second is the only
+way to tell whether it's the number you meant.
+
+Two details that keep the settings honest: rounding goes to the **nearest**
+.99 rather than always down (always rounding down would turn $24.73 into $23.99
+— a 3% cut on top of a 5% margin, silently overriding your own setting), and the
+result is **never allowed below the anchor** when your margin is positive.
+
+Settings are stored in your browser, so they live on the device that set them —
+changing them on a laptop doesn't change them on a phone.
+
+### Seeing the comps
+
+**see N comps** on any card opens the market check: every comparable listing
+with its item price, postage, and delivered price, sorted cheapest first and
+linked so you can open the actual listing.
+
+This exists because a band and a confidence score ask to be *trusted*, while
+the listings themselves can be *checked* — and checking is the point. The comp
+search is keyword matching and it will sometimes pull in the wrong thing
+entirely. Spotting a different model or a "Lot of 12" in the list is how you
+catch a bad suggestion before you publish it.
+
+### These are asking prices, not sold prices
+
+Said in the popup as well as here, because it is the biggest caveat in the
+feature. Asking prices skew high: the listings that were priced right already
+sold and left the data. Anchoring near the bottom of the asking range is partly
+a correction for that gap.
+
+**eBay has no open sold-price API.** `findCompletedItems` (the old Finding API
+call everyone used) was deprecated in 2020 and decommissioned on **5 February
+2025**. The Browse API this app uses indexes active listings only.
+
+### Applying for sold data (Marketplace Insights)
+
+The one official source of sold prices is the **Marketplace Insights API**,
+which returns 90 days of sales history. It is a **Limited Release**: eBay's own
+docs currently say it is "restricted and not open to new users at this time", so
+approval is unlikely today — but the path, should it reopen:
+
+1. Have a live eBay developer account with a production keyset
+   (developer.ebay.com → **My Account** → **Application Keys**).
+2. Join the **eBay Partner Network** and get your business model approved.
+   Marketplace Insights access is gated on EPN approval, not just a dev account.
+3. From the developer portal, open a support ticket titled
+   **"Buy API Production Access (eBay user ID)"** and request an
+   *Application Growth Check* for `buy.marketplace.insights`. Describe the
+   application, its traffic, and why sold data is needed.
+4. If granted, the scope is `https://api.ebay.com/oauth/api_scope/buy.marketplace.insights`
+   and the endpoint is
+   `GET /buy/marketplace_insights/v1_beta/item_sales/search`.
+
+If that ever comes through, the change here is small and contained: the comps
+module would gain a sold-data source alongside the Browse search, and the
+"asking prices" caveat would come off. Nothing about the settings, the anchor
+rule, or the popup would need to change — they already work on whatever comps
+they're handed.
 
 ## Condition, and what eBay will actually accept
 

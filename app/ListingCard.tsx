@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
 import { reportStatus } from "@/lib/verification";
 import { AccuracyPanel } from "./AccuracyPanel";
+import { CompsDialog } from "./CompsDialog";
 import { ListingPreview } from "./ListingPreview";
 import { QuantityPanel } from "./QuantityPanel";
 import { ShippingPanel } from "./ShippingPanel";
 import type { ItemGroup, ListingResult, Photo, PublishDebug } from "@/lib/types";
+import { DEFAULT_RULES, recommendedPrice, type PricingRules } from "@/lib/pricingRules";
+import { RULES_CHANGED, loadRules } from "@/lib/pricingSettings";
 
 const TITLE_LIMIT = 80;
 
@@ -205,6 +208,27 @@ export function ListingCard({
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [compsOpen, setCompsOpen] = useState(false);
+
+  // Pricing rules live in the browser, so a card has to read them on mount and
+  // follow them afterwards — changing a setting in another tab should reprice
+  // every open card without a reload.
+  const [rules, setRules] = useState<PricingRules>(DEFAULT_RULES);
+  useEffect(() => {
+    const sync = () => setRules(loadRules());
+    sync();
+    window.addEventListener(RULES_CHANGED, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(RULES_CHANGED, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const recommendation = useMemo(
+    () => recommendedPrice(group.comps, rules, group.comps?.markupPercent ?? 0),
+    [group.comps, rules]
+  );
   const [newSpecKey, setNewSpecKey] = useState("");
   const [newSpecValue, setNewSpecValue] = useState("");
   const listing = group.listing;
@@ -366,23 +390,30 @@ export function ListingCard({
               </div>
               {group.comps?.ok && group.comps.median !== undefined && (
                 <span className="comps-line" title={group.comps.basis}>
-                  Market: {group.comps.count} similar active listings, $
-                  {group.comps.low?.toFixed(0)}–${group.comps.high?.toFixed(0)}
+                  Market: {group.comps.pricedCount ?? group.comps.count} active asks, $
+                  {group.comps.low?.toFixed(0)}–${group.comps.high?.toFixed(0)} delivered
+                  {recommendation && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="comps-use"
+                        title={recommendation.explanation}
+                        onClick={() =>
+                          onEdit(group.id, { suggested_price: recommendation.price })
+                        }
+                      >
+                        use ${recommendation.price.toFixed(2)}
+                      </button>
+                    </>
+                  )}
                   {" · "}
                   <button
                     type="button"
                     className="comps-use"
-                    onClick={() =>
-                      onEdit(group.id, {
-                        suggested_price:
-                          group.comps!.listPrice ?? group.comps!.median,
-                      })
-                    }
+                    onClick={() => setCompsOpen(true)}
                   >
-                    {/* listPrice = median + the deployment's storewide markup */}
-                    {group.comps.listPrice !== undefined
-                      ? `use $${group.comps.listPrice.toFixed(2)} (median + markup)`
-                      : `use median $${group.comps.median.toFixed(2)}`}
+                    see {group.comps.count} comps
                   </button>
                 </span>
               )}
@@ -567,6 +598,18 @@ export function ListingCard({
               group={group}
               photoById={photoById}
               onClose={() => setPreviewOpen(false)}
+            />
+          )}
+
+          {compsOpen && group.comps?.ok && (
+            <CompsDialog
+              comps={group.comps}
+              recommendation={recommendation}
+              currentPrice={
+                typeof listing.suggested_price === "number" ? listing.suggested_price : null
+              }
+              onUse={(price) => onEdit(group.id, { suggested_price: price })}
+              onClose={() => setCompsOpen(false)}
             />
           )}
 
