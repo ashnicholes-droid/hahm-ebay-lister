@@ -14,6 +14,7 @@
 
 import { EBAY_TRADING } from "./config";
 import type { ShippingArrangement } from "@/lib/fees";
+import { parseNote } from "@/lib/costBasis";
 import { tradingAck, xmlBlocks, xmlNumber, xmlText } from "./xml";
 
 /** eBay caps this at 200; anything larger is silently reduced by them. */
@@ -48,6 +49,13 @@ export interface SellerListing {
   shippingCost: number | null;
   /** The first domestic service on the listing, for context. */
   shippingService: string;
+  /**
+   * What the item cost you, read out of eBay's private note. Null means nobody
+   * has recorded one — distinct from a genuine zero, which a freebie would be.
+   */
+  cost: number | null;
+  /** Whatever else is written in that note, so editing cost doesn't eat it. */
+  note: string;
 }
 
 export interface SellerListingsPage {
@@ -66,7 +74,8 @@ function requestXml(page: number, pageSize: number): string {
   <WarningLevel>High</WarningLevel>
   <ActiveList>
     <Include>true</Include>
-    <IncludeNotes>false</IncludeNotes>
+    <!-- Private notes carry the cost basis (lib/costBasis.ts). Seller-only. -->
+    <IncludeNotes>true</IncludeNotes>
     <Pagination>
       <EntriesPerPage>${pageSize}</EntriesPerPage>
       <PageNumber>${page}</PageNumber>
@@ -132,9 +141,15 @@ function parseListing(block: string): SellerListing | null {
     /<CurrentPrice[^>]*currencyID="([A-Z]{3})"/.exec(selling) ||
     /<StartPrice[^>]*currencyID="([A-Z]{3})"/.exec(block);
 
+  // PrivateNotes is only ever returned to the seller who wrote it, which is why
+  // it's a safe place to keep a purchase price.
+  const { cost, text: note } = parseNote(xmlText(block, "PrivateNotes"));
+
   return {
     itemId,
     ...parseShipping(block),
+    cost,
+    note,
     title: xmlText(block, "Title"),
     sku: xmlText(block, "SKU"),
     price,

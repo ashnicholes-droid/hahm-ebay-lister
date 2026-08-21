@@ -27,7 +27,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
   everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
 - 🏷️ **Seller view** — see every live listing with watchers/views, change prices
-  (the only way to edit listings this app posted), and send offers to watchers
+  (the only way to edit listings this app posted), record what you paid, and
+  send offers to watchers
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -294,6 +295,37 @@ invented.
 A listing whose shipping details eBay didn't return reads **"Shipping
 unknown"**. Telling a seller the buyer covers postage when they actually absorb
 it is worse than saying nothing.
+
+### What you paid, and what you actually made
+
+Every net figure in this app answered *"what does eBay leave me"* and none of
+them answered *"did I make money"*, because nothing knew what the item cost. For
+a reseller that's the only number that matters.
+
+Each row now has a **Paid $** box. Fill it in and the row gains a profit line
+that updates as you type a price:
+
+> **Makes $26.57, before postage — 58% of the sale.**
+> Break-even $14.87.
+
+Break-even is worth its own line because it isn't cost plus a percentage: eBay's
+fee lands on the buyer's shipping too, so on a $22.75 item with $10 flat postage
+the floor is **$28.21**, not $23.15. That's the number to know before agreeing a
+Best Offer. A price below it turns the line red and reads *"Loses −$0.75."*
+
+**Where it's stored: eBay, not here.** This app has no database, and adding one
+for a single number per listing would be the wrong trade. eBay keeps a
+**private, seller-only note** on each listing (`SetUserNotes`, read back through
+`GetMyeBaySelling`'s `IncludeNotes`), so the cost is written there as a `[cost
+12.50]` token. It travels with the listing, syncs across your devices for free,
+is visible in Seller Hub, and outlives this app. Nobody but you can see it —
+buyers never do.
+
+Anything else already in that note is preserved: the token is merged in and
+merged out, so clearing a cost leaves *"estate lot 4"* exactly where you wrote
+it. Cost is editable on **every** listing, including ones with no SKU that
+can't be repriced from here, because it's a note on the item rather than an edit
+to the offer.
 
 ### Views need one more permission
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
+import { breakEvenPrice, profitAtPrice } from "@/lib/costBasis";
 import { triageListing, triageSummary, type Triage } from "@/lib/triage";
 import {
   MAX_OFFER_MESSAGE,
@@ -42,6 +43,10 @@ interface SellerListing {
   /** eBay says this listing currently has buyers worth offering to. */
   offerEligible?: boolean;
   startTime?: string;
+  /** What it cost you, kept in eBay's seller-only note. Null = never recorded. */
+  cost?: number | null;
+  /** The rest of that note, preserved so saving a cost can't overwrite prose. */
+  note?: string;
 }
 
 interface ListingsResponse {
@@ -250,6 +255,128 @@ function OfferPanel({ listing }: { listing: SellerListing }) {
   );
 }
 
+/**
+ * What the item cost, stored on eBay rather than here.
+ *
+ * There is no database behind this app, so the figure goes into eBay's own
+ * per-listing private note — seller-only, and it travels with the listing. That
+ * makes saving a network round-trip rather than a keystroke, so it saves on
+ * blur or Enter rather than on every character.
+ */
+function CostEditor({
+  listing,
+  onSaved,
+}: {
+  listing: SellerListing;
+  onSaved: (cost: number | null) => void;
+}) {
+  const initial = listing.cost === null || listing.cost === undefined ? "" : String(listing.cost);
+  const [value, setValue] = useState(initial);
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state === "idle" || state === "saved") setValue(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing.cost]);
+
+  const save = async () => {
+    const trimmed = value.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    // Nothing typed, nothing changed — don't spend an eBay write on a blur.
+    if (next === (listing.cost ?? null)) return;
+    if (next !== null && !Number.isFinite(next)) {
+      setError("That isn't a number.");
+      setState("error");
+      return;
+    }
+    setState("saving");
+    setError(null);
+    try {
+      const res = await apiPost("/api/ebay/cost", {
+        itemId: listing.itemId,
+        cost: trimmed === "" ? null : trimmed,
+        note: listing.note ?? "",
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        cost?: number | null;
+      };
+      if (!data.ok) throw new Error(data.error || "eBay refused the note.");
+      const confirmed = data.cost ?? null;
+      onSaved(confirmed);
+      setValue(confirmed === null ? "" : String(confirmed));
+      setState("saved");
+    } catch (e) {
+      setError((e as Error).message);
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="lm-cost">
+      <label className="lm-cost-row">
+        <span>Paid</span>
+        <span aria-hidden="true">$</span>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          inputMode="decimal"
+          placeholder="—"
+          value={value}
+          aria-label={`What you paid for ${listing.title}`}
+          disabled={state === "saving"}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setState("idle");
+            setError(null);
+          }}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+        />
+      </label>
+      {state === "saving" && <span className="lm-cost-hint">Saving…</span>}
+      {state === "saved" && <span className="lm-ok">✓ Saved to eBay</span>}
+      {error && <span className="lm-err">{error}</span>}
+      {state === "idle" && (listing.cost ?? null) === null && (
+        <span className="lm-cost-hint">Kept in eBay&rsquo;s private note — only you see it.</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Profit at the price currently typed, plus the price that breaks even.
+ *
+ * The break-even is the number worth showing while someone drags a price down:
+ * it is not cost plus a percentage, because eBay's fee lands on the buyer's
+ * shipping too, and guessing it by eye is how a "small discount" turns into a
+ * loss.
+ */
+function ProfitLine({
+  price,
+  cost,
+  shipping,
+  shippingCost,
+}: {
+  price: number;
+  cost: number;
+  shipping: ShippingArrangement;
+  shippingCost: number | null;
+}) {
+  const p = profitAtPrice(price, cost, shipping, shippingCost ?? 0);
+  const floor = breakEvenPrice(cost, shipping, shippingCost ?? 0);
+  return (
+    <span className={`lm-profit${p.profit < 0 ? " loss" : ""}`}>
+      {p.label} <small>Break-even ${floor.toFixed(2)}.</small>
+    </span>
+  );
+}
+
 function PriceEditor({
   listing,
   onSaved,
@@ -341,6 +468,20 @@ function PriceEditor({
       {!error && (
         <span className={`lm-net${net.postageExcluded ? " approx" : ""}`}>{net.label}</span>
       )}
+      {/* Net answers "what does eBay leave me". Profit answers the question the
+          seller is actually asking, and only exists once a cost is recorded. */}
+      {!error &&
+        listing.cost !== null &&
+        listing.cost !== undefined &&
+        Number.isFinite(typed) &&
+        typed > 0 && (
+          <ProfitLine
+            price={typed}
+            cost={listing.cost}
+            shipping={listing.shipping}
+            shippingCost={listing.shippingCost}
+          />
+        )}
       {state === "saved" && <span className="lm-ok">✓ Live on eBay</span>}
       {error && <span className="lm-err">{error}</span>}
     </div>
@@ -378,6 +519,17 @@ export function ListingsManager() {
     setData((d) =>
       d?.listings
         ? { ...d, listings: d.listings.map((l) => (l.itemId === itemId ? { ...l, price } : l)) }
+        : d
+    );
+  };
+
+  const applyCost = (itemId: string, cost: number | null) => {
+    setData((d) =>
+      d?.listings
+        ? {
+            ...d,
+            listings: d.listings.map((l) => (l.itemId === itemId ? { ...l, cost } : l)),
+          }
         : d
     );
   };
@@ -556,8 +708,20 @@ export function ListingsManager() {
                 <span className="lm-net approx">
                   {netAtPrice(l.price ?? 0, l.shipping, l.shippingCost ?? 0).label}
                 </span>
+                {l.cost !== null && l.cost !== undefined && (l.price ?? 0) > 0 && (
+                  <ProfitLine
+                    price={l.price ?? 0}
+                    cost={l.cost}
+                    shipping={l.shipping}
+                    shippingCost={l.shippingCost}
+                  />
+                )}
               </div>
             )}
+
+            {/* Cost is recordable on every listing, SKU or not — it's a note on
+                the item, not an edit to the offer. */}
+            <CostEditor listing={l} onSaved={(c) => applyCost(l.itemId, c)} />
 
             {/* The evidence, spelled out. A verdict the seller can't check is
                 one they have to take on faith, and this one costs money to act

@@ -2665,6 +2665,7 @@ textarea {
   grid-template-columns: 56px minmax(0, 1.7fr) minmax(170px, 0.9fr) minmax(180px, 0.85fr);
   grid-template-areas:
     "thumb main stats price"
+    ".     .    .     cost"
     "note note note note"
     "offer offer offer offer";
   align-items: center;
@@ -2851,6 +2852,7 @@ textarea {
       "thumb main"
       "stats stats"
       "price price"
+      "cost cost"
       "note note"
       "offer offer";
   }
@@ -2911,6 +2913,70 @@ textarea {
 .lm-traffic-debug {
   margin-top: 0.6rem;
   background: var(--color-surface);
+}
+
+/* ── Cost basis and real profit ───────────────────────────────────────────── */
+
+/* Sits directly under the price it modifies. Deliberately quieter than the
+   price field: it is entered once and then read, not adjusted. */
+.lm-cost {
+  grid-area: cost;
+  margin-top: 0.35rem;
+}
+
+.lm-cost-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--color-ink-soft);
+}
+
+.lm-cost-row input {
+  width: 5.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.lm-cost-row input::-webkit-outer-spin-button,
+.lm-cost-row input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.lm-cost-hint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.66rem;
+  line-height: 1.35;
+  color: var(--color-ink-faint);
+}
+
+/* The number the seller is actually asking for, so it outranks the net line
+   above it. A loss is coloured, because "makes −$3.10" scans as a gain. */
+.lm-profit {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.lm-profit.loss {
+  color: var(--color-danger);
+}
+
+.lm-profit small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.66rem;
+  color: var(--color-ink-faint);
 }
 
 /* ── Send an offer to watchers ────────────────────────────────────────────── */

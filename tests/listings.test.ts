@@ -92,6 +92,26 @@ describe("reading the active list", () => {
     await expect(parseViaFetch(xml)).rejects.toThrow(/Auth token is invalid/);
   });
 
+  it("reads the cost basis out of the private note", async () => {
+    const withNote = ITEM.replace(
+      "<SKU>K75-A</SKU>",
+      "<SKU>K75-A</SKU><PrivateNotes>estate lot 4 [cost 12.50]</PrivateNotes>"
+    );
+    const l = (await parseViaFetch(responseXml(withNote))).listings[0];
+    expect(l.cost).toBe(12.5);
+    // The prose is kept so writing a new cost can merge rather than overwrite.
+    expect(l.note).toBe("estate lot 4");
+  });
+
+  it("leaves cost null when the note has no token, and when there's no note", async () => {
+    const plain = ITEM.replace(
+      "<SKU>K75-A</SKU>",
+      "<SKU>K75-A</SKU><PrivateNotes>shelf B</PrivateNotes>"
+    );
+    expect((await parseViaFetch(responseXml(plain))).listings[0].cost).toBeNull();
+    expect((await parseViaFetch(responseXml(ITEM))).listings[0].cost).toBeNull();
+  });
+
   it("does not report a watch count eBay never sent", async () => {
     // "eBay didn't say" must not render as "nobody is watching".
     const noWatch = ITEM.replace("<WatchCount>7</WatchCount>", "");
