@@ -42,14 +42,17 @@ export interface ReviseResult {
   notInventoryManaged?: boolean;
 }
 
-interface Resp {
+export interface Resp {
   ok: boolean;
   status: number;
   json: any;
   text: string;
 }
 
-async function inventoryRequest(
+// Exported for lib/ebay/relist.ts. Ending and relisting talk to the same offer
+// endpoints with the same auth and the same error shape, and a second copy of
+// this would be free to drift from it.
+export async function inventoryRequest(
   accessToken: string,
   method: string,
   url: string,
@@ -76,7 +79,7 @@ async function inventoryRequest(
   return { ok: resp.ok, status: resp.status, json, text };
 }
 
-function ebayMessage(r: Resp, fallback: string): string {
+export function ebayMessage(r: Resp, fallback: string): string {
   const errs = r.json?.errors;
   if (Array.isArray(errs) && errs.length) {
     const first = errs[0];
@@ -86,7 +89,7 @@ function ebayMessage(r: Resp, fallback: string): string {
   return `${fallback} (HTTP ${r.status})`;
 }
 
-function toOfferRef(o: any): OfferRef {
+export function toOfferRef(o: any): OfferRef {
   const terms = o?.listingPolicies?.bestOfferTerms ?? {};
   const num = (v: unknown): number | null => {
     const n = Number(v);

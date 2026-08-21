@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
 import { breakEvenPrice, profitAtPrice } from "@/lib/costBasis";
+import { relistAdvice } from "@/lib/relistAdvice";
 import { triageListing, triageSummary, type Triage } from "@/lib/triage";
 import {
   MAX_OFFER_MESSAGE,
@@ -47,6 +48,8 @@ interface SellerListing {
   cost?: number | null;
   /** The rest of that note, preserved so saving a cost can't overwrite prose. */
   note?: string;
+  /** Ended from this screen. Kept visible, dimmed, until the next refresh. */
+  ended?: boolean;
 }
 
 interface ListingsResponse {
@@ -488,6 +491,204 @@ function PriceEditor({
   );
 }
 
+/**
+ * Ending a listing, and relisting it fresh.
+ *
+ * The most destructive control in the app, and built to feel like it. It stays
+ * folded away behind a disclosure, it names the listing being ended, and the
+ * button only arms once a checkbox is ticked — because the outcome cannot be
+ * undone and the item id does not come back.
+ *
+ * It also argues with the seller when it should: a listing with watchers is the
+ * wrong thing to relist, and the panel says so rather than quietly obeying.
+ */
+function EndRelistPanel({
+  listing,
+  onEnded,
+  onRelisted,
+}: {
+  listing: SellerListing;
+  onEnded: (itemId: string) => void;
+  onRelisted: (itemId: string, listingId: string, price: number | null) => void;
+}) {
+  const [mode, setMode] = useState<"relist" | "end">("relist");
+  const [price, setPrice] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [state, setState] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [stranded, setStranded] = useState<string | null>(null);
+  const [done, setDone] = useState<{ listingId?: string; price?: number | null } | null>(null);
+
+  const advice = relistAdvice(listing);
+
+  const run = async () => {
+    if (!confirmed || state === "working") return;
+    setState("working");
+    setError(null);
+    setStranded(null);
+    try {
+      const res = await apiPost("/api/ebay/relist", {
+        sku: listing.sku,
+        action: mode,
+        confirm: true,
+        ...(mode === "relist" && price.trim() !== "" ? { price: price.trim() } : {}),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        listingId?: string;
+        price?: number | null;
+        strandedOffer?: string;
+      };
+      // A stranded offer is a failure the seller must see even though the
+      // request "completed" — the item is off the market.
+      if (data.strandedOffer) {
+        setStranded(data.strandedOffer);
+        setError(data.error ?? "The listing was ended but couldn't be republished.");
+        setState("error");
+        onEnded(listing.itemId);
+        return;
+      }
+      if (!data.ok) throw new Error(data.error || "eBay refused.");
+      setDone({ listingId: data.listingId, price: data.price });
+      setState("done");
+      if (mode === "relist" && data.listingId) {
+        onRelisted(listing.itemId, data.listingId, data.price ?? null);
+      } else {
+        onEnded(listing.itemId);
+      }
+      // A partial success still carries eBay's words (e.g. relisted, but at the
+      // old price because the new one was refused).
+      if (data.error) setError(data.error);
+    } catch (e) {
+      setError((e as Error).message);
+      setState("error");
+    }
+  };
+
+  if (state === "done") {
+    return (
+      <p className="lm-relist-done">
+        {done?.listingId ? (
+          <>
+            ✓ Relisted as <strong>#{done.listingId}</strong>
+            {done.price != null && <> at ${done.price.toFixed(2)}</>}. The old listing is ended.
+            {error && <span className="lm-relist-caveat"> {error}</span>}
+          </>
+        ) : (
+          <>✓ Listing ended. It&rsquo;s no longer for sale.</>
+        )}
+      </p>
+    );
+  }
+
+  return (
+    <details className="lm-relist">
+      <summary>⏹ End or relist</summary>
+      <div className="lm-relist-body">
+        {advice.discourage && (
+          <p className="lm-relist-warn" role="note">
+            ⚠️ {advice.warning}
+          </p>
+        )}
+
+        <div className="lm-relist-modes">
+          <label>
+            <input
+              type="radio"
+              name={`mode-${listing.itemId}`}
+              checked={mode === "relist"}
+              onChange={() => {
+                setMode("relist");
+                setConfirmed(false);
+              }}
+            />
+            End and relist fresh
+          </label>
+          <label>
+            <input
+              type="radio"
+              name={`mode-${listing.itemId}`}
+              checked={mode === "end"}
+              onChange={() => {
+                setMode("end");
+                setConfirmed(false);
+              }}
+            />
+            Just end it
+          </label>
+        </div>
+
+        {mode === "relist" && (
+          <label className="lm-relist-price">
+            New price (optional)
+            <span aria-hidden="true">$</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              placeholder={listing.price === null ? "" : String(listing.price)}
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
+            <small>Leave blank to relist at the same price.</small>
+          </label>
+        )}
+
+        <p className="lm-relist-explain">
+          {mode === "relist" ? (
+            <>
+              Ends <strong>#{listing.itemId}</strong> and immediately puts it back up as a{" "}
+              <strong>new listing with a new item number</strong>. Photos, description and
+              specifics carry over. Watchers, and whatever search standing the old listing had, do
+              not.
+            </>
+          ) : (
+            <>
+              Ends <strong>#{listing.itemId}</strong>. The item stops being for sale. The listing
+              content is kept, so it can be relisted later.
+            </>
+          )}
+        </p>
+
+        <label className="lm-relist-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          I understand this can&rsquo;t be undone.
+        </label>
+
+        {stranded && (
+          <p className="note note-error" role="alert">
+            <strong>The listing is ended and is not for sale.</strong> eBay refused to publish the
+            replacement, so nothing went back up. The listing content is safe in offer{" "}
+            <code>{stranded}</code> — retry the relist, or publish it from Seller Hub.
+          </p>
+        )}
+        {error && !stranded && <p className="lm-err">{error}</p>}
+
+        <button
+          type="button"
+          className="btn-ghost lm-relist-go"
+          disabled={!confirmed || state === "working"}
+          onClick={run}
+        >
+          {state === "working"
+            ? mode === "relist"
+              ? "Relisting…"
+              : "Ending…"
+            : mode === "relist"
+              ? "End and relist"
+              : "End listing"}
+        </button>
+      </div>
+    </details>
+  );
+}
+
 export function ListingsManager() {
   const [data, setData] = useState<ListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -519,6 +720,50 @@ export function ListingsManager() {
     setData((d) =>
       d?.listings
         ? { ...d, listings: d.listings.map((l) => (l.itemId === itemId ? { ...l, price } : l)) }
+        : d
+    );
+  };
+
+  // An ended listing stays on screen, marked and dimmed, rather than vanishing.
+  // Removing the row would take the confirmation with it and leave the seller
+  // guessing whether the click worked. The next refresh clears it for real.
+  const applyEnded = (itemId: string) => {
+    setData((d) =>
+      d?.listings
+        ? {
+            ...d,
+            listings: d.listings.map((l) => (l.itemId === itemId ? { ...l, ended: true } : l)),
+          }
+        : d
+    );
+  };
+
+  // A relist is a different listing with a different id, and its stats start at
+  // zero. Re-pointing the row rather than mutating it in place keeps the view
+  // honest: showing the old watcher and view counts against a listing that just
+  // started would misreport it as instantly popular.
+  const applyRelisted = (itemId: string, listingId: string, price: number | null) => {
+    setData((d) =>
+      d?.listings
+        ? {
+            ...d,
+            listings: d.listings.map((l) =>
+              l.itemId === itemId
+                ? {
+                    ...l,
+                    itemId: listingId,
+                    price: price ?? l.price,
+                    viewUrl: `https://www.ebay.com/itm/${listingId}`,
+                    startTime: new Date().toISOString(),
+                    watchCount: 0,
+                    views: 0,
+                    impressions: 0,
+                    quantitySold: 0,
+                    offerEligible: false,
+                  }
+                : l
+            ),
+          }
         : d
     );
   };
@@ -648,7 +893,10 @@ export function ListingsManager() {
 
       <div className="lm-rows">
         {listings.map(({ listing: l, triage }) => (
-          <article className="lm-row" key={l.itemId}>
+          // Keyed by SKU, not item id: a relist gives the listing a NEW item
+          // id, and keying on that would unmount the row mid-action and throw
+          // away the confirmation the seller needs to read.
+          <article className={`lm-row${l.ended ? " ended" : ""}`} key={l.sku || `item:${l.itemId}`}>
             {l.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img className="lm-thumb" src={l.imageUrl} alt="" />
@@ -700,7 +948,7 @@ export function ListingsManager() {
               </div>
             </dl>
 
-            {l.sku ? (
+            {l.sku && !l.ended ? (
               <PriceEditor listing={l} onSaved={(p) => applyPrice(l.itemId, p)} />
             ) : (
               <div className="lm-price">
@@ -726,7 +974,7 @@ export function ListingsManager() {
             {/* The evidence, spelled out. A verdict the seller can't check is
                 one they have to take on faith, and this one costs money to act
                 on. */}
-            {triage.priority > 0 && (
+            {triage.priority > 0 && !l.ended && (
               <p className="lm-triage-note">
                 <strong>{triage.evidence}</strong> {triage.suggestion}
               </p>
@@ -735,7 +983,17 @@ export function ListingsManager() {
             {/* Full width, below the row. Squeezed into the price column the
                 open form stretched the row to three times its height and left
                 everything else stranded in the middle of it. */}
-            {l.sku && l.offerEligible && <OfferPanel listing={l} />}
+            {l.sku && l.offerEligible && !l.ended && <OfferPanel listing={l} />}
+
+            {/* Last in the row, and folded away. Ending a listing is the one
+                action here that destroys something. */}
+            {l.sku && (
+              <EndRelistPanel
+                listing={l}
+                onEnded={applyEnded}
+                onRelisted={applyRelisted}
+              />
+            )}
           </article>
         ))}
       </div>

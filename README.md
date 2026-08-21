@@ -27,8 +27,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
   everything else stays one-of-a-kind by default
 - 🚀 Posts straight to eBay — one item or the whole batch
 - 🏷️ **Seller view** — see every live listing with watchers/views, change prices
-  (the only way to edit listings this app posted), record what you paid, and
-  send offers to watchers
+  (the only way to edit listings this app posted), record what you paid, send
+  offers to watchers, and end or relist dead stock
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -326,6 +326,46 @@ merged out, so clearing a cost leaves *"estate lot 4"* exactly where you wrote
 it. Cost is editable on **every** listing, including ones with no SKU that
 can't be repriced from here, because it's a note on the item rather than an edit
 to the offer.
+
+### Ending and relisting dead stock
+
+A listing that has sat for three months doesn't improve by waiting — eBay's
+search favours newer listings, so at some point the move is to end it and start
+again. Each row has a folded-away **⏹ End or relist** panel with two choices:
+
+| | What happens |
+|---|---|
+| **End and relist fresh** | Ends the listing and immediately republishes it as a **new listing with a new item number**, optionally at a new price |
+| **Just end it** | Takes it down. The listing content is kept, so it can go back up later |
+
+Mechanically this is `withdrawOffer` → (optional `updateOffer` for the price) →
+`publishOffer`. Withdraw, never delete: deleting would throw away the photos,
+description and item specifics, and no version of "this isn't selling" is
+improved by destroying the listing content. The reprice happens *after* the
+withdraw, because repricing a listing that is about to be ended is a wasted
+write that briefly shows buyers a price that is about to vanish.
+
+**The app will argue with you.** Relisting discards your watchers and whatever
+search standing the listing had built up. On a listing with watchers that is the
+wrong move — those are the people most likely to buy — so the panel says so and
+points you at the offer control instead. It still lets you proceed; it just
+won't let you do it unaware.
+
+Because this is the only control in the app that destroys something, it is built
+to be deliberate rather than convenient: it stays folded away, it names the
+item number being ended, the button only arms once you tick a confirmation, and
+the API route refuses any request that doesn't carry that confirmation
+explicitly — so a stray retry or double-click can't end a listing.
+
+**The failure that matters** is ending a listing and then failing to republish
+it, which leaves the item for sale nowhere. That case is never folded into a
+generic error: the row says the listing is down in plain words, gives you the
+offer id to recover from, and the server logs it at error level. And if only the
+*price* is refused, the item is republished at the old price rather than left
+off the market, with the reason shown.
+
+Listings without a SKU aren't inventory-managed and can't be ended here — same
+boundary as price editing, and for the same reason.
 
 ### Views need one more permission
 

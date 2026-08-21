@@ -2667,7 +2667,8 @@ textarea {
     "thumb main stats price"
     ".     .    .     cost"
     "note note note note"
-    "offer offer offer offer";
+    "offer offer offer offer"
+    "relist relist relist relist";
   align-items: center;
   gap: 0.9rem;
   padding: 0.7rem;
@@ -2854,7 +2855,8 @@ textarea {
       "price price"
       "cost cost"
       "note note"
-      "offer offer";
+      "offer offer"
+      "relist relist";
   }
   .lm-thumb {
     grid-area: thumb;
@@ -2977,6 +2979,129 @@ textarea {
   font-weight: 400;
   font-size: 0.66rem;
   color: var(--color-ink-faint);
+}
+
+/* ── End and relist ───────────────────────────────────────────────────────── */
+
+/* Folded away and visually quiet. This is the only control on the page that
+   destroys something, so it does not compete for attention with the ones a
+   seller uses every day. */
+.lm-relist {
+  grid-area: relist;
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.lm-relist summary {
+  cursor: pointer;
+  color: var(--color-ink-faint);
+  font-weight: 600;
+}
+
+.lm-relist summary:hover {
+  color: var(--color-ink);
+}
+
+.lm-relist-body {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.lm-relist-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.lm-relist-modes label,
+.lm-relist-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.lm-relist-price {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  color: var(--color-ink-soft);
+}
+
+.lm-relist-price input {
+  width: 6rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  color: var(--color-ink);
+}
+
+.lm-relist-price small {
+  width: 100%;
+  color: var(--color-ink-faint);
+  font-size: 0.68rem;
+}
+
+/* Says exactly what is about to happen, to which item number. */
+.lm-relist-explain {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+/* The case where the app disagrees with the seller — relisting something with
+   watchers throws away the buyers most likely to convert. */
+.lm-relist-warn {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.lm-relist-confirm {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.lm-relist-go {
+  justify-self: start;
+}
+
+.lm-relist-done {
+  grid-area: relist;
+  margin: 0.5rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-ink);
+}
+
+.lm-relist-caveat {
+  color: var(--color-ink-soft);
+}
+
+/* An ended listing stays put so its confirmation can be read, but stops
+   looking like something you can still act on. */
+.lm-row.ended {
+  opacity: 0.62;
+}
+
+.lm-row.ended .lm-title {
+  text-decoration: line-through;
 }
 
 /* ── Send an offer to watchers ────────────────────────────────────────────── */
