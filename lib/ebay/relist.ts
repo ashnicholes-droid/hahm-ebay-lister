@@ -36,6 +36,12 @@ import {
   toOfferRef,
   type OfferRef,
 } from "./revise";
+import {
+  validateContent,
+  writeInventoryContent,
+  writeOfferContent,
+  type ListingContent,
+} from "./content";
 
 const NOT_MANAGED =
   "This listing isn't managed by the Inventory API, so it can't be ended here. " +
@@ -92,42 +98,28 @@ export async function endListing(accessToken: string, sku: string): Promise<EndR
   };
 }
 
-/** Overwrite just the price on an unpublished offer, preserving everything else. */
-async function setOfferPrice(
+/**
+ * Apply the price and any content changes to the withdrawn offer.
+ *
+ * Delegates to lib/ebay/content.ts rather than repeating the read-modify-write
+ * dance, so the "eBay's PUT is a full replacement" handling lives in one place
+ * and can't drift between editing a live listing and relisting one.
+ */
+async function applyChanges(
   accessToken: string,
   offer: OfferRef,
-  price: number
+  sku: string,
+  price: number | undefined,
+  content: Partial<ListingContent>
 ): Promise<{ ok: boolean; error?: string }> {
-  const current = await inventoryRequest(
-    accessToken,
-    "GET",
-    `${EBAY_INV_BASE}/offer/${encodeURIComponent(offer.offerId)}`
-  );
-  if (!current.ok) {
-    return { ok: false, error: ebayMessage(current, "Couldn't read the offer back") };
+  // Title lives only on the inventory item, so it needs its own write.
+  if (content.title !== undefined || content.description !== undefined) {
+    const item = await writeInventoryContent(accessToken, sku, content);
+    if (!item.ok) return item;
   }
-
-  // eBay's offer update is a full replacement, so this merges into what is
-  // already there. Sending only the price would blank the rest of the listing.
-  const body: any = { ...current.json };
-  delete body.offerId;
-  delete body.sku;
-  delete body.marketplaceId;
-  delete body.format;
-  delete body.listing;
-  delete body.status;
-  body.pricingSummary = {
-    ...(body.pricingSummary ?? {}),
-    price: { value: price.toFixed(2), currency: offer.currency },
-  };
-
-  const upd = await inventoryRequest(
-    accessToken,
-    "PUT",
-    `${EBAY_INV_BASE}/offer/${encodeURIComponent(offer.offerId)}`,
-    body
-  );
-  if (!upd.ok) return { ok: false, error: ebayMessage(upd, "eBay rejected the new price") };
+  if (content.description !== undefined || price !== undefined) {
+    return await writeOfferContent(accessToken, offer, content, price);
+  }
   return { ok: true };
 }
 
@@ -146,8 +138,17 @@ async function setOfferPrice(
 export async function relistListing(
   accessToken: string,
   sku: string,
-  newPrice?: number
+  newPrice?: number,
+  content: Partial<ListingContent> = {}
 ): Promise<RelistResult> {
+  // Reject a bad title before anything is ended. Discovering an over-long
+  // title after the listing is down is the worst possible moment for it.
+  if (content.title !== undefined || content.description !== undefined) {
+    const checked = validateContent(content);
+    if ("error" in checked) return { ok: false, error: checked.error };
+    content = checked.content;
+  }
+
   const { offer, error } = await findOffer(accessToken, sku);
   if (error) return { ok: false, error };
   if (!offer) return { ok: false, notInventoryManaged: true, error: NOT_MANAGED };
@@ -163,11 +164,12 @@ export async function relistListing(
   }
   const endedListingId = String(ended.json?.listingId ?? offer.listingId ?? "");
 
-  if (newPrice !== undefined) {
-    const priced = await setOfferPrice(accessToken, offer, newPrice);
+  const hasChanges = newPrice !== undefined || content.title !== undefined || content.description !== undefined;
+  if (hasChanges) {
+    const priced = await applyChanges(accessToken, offer, sku, newPrice, content);
     if (!priced.ok) {
-      // The old listing is already down. Publishing at the OLD price is far
-      // better than leaving the item off the market over a rejected price, so
+      // The old listing is already down. Publishing with the OLD content is far
+      // better than leaving the item off the market over a rejected edit, so
       // carry on and say what happened.
       const republished = await publish(accessToken, offer.offerId);
       return republished.ok
@@ -177,7 +179,7 @@ export async function relistListing(
             endedListingId,
             listingId: republished.listingId,
             price: offer.price,
-            error: `${priced.error} It was relisted at the old price instead.`,
+            error: `${priced.error} It was relisted with the previous price and wording instead.`,
           }
         : {
             ok: false,

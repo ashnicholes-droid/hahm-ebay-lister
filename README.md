@@ -30,8 +30,9 @@ own eBay developer keys, so you're in full control and there's no middleman.
   postage), suggestions anchored near the bottom of the market with a margin you
   set, and a popup listing every comp so you can check them
 - 🏷️ **Seller view** — see every live listing with watchers/views, change prices
-  (the only way to edit listings this app posted), record what you paid, send
-  offers to watchers, and end or relist dead stock
+  (the only way to edit listings this app posted), rewrite titles and
+  descriptions in place, record what you paid, send offers to watchers, and end
+  or relist dead stock
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -329,6 +330,39 @@ merged out, so clearing a cost leaves *"estate lot 4"* exactly where you wrote
 it. Cost is editable on **every** listing, including ones with no SKU that
 can't be repriced from here, because it's a note on the item rather than an edit
 to the offer.
+
+### Rewriting a title or description
+
+Triage will tell you a listing is "barely showing in search — fix the title
+keywords", and until now the app gave you nowhere to do it. **✏️ Edit title &
+description** on any row closes that loop.
+
+**This edits the live listing in place.** Same item number, watchers kept,
+search standing kept — no ending, no relisting. That's the right tool for a
+weak title, and it's deliberately placed *above* the End-or-relist control,
+because the relist throws away exactly what this keeps.
+
+The title counter is always visible against eBay's 80-character cap, and Save
+is blocked over it — an over-long title is otherwise only discovered when eBay
+rejects the publish.
+
+If you *do* relist, **Also rewrite the title and description** appears next to
+the new-price field. That's worth using: the replacement listing is indexed
+from scratch, so it's the one moment a bad title costs nothing to fix.
+
+Two implementation details that matter:
+
+- **eBay keeps the description in two places** — `product.description` on the
+  inventory item and `listingDescription` on the offer — and the offer's copy is
+  what buyers read. Both are always written, or the listing page and the
+  inventory record drift apart.
+- **Both PUTs are full replacements.** Every write is read-modify-write; sending
+  a partial body doesn't patch the listing, it blanks the photos, aspects, and
+  package dimensions along with everything else it omits.
+
+Because the two writes can't be atomic, a half-applied edit says so — *"the
+title was updated, but the description was not"* — rather than reporting a flat
+failure that would send you hunting for a change which already happened.
 
 ### Ending and relisting dead stock
 

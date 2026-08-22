@@ -12,6 +12,9 @@ interface RelistBody {
   action?: "end" | "relist";
   /** Optional new price, relist only. */
   price?: number | string;
+  /** Optional new title/description, relist only. */
+  title?: string;
+  description?: string;
   /**
    * Must be exactly true. Ending a listing can't be undone, so the intent is
    * carried explicitly rather than inferred from the request existing.
@@ -81,7 +84,10 @@ export async function POST(req: NextRequest) {
   try {
     const result =
       action === "relist"
-        ? await relistListing(accessToken, sku, price)
+        ? await relistListing(accessToken, sku, price, {
+            ...(body.title !== undefined ? { title: body.title } : {}),
+            ...(body.description !== undefined ? { description: body.description } : {}),
+          })
         : await endListing(accessToken, sku);
 
     // A stranded offer means the listing is DOWN and nothing replaced it. Log

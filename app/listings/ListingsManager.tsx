@@ -5,6 +5,7 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
 import { breakEvenPrice, profitAtPrice } from "@/lib/costBasis";
 import { relistAdvice } from "@/lib/relistAdvice";
+import { ContentEditor, ContentFields, useContent, type Content } from "./ContentEditor";
 import { triageListing, triageSummary, type Triage } from "@/lib/triage";
 import {
   MAX_OFFER_MESSAGE,
@@ -513,6 +514,9 @@ function EndRelistPanel({
 }) {
   const [mode, setMode] = useState<"relist" | "end">("relist");
   const [price, setPrice] = useState("");
+  const [editContent, setEditContent] = useState(false);
+  const { content, loading: contentLoading } = useContent(listing.sku, editContent);
+  const [draft, setDraft] = useState<Content | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState<"idle" | "working" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -521,17 +525,34 @@ function EndRelistPanel({
 
   const advice = relistAdvice(listing);
 
+  useEffect(() => {
+    if (content && draft === null) setDraft(content);
+  }, [content, draft]);
+
   const run = async () => {
     if (!confirmed || state === "working") return;
     setState("working");
     setError(null);
     setStranded(null);
     try {
+      // Content only travels when the seller actually opened the editor and
+      // changed something — sending the unchanged text back would be a pointless
+      // extra write on a listing that is already down.
+      const edited =
+        mode === "relist" && editContent && draft && content
+          ? {
+              ...(draft.title !== content.title ? { title: draft.title } : {}),
+              ...(draft.description !== content.description
+                ? { description: draft.description }
+                : {}),
+            }
+          : {};
       const res = await apiPost("/api/ebay/relist", {
         sku: listing.sku,
         action: mode,
         confirm: true,
         ...(mode === "relist" && price.trim() !== "" ? { price: price.trim() } : {}),
+        ...edited,
       });
       const data = (await res.json()) as {
         ok: boolean;
@@ -620,20 +641,58 @@ function EndRelistPanel({
         </div>
 
         {mode === "relist" && (
-          <label className="lm-relist-price">
-            New price (optional)
-            <span aria-hidden="true">$</span>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              inputMode="decimal"
-              placeholder={listing.price === null ? "" : String(listing.price)}
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-            <small>Leave blank to relist at the same price.</small>
-          </label>
+          <>
+            <label className="lm-relist-price">
+              New price (optional)
+              <span aria-hidden="true">$</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                inputMode="decimal"
+                placeholder={listing.price === null ? "" : String(listing.price)}
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+              <small>Leave blank to relist at the same price.</small>
+            </label>
+
+            <label className="lm-relist-confirm">
+              <input
+                type="checkbox"
+                checked={editContent}
+                onChange={(e) => setEditContent(e.target.checked)}
+              />
+              Also rewrite the title and description
+            </label>
+
+            {editContent && (
+              <div className="lm-relist-content">
+                {contentLoading && !content && (
+                  <p className="ce-hint">
+                    <span className="spinner" aria-hidden="true" /> Reading the current wording…
+                  </p>
+                )}
+                {draft && (
+                  <>
+                    {/* The reason to bother: a relist is the moment a bad title
+                        is worth fixing, since the new listing gets re-indexed
+                        from scratch under whatever keywords it carries. */}
+                    <p className="ce-hint">
+                      The new listing is indexed from scratch, so this is the moment a weak title
+                      is worth rewriting. Leave it alone to carry the current wording over.
+                    </p>
+                    <ContentFields
+                      value={draft}
+                      onChange={setDraft}
+                      disabled={state === "working"}
+                      idPrefix={`relist-${listing.itemId}`}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <p className="lm-relist-explain">
@@ -762,6 +821,21 @@ export function ListingsManager() {
                     offerEligible: false,
                   }
                 : l
+            ),
+          }
+        : d
+    );
+  };
+
+  // A revised title has to show on the row immediately; leaving the old one
+  // there would read as though the save hadn't taken.
+  const applyContent = (itemId: string, content: Content) => {
+    setData((d) =>
+      d?.listings
+        ? {
+            ...d,
+            listings: d.listings.map((l) =>
+              l.itemId === itemId ? { ...l, title: content.title } : l
             ),
           }
         : d
@@ -984,6 +1058,12 @@ export function ListingsManager() {
                 open form stretched the row to three times its height and left
                 everything else stranded in the middle of it. */}
             {l.sku && l.offerEligible && !l.ended && <OfferPanel listing={l} />}
+
+            {/* Editing in place keeps the watchers and the search history, so
+                it sits ABOVE the relist control and is reached first. */}
+            {l.sku && !l.ended && (
+              <ContentEditor sku={l.sku} onSaved={(c) => applyContent(l.itemId, c)} />
+            )}
 
             {/* Last in the row, and folded away. Ending a listing is the one
                 action here that destroys something. */}

@@ -2668,6 +2668,7 @@ textarea {
     ".     .    .     cost"
     "note note note note"
     "offer offer offer offer"
+    "content content content content"
     "relist relist relist relist";
   align-items: center;
   gap: 0.9rem;
@@ -2856,6 +2857,7 @@ textarea {
       "cost cost"
       "note note"
       "offer offer"
+      "content content"
       "relist relist";
   }
   .lm-thumb {
@@ -3726,4 +3728,116 @@ textarea {
 .ps-table tr.anchor td {
   background: var(--color-accent-soft);
   font-weight: 700;
+}
+
+/* ── Editing a live listing's title and description ───────────────────────── */
+
+.ce {
+  grid-area: content;
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.ce summary {
+  cursor: pointer;
+  color: var(--color-ink-soft);
+  font-weight: 600;
+}
+
+.ce summary:hover {
+  color: var(--color-ink);
+}
+
+.ce-body,
+.lm-relist-content {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.ce-body {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.ce-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.ce-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.76rem;
+}
+
+/* The counter is always visible, not just once it's a problem — an 80-char cap
+   you only learn about at publish time is a wasted round trip. */
+.ce-label small {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--color-ink-faint);
+}
+
+.ce-label small.ce-near {
+  color: var(--color-ink);
+}
+
+.ce-label small.ce-over {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.ce-field input[type="text"],
+.ce-field textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  color: var(--color-ink);
+}
+
+.ce-field textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.ce-hint {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+/* Which control to reach for. The relist sits just below this one and throws
+   away what this one keeps, so the difference is spelled out rather than left
+   to be discovered. */
+.ce-note {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.ce-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }

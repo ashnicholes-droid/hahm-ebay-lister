@@ -188,7 +188,7 @@ describe("relisting", () => {
     expect(r.ok).toBe(true);
     expect(r.listingId).toBe("220000000002");
     expect(r.price).toBe(45.5);
-    expect(r.error).toMatch(/relisted at the old price/i);
+    expect(r.error).toMatch(/relisted with the previous price and wording/i);
     expect(r.strandedOffer).toBeUndefined();
   });
 
