@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cropRect, type FramingMode } from "@/lib/cameraFraming";
 import { scanQrSku } from "@/lib/qrScan";
 import type { ResizedImage } from "@/lib/resize";
 
@@ -32,18 +33,18 @@ interface CameraCaptureProps {
 
 function drawToJpeg(
   src: CanvasImageSource,
-  sw: number,
-  sh: number,
+  crop: { sx: number; sy: number; sw: number; sh: number },
   maxDim: number,
   quality: number
 ): string {
-  const ratio = Math.min(1, maxDim / Math.max(sw, sh));
+  const ratio = Math.min(1, maxDim / Math.max(crop.sw, crop.sh));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(sw * ratio));
-  canvas.height = Math.max(1, Math.round(sh * ratio));
+  canvas.width = Math.max(1, Math.round(crop.sw * ratio));
+  canvas.height = Math.max(1, Math.round(crop.sh * ratio));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not process the photo.");
-  ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+  // The source rectangle is what makes the capture match the viewfinder.
+  ctx.drawImage(src, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", quality);
 }
 
@@ -55,6 +56,47 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const [ready, setReady] = useState(false);
   const [liveSku, setLiveSku] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
+  // Full frame by default: it keeps every pixel the sensor gave, and now that
+  // the viewfinder shows the whole frame there is no longer a surprise in it.
+  // Square is there because eBay's gallery and search results are square, and
+  // some sellers would rather compose to that than crop later.
+  const [framing, setFraming] = useState<FramingMode>("full");
+  // The stream's shape, so the square guide can be drawn over the video as it
+  // is actually displayed. Sizing it to the stage instead would promise a crop
+  // that doesn't match the one taken — the mask has to sit on the letterboxed
+  // video rectangle, not the black box around it.
+  const [aspect, setAspect] = useState<number | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageBox, setStageBox] = useState<{ w: number; h: number } | null>(null);
+
+  // The stage's pixel size, so the square guide can be placed on the video as
+  // displayed. CSS can't express this: `aspect-ratio` loses to a definite
+  // width AND height, and object-fit: contain needs both bounds honoured.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      setStageBox({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // The side of the square, in screen pixels — the same square cropRect takes.
+  const guideSide =
+    aspect === null || stageBox === null
+      ? null
+      : (() => {
+          const dispW = Math.min(stageBox.w, stageBox.h * aspect);
+          return Math.min(dispW, dispW / aspect);
+        })();
+  // shoot() is a stable callback; a ref keeps it reading the CURRENT mode
+  // rather than the one captured when it was created.
+  const framingRef = useRef<FramingMode>("full");
+  useEffect(() => {
+    framingRef.current = framing;
+  }, [framing]);
 
   // ── Camera lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -111,6 +153,9 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
       const video = videoRef.current;
       if (!stopped && video && video.videoWidth) {
         try {
+          // The live label scan reads the WHOLE frame regardless of framing:
+          // a QR label just outside a square crop should still be recognised,
+          // since it identifies the item rather than appearing in the photo.
           const canvas = document.createElement("canvas");
           const ratio = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
           canvas.width = Math.round(video.videoWidth * ratio);
@@ -137,10 +182,9 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   const shoot = useCallback(async () => {
     const video = videoRef.current;
     if (!video?.videoWidth) return;
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    const full = drawToJpeg(video, w, h, FULL_DIM, FULL_QUALITY);
-    const thumb = drawToJpeg(video, w, h, THUMB_DIM, THUMB_QUALITY);
+    const crop = cropRect(video.videoWidth, video.videoHeight, framingRef.current);
+    const full = drawToJpeg(video, crop, FULL_DIM, FULL_QUALITY);
+    const thumb = drawToJpeg(video, crop, THUMB_DIM, THUMB_QUALITY);
 
     // Scan the captured frame rather than trusting the live preview: the live
     // pass runs on a throttled tick and may be a beat behind what you shot.
@@ -177,6 +221,24 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
             <strong>{shots.length}</strong> photo{shots.length === 1 ? "" : "s"}
             {labelCount > 0 && <> · {labelCount} label{labelCount === 1 ? "" : "s"}</>}
           </span>
+          <span className="camera-framing" role="group" aria-label="Framing">
+            <button
+              type="button"
+              className={framing === "full" ? "active" : ""}
+              onClick={() => setFraming("full")}
+              title="Keep the whole frame the camera sees"
+            >
+              Full frame
+            </button>
+            <button
+              type="button"
+              className={framing === "square" ? "active" : ""}
+              onClick={() => setFraming("square")}
+              title="Crop to the square eBay uses in search results"
+            >
+              Square
+            </button>
+          </span>
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
@@ -187,9 +249,36 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
             {error}
           </p>
         ) : (
-          <div className="camera-stage">
+          <div className="camera-stage" ref={stageRef}>
+            {/* `contain`, not `cover`. Cover showed the middle of the stream
+                while the capture kept the whole frame, so what you composed
+                and what eBay received were different pictures. */}
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video ref={videoRef} playsInline muted autoPlay className="camera-video" />
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="camera-video"
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                if (v.videoWidth > 0 && v.videoHeight > 0) {
+                  setAspect(v.videoWidth / v.videoHeight);
+                }
+              }}
+            />
+            {framing === "square" && guideSide !== null && (
+              <div className="camera-crop-mask" aria-hidden="true">
+                {/* Sized to the video AS DISPLAYED, not to the stage. A guide
+                    drawn on the black letterbox would promise a crop nobody is
+                    going to get, which is the same class of lie this whole
+                    change exists to remove. */}
+                <div
+                  className="camera-crop-window"
+                  style={{ width: guideSide, height: guideSide }}
+                />
+              </div>
+            )}
             {flash && <div className="camera-flash" aria-hidden="true" />}
             {liveSku && (
               <div className="camera-live-sku" role="status">

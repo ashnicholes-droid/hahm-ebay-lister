@@ -1752,11 +1752,60 @@ textarea {
   background: black;
 }
 
+/* contain, NOT cover.
+   Cover cropped the viewfinder to the stage while the capture kept the entire
+   video frame, so the seller composed inside a square and eBay received a much
+   wider picture with whatever was outside it. Letterboxing is a small price for
+   the preview and the file being the same photo. */
 .camera-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+}
+
+/* Square framing: dim what will be cut, so the crop is visible before the
+   shutter rather than discovered afterwards. */
+.camera-crop-mask {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+/* Sized in JS from the stream's aspect and the stage's measured box, because
+   CSS can't reproduce object-fit: contain here — aspect-ratio loses to a
+   definite width and height. */
+.camera-crop-window {
+  border: 2px solid var(--color-gold);
+  border-radius: 2px;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.55);
+}
+
+.camera-framing {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: auto;
+  margin-right: 0.5rem;
+}
+
+.camera-framing button {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.camera-framing button.active {
+  background: var(--color-gold);
+  color: #14110e;
+  border-color: transparent;
+  font-weight: 600;
 }
 
 .camera-flash {

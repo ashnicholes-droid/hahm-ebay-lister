@@ -793,6 +793,39 @@ before pricing off it.
 
 ---
 
+## The camera shows what it captures
+
+The viewfinder used to lie. It was styled `object-fit: cover` — showing the
+middle of the video stream inside a much squarer box — while the capture drew
+the **entire** frame. You composed the shot inside the square you could see,
+and eBay received a far wider picture containing everything outside it.
+
+The worst case is an iPhone used as a Mac webcam: the stream is 1920×1080 and
+the stage is roughly portrait, so **58% of the width was hidden** while you
+framed. Whatever was on the table either side of your item went to the buyer.
+
+Two things changed:
+
+- **The viewfinder shows the whole frame** (`contain`, letterboxed). What you
+  see is what the file contains.
+- **A framing toggle**, because the shape is now a real choice:
+
+| Mode | What it does |
+|---|---|
+| **Full frame** (default) | Keeps every pixel the sensor gave. Nothing discarded, nothing hidden. |
+| **Square** | Crops to a centred square — the shape eBay's gallery and search results use. A gold guide dims what will be cut, *before* the shutter. |
+
+The square guide is sized from the stream's aspect and the stage's measured
+pixel box, so it lands on the video rather than on the black letterbox around
+it. A guide drawn on the wrong rectangle would promise a crop nobody was going
+to get — the same class of mistake this whole change removes.
+
+QR labels are still scanned across the **whole** frame in either mode: a label
+just outside a square crop still identifies the item, since it's a delimiter
+rather than part of the photo.
+
+---
+
 ## Seeing your photos properly
 
 Every photo in this app was shown as a **square 360px thumbnail**, cropped with
