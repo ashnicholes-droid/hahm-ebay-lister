@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/api-client";
 import type { ListingPreview as PreviewData } from "@/lib/ebay/preview";
 import type { ItemGroup, Photo } from "@/lib/types";
+import { PhotoViewer } from "./PhotoViewer";
 
 // An eBay-shaped rendering of the payload the publish route will actually send.
 // The layout is a deliberate approximation of eBay's item page — enough to read
@@ -16,6 +17,10 @@ interface ListingPreviewProps {
   onClose: () => void;
 }
 
+/** The image that actually publishes, not the small sorting thumbnail. */
+const fullUrl = (p: Photo) =>
+  p.data.startsWith("data:") ? p.data : `data:${p.mediaType};base64,${p.data}`;
+
 function formatPrice(value: number | null, currency: string): string {
   if (value === null) return "—";
   const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : currency === "EUR" ? "€" : "";
@@ -26,6 +31,7 @@ export function ListingPreview({ group, photoById, onClose }: ListingPreviewProp
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   // The seller's own photos, in the order they'll be sent — index 0 is the
   // gallery/cover image on the live listing.
@@ -109,8 +115,21 @@ export function ListingPreview({ group, photoById, onClose }: ListingPreviewProp
               <div className="ebay-gallery">
                 {hero ? (
                   <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img className="ebay-hero" src={hero.previewUrl} alt="" />
+                    {/* The image that PUBLISHES, not the 360px sorting thumb.
+                        A preview claiming to show "as it will appear on eBay"
+                        while rendering a different, much smaller file is the
+                        one thing this screen must not do. Clicking opens it
+                        full size. */}
+                    <button
+                      type="button"
+                      className="ebay-hero-open"
+                      aria-label="View this photo full size"
+                      title="View full size"
+                      onClick={() => setViewerOpen(true)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img className="ebay-hero" src={fullUrl(hero)} alt="" />
+                    </button>
                     {photos.length > 1 && (
                       <div className="ebay-thumbs">
                         {photos.map((p, i) => (
@@ -261,6 +280,13 @@ export function ListingPreview({ group, photoById, onClose }: ListingPreviewProp
               only answered at publish time — the posting flow recovers from them automatically.
             </p>
           </>
+        )}
+        {viewerOpen && photos.length > 0 && (
+          <PhotoViewer
+            photos={photos}
+            startIndex={heroIndex}
+            onClose={() => setViewerOpen(false)}
+          />
         )}
       </div>
     </div>

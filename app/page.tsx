@@ -27,6 +27,7 @@ import {
   type PhotoClaim,
 } from "@/lib/verification";
 import { CameraCapture } from "./CameraCapture";
+import { PhotoViewer } from "./PhotoViewer";
 import { EbayConnect } from "./EbayConnect";
 import { ModelSelector } from "./ModelSelector";
 import { ReviewBoard } from "./ReviewBoard";
@@ -164,6 +165,8 @@ export default function Home() {
   // Server-reported reason the deployment can't work at all (missing env var).
   const [setupError, setSetupError] = useState<string | null>(null);
   const [intakeMode, setIntakeMode] = useState<IntakeMode>("qr");
+  // Which imported photo the full-size viewer is showing, if any.
+  const [viewerAt, setViewerAt] = useState<number | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
   const [qrWarnings, setQrWarnings] = useState<GroupingWarning[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -1153,8 +1156,19 @@ export default function Home() {
               <div className="thumbs" aria-label="Selected photos">
                 {photos.map((p) => (
                   <div className={`thumb${p.sku ? " is-marker" : ""}`} key={p.id}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.previewUrl} alt="" />
+                    {/* The thumbnail is a square crop, so a portrait photo's
+                        top and bottom aren't visible here. Clicking opens the
+                        real frame. */}
+                    <button
+                      type="button"
+                      className="thumb-open"
+                      aria-label="View full photo"
+                      title="View full photo"
+                      onClick={() => setViewerAt(photos.findIndex((x) => x.id === p.id))}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.previewUrl} alt="" />
+                    </button>
                     {p.sku && (
                       <span className="thumb-sku" title={`Inventory label: ${p.sku}`}>
                         {p.sku}
@@ -1179,6 +1193,14 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {viewerAt !== null && photos[viewerAt] && (
+              <PhotoViewer
+                photos={photos}
+                startIndex={viewerAt}
+                onClose={() => setViewerAt(null)}
+              />
             )}
 
             <div className="result-actions" style={{ borderTop: "none", paddingTop: 0 }}>

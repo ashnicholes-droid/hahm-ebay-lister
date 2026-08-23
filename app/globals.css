@@ -3919,3 +3919,156 @@ textarea {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
+
+/* ── Full-size photo viewer ───────────────────────────────────────────────── */
+
+/* Dark, because a photo judged against a cream page reads warmer than it is,
+   and the point of this screen is judging the photo. */
+.pv {
+  width: min(96vw, 1400px);
+  max-width: 96vw;
+  height: min(94vh, 1100px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: #14110e;
+  color: #f5f0e8;
+  overflow: hidden;
+}
+
+.pv::backdrop {
+  background: rgb(0 0 0 / 0.8);
+}
+
+.pv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.pv-count small {
+  color: #b8ad9d;
+}
+
+.pv-bar .btn-ghost {
+  background: transparent;
+  border-color: #453d33;
+  color: #f5f0e8;
+}
+
+/* contain, never cover: the whole frame or it defeats the purpose. */
+.pv-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 2.6rem - 4.5rem);
+  padding: 0 0.5rem;
+}
+
+.pv-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.pv-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.4rem;
+  height: 3.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  line-height: 1;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 0.45);
+  color: #f5f0e8;
+  cursor: pointer;
+}
+
+.pv-nav:hover {
+  background: rgb(0 0 0 / 0.7);
+}
+
+.pv-nav.prev {
+  left: 0.5rem;
+}
+
+.pv-nav.next {
+  right: 0.5rem;
+}
+
+.pv-strip {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.75rem;
+  height: 4.5rem;
+}
+
+.pv-strip button {
+  flex: 0 0 auto;
+  width: 3.2rem;
+  height: 3.2rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: none;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.pv-strip button.active,
+.pv-strip button:hover {
+  opacity: 1;
+  border-color: var(--color-gold);
+}
+
+.pv-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The thumbnail becomes the way in to the full photo.
+   `.thumb button` positions the little overlay controls absolutely, and this is
+   also a button inside .thumb — so it has to opt out explicitly, or it lands in
+   the corner as a 22px circle and the overlay buttons swallow every click. */
+.thumb .thumb-open,
+.ebay-hero-open {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  inset: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.thumb .thumb-open:hover,
+.ebay-hero-open:hover {
+  background: none;
+}
+
+/* The overlay controls stay clickable on top of it. */
+.thumb .thumb-tag,
+.thumb button[aria-label="Remove photo"] {
+  z-index: 1;
+}
+
+.ebay-hero-open {
+  border-radius: var(--radius-sm);
+}

@@ -793,6 +793,37 @@ before pricing off it.
 
 ---
 
+## Seeing your photos properly
+
+Every photo in this app was shown as a **square 360px thumbnail**, cropped with
+`object-fit: cover`. On a portrait phone photo that means the top and bottom
+were not visible anywhere in the app — you were approving listings whose photos
+you had never actually seen in full.
+
+**Click any photo to open it full size**: the whole frame, uncropped, at the
+resolution that publishes, with arrow-key navigation and a filmstrip. The pixel
+dimensions are stated, because that is what eBay receives and there should be
+no guessing about it.
+
+Two things this fixed along the way:
+
+- **The eBay preview was showing the wrong file.** Its hero image used the
+  360px sorting thumbnail rather than the image that actually publishes — a
+  screen whose entire promise is "as it will appear on eBay" was rendering a
+  different, much smaller picture. It now uses the real one.
+- **Resolution is now visible.** eBay activates its zoom feature at **1600px**
+  on the longest side; below that, buyers cannot magnify your photos. The
+  viewer says so when a photo falls short.
+
+⚠️ **Photos are currently downscaled to 1024px before upload**, which is above
+eBay's 500px minimum but below the 1600px zoom threshold. If you shoot with a
+phone, you are giving away detail buyers could otherwise zoom into. Raising it
+is a real change — it roughly doubles the analysis payload and the browser
+storage per photo, and the write path has a 4.5MB request limit — so it is
+called out here rather than changed quietly.
+
+---
+
 ## Seeing the listing before it goes live
 
 **Preview as it will appear on eBay** renders the item page from the *same*
