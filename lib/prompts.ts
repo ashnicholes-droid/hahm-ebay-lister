@@ -214,10 +214,56 @@ For item_specifics: Only include fields relevant to this item. Leave any field b
 For category/category_hint: The broad category can be approximate, but the category_hint should help eBay find the exact leaf category for whatever type of item this is.
 For all item types: include as many accurate specifics as the photos support, even for non-clothing items such as collectibles, media, home decor, toys, tools, sporting goods, art, kitchenware, and electronics accessories.`;
 
-export function buildProfiledAnalysisPrompt(profile: string): string {
+/**
+ * What the seller told us the item actually IS.
+ *
+ * The model identifies items from photographs, and on anything obscure — a
+ * pattern name, a model number, a maker whose mark isn't in shot — it will
+ * sometimes be confidently wrong. The seller usually knows, because they are
+ * holding the thing. This lets them say so and have everything else rebuilt
+ * around it.
+ *
+ * The wording is careful in two directions. The identification is authoritative
+ * — the model must not "correct" it back to its own guess, which is exactly
+ * what it would otherwise do. But it is NOT a licence to invent: the condition,
+ * the flaws and the measurements still have to come from the photographs, or
+ * the accuracy check downstream stops meaning anything.
+ */
+export function buildIdentityHint(hint: string): string {
+  const clean = hint.trim().slice(0, 300);
+  if (!clean) return "";
+  return `
+
+CRITICAL — THE SELLER HAS IDENTIFIED THIS ITEM.
+
+The seller is holding the item and tells you it is:
+
+  "${clean}"
+
+Treat this as ESTABLISHED FACT about what the item is. They can read marks,
+model numbers and pattern names that the photographs may not show clearly, and
+they know their own inventory. Do NOT revert to your own visual guess, and do
+NOT hedge about the identification in the description.
+
+Use it to drive: brand, item_type, model/MPN, category, item specifics, the
+description, and the price — research this item as identified.
+
+What this does NOT change:
+• CONDITION, flaws and wear must still come from what the photos actually show.
+• MEASUREMENTS must still be ones visible in the photos.
+• Do not claim a feature, marking, accessory or inclusion you cannot see just
+  because it is typical of the identified item. If the seller's identification
+  implies something you cannot verify in the photos, leave it out.
+
+If the photos plainly contradict the identification — a completely different
+kind of object — say so in condition_notes rather than silently ignoring
+either one.`;
+}
+
+export function buildProfiledAnalysisPrompt(profile: string, hint?: string): string {
   const normalized = normalizeItemProfile(profile);
   const addon = PROFILE_PROMPT_ADDONS[normalized] ?? "";
-  return ANALYSIS_PROMPT + addon;
+  return ANALYSIS_PROMPT + addon + buildIdentityHint(hint ?? "");
 }
 
 // ── Sorting prompts (ported from sort_photos in the Python script) ──────────

@@ -4121,3 +4121,21 @@ textarea {
 .ebay-hero-open {
   border-radius: var(--radius-sm);
 }
+
+/* ── Re-researching a wrong identification ────────────────────────────────── */
+
+.research-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+}
+
+/* Says what the button replaces and what it keeps. Regenerating a listing is
+   cheap to trigger and slow to undo, so the trade is stated before the click
+   rather than discovered after it. */
+.research-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+  max-width: 44rem;
+}

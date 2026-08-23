@@ -188,6 +188,8 @@ function EbayErrorDetail({ debug }: { debug: PublishDebug }) {
 interface ListingCardProps {
   group: ItemGroup;
   photoById: (id: string) => Photo | undefined;
+  /** Re-run analysis using the current title as the seller's correction. */
+  onResearch: (groupId: string) => void;
   ebayConnected: boolean;
   onEdit: (groupId: string, patch: Partial<ListingResult>) => void;
   onRenameSku: (groupId: string, sku: string) => void;
@@ -199,6 +201,7 @@ interface ListingCardProps {
 export function ListingCard({
   group,
   photoById,
+  onResearch,
   ebayConnected,
   onEdit,
   onRenameSku,
@@ -209,6 +212,7 @@ export function ListingCard({
   const [open, setOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [compsOpen, setCompsOpen] = useState(false);
+  const researching = group.status === "writing";
 
   // Pricing rules live in the browser, so a card has to read them on mount and
   // follow them afterwards — changing a setting in another tab should reprice
@@ -348,7 +352,24 @@ export function ListingCard({
             />
             <div className="copy-row">
               <CopyButton text={listing.title} label="title" />
+              {/* The escape hatch for a wrong identification. The model reads
+                  items out of photographs and on anything obscure it will be
+                  confidently wrong; the seller is holding the thing. */}
+              <button
+                type="button"
+                className="btn-ghost research-btn"
+                disabled={researching || !listing.title.trim()}
+                onClick={() => onResearch(group.id)}
+                title="Correct the title above, then rebuild the description, specifics and price around it"
+              >
+                {researching ? "Researching…" : "🔎 Research this item"}
+              </button>
             </div>
+            <p className="research-hint">
+              Wrong item? Fix the title, then <strong>Research this item</strong> — the description,
+              specifics and price are rebuilt from what you typed. Your title, SKU, quantity and
+              shipping choice are kept.
+            </p>
           </div>
 
           <div className="meta-row">

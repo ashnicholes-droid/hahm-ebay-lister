@@ -55,7 +55,8 @@ async function routeProfile(
   imageBlocks: ImageBlock[],
   requested: string,
   routerModel: string,
-  deadline: number
+  deadline: number,
+  hint = ""
 ): Promise<string> {
   const forced = normalizeItemProfile(requested);
   if (forced !== "auto") return forced;
@@ -73,7 +74,15 @@ async function routeProfile(
             role: "user",
             content: [
               ...imageBlocks,
-              { type: "text", text: PROFILE_ROUTER_PROMPT },
+              {
+                type: "text",
+                // The seller's identification routes the profile too — "Pyrex
+                // Cinderella bowl" belongs in kitchenware even if the photo
+                // reads as generic glassware.
+                text: hint
+                  ? `${PROFILE_ROUTER_PROMPT}\n\nThe seller says this item is: "${hint}"`
+                  : PROFILE_ROUTER_PROMPT,
+              },
             ],
           },
         ],
@@ -119,6 +128,14 @@ export async function POST(req: NextRequest) {
   const analysisModel = resolveModel(body.analysisModel, ANALYSIS_MODEL);
   const routerModel = resolveModel(body.routerModel, ROUTER_MODEL);
 
+  // Bounded before it reaches a prompt: this is seller-supplied text going into
+  // a system prompt, so it is length-capped and stripped of the newlines that
+  // would let it break out of the block it is quoted inside.
+  const hint = String(body.hint ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .slice(0, 300);
+
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Please add at least one photo." },
@@ -146,8 +163,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const deadline = Date.now() + ANALYZE_TIME_BUDGET_MS;
-    const profile = await routeProfile(client, imageBlocks, body.profile, routerModel, deadline);
-    const systemPrompt = buildProfiledAnalysisPrompt(profile);
+    const profile = await routeProfile(
+      client,
+      imageBlocks,
+      body.profile,
+      routerModel,
+      deadline,
+      hint
+    );
+    const systemPrompt = buildProfiledAnalysisPrompt(profile, hint);
 
     // Retry up to 3 times, mirroring the Python analyze_photos() loop — but
     // never start an attempt the time budget can't cover.

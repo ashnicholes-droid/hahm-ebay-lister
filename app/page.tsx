@@ -778,6 +778,110 @@ export default function Home() {
     [photoMap]
   );
 
+  /**
+   * Re-research an item from a title the seller corrected.
+   *
+   * The model identifies items from photographs, and on anything obscure — a
+   * pattern name, a model number, a maker's mark that isn't in shot — it will
+   * sometimes be confidently wrong. The seller is holding the thing and knows.
+   * This takes their corrected title as established fact and rebuilds the
+   * description, specifics and price around it, rather than leaving them to
+   * rewrite the lot by hand.
+   *
+   * What survives: their title (it IS the correction), the SKU, the quantity
+   * setup and the free-vs-buyer-paid shipping choice. Everything the model
+   * derived from a wrong identification is replaced, including the weight and
+   * size guesses — those were wrong for the same reason the description was.
+   */
+  const researchGroup = useCallback(
+    async (groupId: string) => {
+      const group = groupsRef.current.find((g) => g.id === groupId);
+      const hint = group?.listing?.title?.trim();
+      if (!group || !hint) return;
+
+      const imgs = group.photoIds
+        .map((id) => photoMap.get(id))
+        .filter((p): p is Photo => Boolean(p))
+        .map((p) => ({ mediaType: p.mediaType, data: p.data }));
+      if (imgs.length === 0) return;
+
+      const keep = group.listing!;
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, status: "writing", error: undefined } : g))
+      );
+
+      try {
+        const res = await apiPost("/api/analyze", {
+          profile: "auto",
+          images: imgs,
+          hint,
+          analysisModel: getAnalysisModel() ?? undefined,
+          routerModel: getSortModel() ?? undefined,
+        });
+        const data = (await readJson(res)) as AnalyzeResponse;
+        if (!data.ok || !data.listing) {
+          throw new Error(data.error || "Could not research this item.");
+        }
+
+        const merged = {
+          ...data.listing,
+          // Their correction is the whole point — never let the model talk it
+          // back to the identification that was wrong.
+          title: keep.title,
+          // Choices the seller made that have nothing to do with identity.
+          shipping_free: keep.shipping_free,
+          multi_quantity: keep.multi_quantity,
+          quantity: keep.quantity,
+          volume_discount_percent: keep.volume_discount_percent,
+          volume_discount_min: keep.volume_discount_min,
+        };
+
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId
+              ? reviseReport({
+                  ...g,
+                  status: "done",
+                  listing: merged,
+                  // The photo verdicts described the OLD description. Keeping
+                  // them would show a green tick against text nothing checked.
+                  verification: undefined,
+                  // The old band was built from the wrong search terms.
+                  comps: undefined,
+                })
+              : g
+          )
+        );
+
+        void (async () => {
+          try {
+            const cres = await apiPost("/api/ebay/comps", { listing: merged });
+            const d = (await readJson(cres)) as {
+              ok?: boolean;
+              comps?: CompsSummary;
+              markupPercent?: number;
+            };
+            if (d.ok && d.comps?.ok) {
+              d.comps.markupPercent = d.markupPercent ?? 0;
+              setGroups((prev) =>
+                prev.map((g) => (g.id === groupId ? reviseReport({ ...g, comps: d.comps }) : g))
+              );
+            }
+          } catch {
+            /* comps unavailable — the new price stays the AI estimate */
+          }
+        })();
+      } catch (e) {
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === groupId ? { ...g, status: "error", error: (e as Error).message } : g
+          )
+        );
+      }
+    },
+    [photoMap]
+  );
+
   const writeAll = async () => {
     // Only write listings that don't exist yet. Re-running everything after a
     // trip back to the review step re-billed the AI for unchanged listings
@@ -1305,6 +1409,7 @@ export default function Home() {
           onEdit={editListing}
           onRenameSku={renameSku}
           onRetry={writeGroup}
+          onResearch={researchGroup}
           onPost={postGroup}
           onPostAll={postAll}
           onVerify={verifyGroup}

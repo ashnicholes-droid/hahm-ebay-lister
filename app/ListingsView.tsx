@@ -12,6 +12,7 @@ import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 interface ListingsViewProps {
   groups: ItemGroup[];
   photoById: (id: string) => Photo | undefined;
+  onResearch: (groupId: string) => void;
   ebayConnected: boolean;
   onEdit: (groupId: string, patch: Partial<ListingResult>) => void;
   onRenameSku: (groupId: string, sku: string) => void;
@@ -26,6 +27,7 @@ interface ListingsViewProps {
 export function ListingsView({
   groups,
   photoById,
+  onResearch,
   ebayConnected,
   onEdit,
   onRenameSku,
@@ -131,6 +133,7 @@ export function ListingsView({
             key={group.id}
             group={group}
             photoById={photoById}
+            onResearch={onResearch}
             ebayConnected={ebayConnected}
             onEdit={onEdit}
             onRenameSku={onRenameSku}

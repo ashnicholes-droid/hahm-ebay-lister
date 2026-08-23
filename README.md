@@ -22,6 +22,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
   unmentioned flaw never reaches a buyer
 - 👁 **eBay preview** — see the listing as it will actually appear, built from
   the exact payload that publishes
+- 🔎 **Wrong item? Retitle and re-research** — correct the name and the
+  description, specifics and price are rebuilt around it
 - ✍️ Everything is editable before you post
 - 🔢 **Multiples** — tick a box for quantity and an optional multi-buy discount;
   everything else stays one-of-a-kind by default
@@ -100,6 +102,43 @@ Edge cases are reported, never silently swallowed: photos trailing the last
 label become an item that's flagged for review, a label with nothing before it
 is skipped with a warning, and a duplicate inventory number is renumbered
 (`K75-A` → `K75-A-2`) so eBay doesn't reject the second listing.
+
+---
+
+## When the AI gets the item wrong
+
+The model identifies items from photographs, and on anything obscure — a
+pattern name, a model number, a maker's mark that isn't in shot — it will be
+confidently wrong. You're holding the thing; you know.
+
+**Fix the title, then press 🔎 Research this item.** Your title is treated as
+established fact and everything else is rebuilt around it: brand, item type,
+category, item specifics, description, weight and size, and the price. The
+market check re-runs under the corrected name, so the costing is right too.
+
+> "Blue Glass Serving Bowl Vintage Kitchen Dish" · No Brand · **$12**
+>
+> → retitle to "Pyrex Cinderella 441 Mixing Bowl Colonial Mist 1.5qt" →
+>
+> Pyrex · Cinderella Mixing Bowl · **$34**, comps $30–$48
+
+**Your title is never overwritten.** It's the correction — the whole point —
+so the model isn't allowed to talk it back to the identification that was
+wrong. Your SKU, quantity setup and free-vs-buyer-paid choice are kept too.
+Everything the model derived from the wrong identification is replaced,
+including the weight and size guesses, which were wrong for the same reason.
+
+The prompt pulls in two directions deliberately. The identification is
+authoritative, or the model reverts to its own guess and nothing changes. But
+it is **not** a licence to invent: condition, flaws and measurements must still
+come from the photographs, and the model is explicitly told not to describe a
+feature, marking or accessory it cannot see just because the identified item
+usually has one. Told "Nikon F3", it must not write about a shutter dial it
+never saw.
+
+The photo accuracy check is cleared when the listing is rebuilt — the old
+verdicts described text that no longer exists, and a green tick against
+unchecked copy is worse than no tick.
 
 ---
 

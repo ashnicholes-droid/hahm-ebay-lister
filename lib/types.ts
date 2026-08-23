@@ -57,6 +57,12 @@ export interface AnalyzeRequestBody {
   // Browser-resized JPEG data URLs or raw base64 strings.
   images: { mediaType: string; data: string }[];
   profile: string;
+  /**
+   * What the seller says the item is, when they're correcting a wrong
+   * identification. Treated as established fact about the item's identity —
+   * see buildIdentityHint in lib/prompts.ts.
+   */
+  hint?: string;
   // Optional model overrides; server falls back to its defaults when omitted.
   analysisModel?: string;
   routerModel?: string;
