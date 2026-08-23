@@ -227,6 +227,22 @@ price as plain text with a note pointing you to Seller Hub.
 
 ### Sending offers to watchers
 
+**Eligibility is answered at the top of the page, not the bottom.** When any
+listing can take an offer, a banner above the rows names each one and links
+straight to it — clicking scrolls to that listing and opens its offer form
+already expanded:
+
+> 💌 **3** listings can take an offer right now — jump straight to them:
+> - Ralph Lauren Cable Knit Sweater · 4 watching · $27.00
+> - Lodge Cast Iron Skillet · 1 watching · $39.00
+>
+> *1 more is eligible on another page of your listings.*
+
+That count is account-wide while the rows are one page, so the two genuinely
+differ and the banner says so rather than showing a number that doesn't match
+the list under it. A filter that would hide the target is cleared on the way,
+since a link that silently does nothing is worse than no link.
+
 The seller view (`/listings`) carries a line about offers on every load — how
 many listings can take one, or that none can and why. The control itself only
 appears on eligible rows, so without that line an account with nothing eligible

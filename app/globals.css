@@ -3841,3 +3841,81 @@ textarea {
   gap: 0.5rem;
   align-items: center;
 }
+
+/* ── The offer banner, at the top ─────────────────────────────────────────── */
+
+/* When there ARE eligible listings this is the most actionable thing on the
+   page, so it stops being a grey footnote and reads as a prompt. */
+.lm-offer-banner {
+  background: var(--color-gold-soft);
+  border-color: transparent;
+  color: var(--color-ink);
+}
+
+.lm-offer-banner-head {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.lm-offer-jumps {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+/* One row per eligible listing: the name, so it can be recognised, and a link
+   straight to it, because going there is the only thing anyone wants to do
+   with this information. */
+.lm-offer-jump {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color var(--duration) var(--ease);
+}
+
+.lm-offer-jump:hover,
+.lm-offer-jump:focus-visible {
+  border-color: var(--color-accent);
+}
+
+.lm-offer-jump-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.lm-offer-jump-meta {
+  white-space: nowrap;
+  color: var(--color-ink-soft);
+  font-size: 0.72rem;
+}
+
+/* Eligibility is account-wide; the rows are one page. Saying so beats showing
+   a count that doesn't match the list under it. */
+.lm-offer-elsewhere {
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+  color: var(--color-ink-soft);
+}
+
+/* The row you were sent to. Without this the page scrolls and leaves you
+   guessing which of three similar rows was meant. */
+.lm-row.focused {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
+}

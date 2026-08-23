@@ -121,7 +121,15 @@ function ShippingBadge({ listing }: { listing: SellerListing }) {
  * is not a bug: eBay has its own rules about recency and how many offers a
  * listing has already had.
  */
-function OfferPanel({ listing }: { listing: SellerListing }) {
+function OfferPanel({
+  listing,
+  autoOpen,
+}: {
+  listing: SellerListing;
+  /** Opened from the banner at the top rather than by clicking the summary. */
+  autoOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
   const [percent, setPercent] = useState(String(MIN_DISCOUNT_PERCENT * 2));
   const [message, setMessage] = useState("");
   const [days, setDays] = useState<number>(OFFER_DURATION_DAYS[OFFER_DURATION_DAYS.length - 1]);
@@ -138,6 +146,12 @@ function OfferPanel({ listing }: { listing: SellerListing }) {
     buyerPays === null
       ? null
       : netAtPrice(buyerPays, listing.shipping, listing.shippingCost ?? 0);
+
+  // Jumping here from the banner should land on an OPEN form — arriving at a
+  // collapsed summary means the click only did half the job.
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+  }, [autoOpen]);
 
   const send = async () => {
     if (problem || buyerPays === null) return;
@@ -171,7 +185,7 @@ function OfferPanel({ listing }: { listing: SellerListing }) {
   }
 
   return (
-    <details className="lm-offer">
+    <details className="lm-offer" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         💌 Send an offer
         {listing.watchCount ? <small> to {listing.watchCount} watching</small> : null}
@@ -748,6 +762,79 @@ function EndRelistPanel({
   );
 }
 
+/**
+ * Which listings can take an offer, right now, at the top of the page.
+ *
+ * This used to be a single sentence at the very bottom saying "N listings can
+ * take an offer — look for Send an offer on those rows", which is only useful
+ * if you already know which rows those are. On a page of a hundred listings it
+ * meant scrolling to the end, reading a number, then scrolling back up hunting
+ * for a control that appears on a handful of rows and nowhere else.
+ *
+ * eBay decides eligibility and it changes daily, so the answer is worth putting
+ * where it is read first — and worth making clickable, since the only thing a
+ * seller wants to do with it is go to the listing.
+ */
+function OfferBanner({
+  eligible,
+  eligibleCount,
+  onJump,
+}: {
+  /** Eligible listings on THIS page, in display order. */
+  eligible: SellerListing[];
+  /** eBay's account-wide count, which can exceed what this page holds. */
+  eligibleCount: number;
+  onJump: (itemId: string) => void;
+}) {
+  if (eligibleCount === 0) {
+    return (
+      <p className="lm-offer-status">
+        💌 <strong>No listings can take an offer right now.</strong> eBay only allows one on a
+        listing someone has recently watched or carted and that hasn&rsquo;t just had one — eBay
+        decides that, not this app.
+      </p>
+    );
+  }
+
+  // Eligibility is account-wide but the rows are one page, so the two numbers
+  // genuinely differ. Saying only "12 eligible" while showing three would read
+  // as a bug.
+  const elsewhere = Math.max(0, eligibleCount - eligible.length);
+
+  return (
+    <div className="lm-offer-status lm-offer-banner">
+      <p className="lm-offer-banner-head">
+        💌 <strong>{eligibleCount}</strong> listing{eligibleCount === 1 ? "" : "s"} can take an
+        offer right now
+        {eligible.length > 0 && <> — jump straight to {eligible.length === 1 ? "it" : "them"}:</>}
+      </p>
+
+      {eligible.length > 0 && (
+        <ul className="lm-offer-jumps">
+          {eligible.map((l) => (
+            <li key={l.itemId}>
+              <button type="button" className="lm-offer-jump" onClick={() => onJump(l.itemId)}>
+                <span className="lm-offer-jump-title">{l.title}</span>
+                <span className="lm-offer-jump-meta">
+                  {l.watchCount ? `${l.watchCount} watching` : "eligible"}
+                  {l.price !== null && <> · {money(l.price, l.currency)}</>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {elsewhere > 0 && (
+        <p className="lm-offer-elsewhere">
+          {elsewhere} more {elsewhere === 1 ? "is" : "are"} eligible on another page of your
+          listings.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ListingsManager() {
   const [data, setData] = useState<ListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -757,6 +844,8 @@ export function ListingsManager() {
   // soonest) is what a seller expects on arrival, and silently reordering
   // someone's inventory is disorienting.
   const [sortStuck, setSortStuck] = useState(false);
+  // The listing the offer banner was last asked to jump to.
+  const [focusOffer, setFocusOffer] = useState<string | null>(null);
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -878,6 +967,31 @@ export function ListingsManager() {
 
   const stuckCount = filtered.filter((j) => j.triage.priority > 0).length;
 
+  // Eligible rows on this page, in the order they're displayed — the banner
+  // links have to match what the eye will find when it gets there.
+  const eligible = (data?.listings ?? []).filter((l) => l.sku && l.offerEligible && !l.ended);
+
+  /**
+   * Go to a listing's offer form.
+   *
+   * Clears the filter first when it would hide the target: a link that silently
+   * does nothing because a filter is active is worse than no link.
+   */
+  const jumpToOffer = (itemId: string) => {
+    const hidden = !listings.some(({ listing: l }) => l.itemId === itemId);
+    if (hidden) setFilter("");
+    setFocusOffer(itemId);
+  };
+
+  // Scroll after the row has actually rendered — doing it in the click handler
+  // would run before a cleared filter has put the row back on screen.
+  useEffect(() => {
+    if (!focusOffer) return;
+    const el = document.getElementById(`listing-${focusOffer}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusOffer, listings.length]);
+
   return (
     <section className="panel">
       <div className="result-head">
@@ -891,6 +1005,17 @@ export function ListingsManager() {
         Listings this app posted are managed by eBay&rsquo;s Inventory API, which is why Seller
         Hub&rsquo;s quick-edit pencil is greyed out on them. Prices change here instead.
       </p>
+
+      {/* Above the fold, not below a hundred rows. An offer is time-limited and
+          eBay's eligibility changes daily, so this is the thing most worth
+          acting on when the page loads. */}
+      {data?.ok && data.offers?.eligibleCount !== undefined && !data.offers.unavailable && (
+        <OfferBanner
+          eligible={eligible}
+          eligibleCount={data.offers.eligibleCount}
+          onJump={jumpToOffer}
+        />
+      )}
 
       {data?.traffic?.unavailable && (
         <div className="note note-warn">
@@ -970,7 +1095,13 @@ export function ListingsManager() {
           // Keyed by SKU, not item id: a relist gives the listing a NEW item
           // id, and keying on that would unmount the row mid-action and throw
           // away the confirmation the seller needs to read.
-          <article className={`lm-row${l.ended ? " ended" : ""}`} key={l.sku || `item:${l.itemId}`}>
+          <article
+            id={`listing-${l.itemId}`}
+            className={`lm-row${l.ended ? " ended" : ""}${
+              focusOffer === l.itemId ? " focused" : ""
+            }`}
+            key={l.sku || `item:${l.itemId}`}
+          >
             {l.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img className="lm-thumb" src={l.imageUrl} alt="" />
@@ -1057,7 +1188,9 @@ export function ListingsManager() {
             {/* Full width, below the row. Squeezed into the price column the
                 open form stretched the row to three times its height and left
                 everything else stranded in the middle of it. */}
-            {l.sku && l.offerEligible && !l.ended && <OfferPanel listing={l} />}
+            {l.sku && l.offerEligible && !l.ended && (
+              <OfferPanel listing={l} autoOpen={focusOffer === l.itemId} />
+            )}
 
             {/* Editing in place keeps the watchers and the search history, so
                 it sits ABOVE the relist control and is reached first. */}
@@ -1100,30 +1233,6 @@ export function ListingsManager() {
             Next →
           </button>
         </div>
-      )}
-
-      {/* Say something about offers even when none are available.
-          Previously the eligible count only rendered above zero and the "Send
-          an offer" control only appears on eligible rows, so an account with
-          nothing eligible saw no mention of the feature anywhere and could
-          only conclude it hadn't shipped. */}
-      {data?.ok && data.offers?.eligibleCount !== undefined && !data.offers.unavailable && (
-        <p className="lm-offer-status">
-          {data.offers.eligibleCount > 0 ? (
-            <>
-              💌 <strong>{data.offers.eligibleCount}</strong> listing
-              {data.offers.eligibleCount === 1 ? "" : "s"} can take an offer right now — look for{" "}
-              <strong>Send an offer</strong> on those rows.
-            </>
-          ) : (
-            <>
-              💌 <strong>No listings can take an offer right now.</strong> eBay only allows one on a
-              listing someone has recently watched or carted and that hasn&rsquo;t just had one, so
-              the <strong>Send an offer</strong> control appears on those rows when it applies —
-              eBay decides that, not this app.
-            </>
-          )}
-        </p>
       )}
 
       <p className="footnote">
