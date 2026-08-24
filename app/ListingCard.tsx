@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
+import { currencySymbol, formatMoney } from "@/lib/currency";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
+import { useCurrency } from "./CurrencyContext";
 
 const TITLE_LIMIT = 80;
 
@@ -16,10 +18,11 @@ const CONDITIONS: { value: string; label: string }[] = [
   { value: "FAIR", label: "Pre-owned · Fair" },
 ];
 
-function formatPrice(value: ListingResult["suggested_price"]): string {
-  const n = typeof value === "string" ? parseFloat(value) : value;
-  if (n === undefined || Number.isNaN(n)) return "$0.00";
-  return `$${n.toFixed(2)}`;
+function formatPrice(
+  value: ListingResult["suggested_price"],
+  code: string
+): string {
+  return formatMoney(value, 2, code);
 }
 
 function priceToInput(value: ListingResult["suggested_price"]): string {
@@ -72,6 +75,7 @@ export function ListingCard({
   onPost,
 }: ListingCardProps) {
   const [open, setOpen] = useState(true);
+  const { currency } = useCurrency();
   const listing = group.listing;
   const cover = photoById(group.photoIds[0]);
 
@@ -119,7 +123,7 @@ export function ListingCard({
               (priceMissing ? (
                 <span style={{ color: "var(--color-danger)" }}>⚠️ needs a price</span>
               ) : (
-                <>✅ {formatPrice(listing?.suggested_price)} · ready</>
+                <>✅ {formatPrice(listing?.suggested_price, currency)} · ready</>
               ))}
             {group.status === "error" && (
               <span style={{ color: "var(--color-danger)" }}>
@@ -188,7 +192,7 @@ export function ListingCard({
                 Price
               </label>
               <div className="price-input">
-                <span aria-hidden="true">$</span>
+                <span aria-hidden="true">{currencySymbol(currency)}</span>
                 <input
                   id={`price-${group.id}`}
                   type="number"
@@ -206,8 +210,8 @@ export function ListingCard({
               </div>
               {group.comps?.ok && group.comps.median !== undefined && (
                 <span className="comps-line" title={group.comps.basis}>
-                  Market: {group.comps.count} similar active listings, $
-                  {group.comps.low?.toFixed(0)}–${group.comps.high?.toFixed(0)}
+                  Market: {group.comps.count} similar active listings,{" "}
+                  {formatMoney(group.comps.low, 0, currency)}–{formatMoney(group.comps.high, 0, currency)}
                   {" · "}
                   <button
                     type="button"
@@ -221,8 +225,8 @@ export function ListingCard({
                   >
                     {/* listPrice = median + the deployment's storewide markup */}
                     {group.comps.listPrice !== undefined
-                      ? `use $${group.comps.listPrice.toFixed(2)} (median + markup)`
-                      : `use median $${group.comps.median.toFixed(2)}`}
+                      ? `use ${formatMoney(group.comps.listPrice, 2, currency)} (median + markup)`
+                      : `use median ${formatMoney(group.comps.median, 2, currency)}`}
                   </button>
                 </span>
               )}

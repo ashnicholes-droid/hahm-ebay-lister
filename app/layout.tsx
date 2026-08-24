@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { CurrencyProvider } from "./CurrencyContext";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <CurrencyProvider>{children}</CurrencyProvider>
+      </body>
     </html>
   );
 }

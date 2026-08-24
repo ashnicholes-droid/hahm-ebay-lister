@@ -46,7 +46,8 @@ interface BrowseItem {
 
 export function filterComps(
   items: BrowseItem[],
-  listingCondition: string | undefined
+  listingCondition: string | undefined,
+  currency: string = EBAY_CURRENCY
 ): number[] {
   const wantNew = isNewGrade(listingCondition);
   const prices: number[] = [];
@@ -55,7 +56,7 @@ export function filterComps(
     if (!Number.isFinite(price) || price <= 0) continue;
     // Comps must be priced in the currency the listing will publish in —
     // mixing currencies would corrupt the median/band silently.
-    if (it.price?.currency && it.price.currency !== EBAY_CURRENCY) continue;
+    if (it.price?.currency && it.price.currency !== currency) continue;
     if (BAD_COMP_TITLE_RE.test(String(it.title || ""))) continue;
     const condId = Number(it.conditionId);
     if (Number.isFinite(condId) && condId > 0) {
@@ -119,20 +120,21 @@ const COMPS_CACHE_MAX = 200;
 // module's client-credentials flow — the Browse API accepts the same scope.
 export async function searchComps(
   appToken: string,
-  listing: ListingResult
+  listing: ListingResult,
+  currency: string = EBAY_CURRENCY
 ): Promise<CompsSummary> {
   const query = buildCompQuery(listing);
   const empty: CompsSummary = { ok: false, query, count: 0, confidence: 0, basis: "" };
   if (!query) return empty;
 
   const wantNew = isNewGrade(listing.condition);
-  const cacheKey = `${query}|${wantNew ? "new" : "used"}`;
+  const cacheKey = `${query}|${wantNew ? "new" : "used"}|${currency}`;
   const cached = compsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.summary;
   const params = new URLSearchParams({
     q: query,
     limit: "50",
-    filter: `buyingOptions:{FIXED_PRICE},conditions:{${wantNew ? "NEW" : "USED"}},priceCurrency:${EBAY_CURRENCY}`,
+    filter: `buyingOptions:{FIXED_PRICE},conditions:{${wantNew ? "NEW" : "USED"}},priceCurrency:${currency}`,
   });
   const resp = await fetch(`${EBAY_BROWSE_SEARCH}?${params}`, {
     headers: {
@@ -144,7 +146,7 @@ export async function searchComps(
   if (!resp.ok) return empty;
   const data = await resp.json().catch(() => null);
   const items: BrowseItem[] = data?.itemSummaries ?? [];
-  const prices = filterComps(items, listing.condition);
+  const prices = filterComps(items, listing.condition, currency);
   const stats = compStats(prices);
   const summary: CompsSummary = {
     ok: stats.count > 0,

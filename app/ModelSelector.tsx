@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useCurrency } from "./CurrencyContext";
+import { CURRENCIES, type CurrencyCode } from "@/lib/currency";
 import {
   getAnalysisModel,
   getSortModel,
@@ -20,6 +22,7 @@ export function ModelSelector() {
   const [loadError, setLoadError] = useState(false);
   const [sortModel, setSortModel] = useState("");
   const [analysisModel, setAnalysisModel] = useState("");
+  const { currency, setCurrency } = useCurrency();
 
   useEffect(() => {
     const savedSort = getSortModel();
@@ -77,7 +80,7 @@ export function ModelSelector() {
         aria-expanded={open}
         aria-controls="model-settings-body"
       >
-        ⚙ Model Settings{" "}
+        ⚙ Settings{" "}
         <span aria-hidden="true">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -135,6 +138,22 @@ export function ModelSelector() {
               </select>
             )}
             {analysisDesc && <span className="field-hint model-hint">{analysisDesc}</span>}
+          </div>
+
+          <div className="field currency-field">
+            <label htmlFor="currency">Currency</label>
+            <select
+              id="currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
+              className="model-select"
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.symbol} {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}
