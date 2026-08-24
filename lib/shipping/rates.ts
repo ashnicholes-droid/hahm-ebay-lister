@@ -176,6 +176,42 @@ export function weightBasedRate(
   return hit ? hit.usd : null;
 }
 
+/**
+ * The weight band a price sits in, and what the next one costs.
+ *
+ * Postage is banded, not continuous: everything from 16 to 32 oz costs the
+ * same. That makes the estimator look broken from the seller's chair — you
+ * change the box size, the packed weight visibly moves, and the price doesn't.
+ * It didn't fail to update; there was nothing to update to.
+ *
+ * Returning the band turns that into something useful: how much headroom is
+ * left before the price steps, and what it steps to.
+ */
+export interface WeightBand {
+  /** Top of the current band, in ounces. */
+  maxOz: number;
+  /** Ounces of headroom before the price increases. */
+  headroomOz: number;
+  /** What it costs once that's used up, or null at the top of the table. */
+  nextUsd: number | null;
+}
+
+export function weightBand(
+  service: "ground_advantage" | "priority",
+  billableOz: number,
+  table: RateTable = rateTable()
+): WeightBand | null {
+  const breaks = table[service];
+  const i = breaks.findIndex((b) => billableOz <= b.maxOz);
+  if (i === -1) return null;
+  const next = breaks[i + 1];
+  return {
+    maxOz: breaks[i].maxOz,
+    headroomOz: Math.max(0, Math.round((breaks[i].maxOz - billableOz) * 10) / 10),
+    nextUsd: next ? next.usd : null,
+  };
+}
+
 export function flatRateFor(boxId: string, table: RateTable = rateTable()): number | null {
   const usd = table.flat_rate_by_box[boxId];
   return Number.isFinite(usd) ? usd : null;

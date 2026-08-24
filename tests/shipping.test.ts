@@ -897,3 +897,39 @@ describe("poly mailers", () => {
     expect(pkg.l).toBeLessThan(16);
   });
 });
+
+describe("weight bands — why a size change can move no money", () => {
+  // The complaint this answers: "shipping isn't updating costs when I update
+  // the size". It was updating; postage is BANDED, so 19.4oz, 24.3oz and
+  // 28.3oz all price identically at $9.10. Showing the band turns "it's
+  // broken" into "there's headroom", which is also the more useful fact.
+  it("prices a whole range of sizes identically, by design", () => {
+    const at = (l: number, w: number, h: number) =>
+      estimateShipping({ itemOz: 16, itemDims: { l, w, h }, category: "hard_goods" }).chosen?.usd;
+    expect(at(6, 4, 2)).toBe(at(10, 8, 4));
+    expect(at(10, 8, 4)).toBe(at(14, 10, 6));
+  });
+
+  it("reports the band so the flat stretch is explainable", () => {
+    const e = estimateShipping({ itemOz: 16, itemDims: { l: 6, w: 4, h: 2 }, category: "hard_goods" });
+    const band = e.chosen?.band;
+    expect(band).toBeTruthy();
+    // Billable is above the band floor and at or below its ceiling.
+    expect(e.billableOz).toBeLessThanOrEqual(band!.maxOz);
+    expect(band!.headroomOz).toBeCloseTo(band!.maxOz - e.billableOz, 1);
+    expect(band!.nextUsd).toBeGreaterThan(e.chosen!.usd);
+  });
+
+  it("headroom shrinks as the package gets heavier within one band", () => {
+    const light = estimateShipping({ itemOz: 17, itemDims: { l: 6, w: 4, h: 2 }, category: "hard_goods" });
+    const heavy = estimateShipping({ itemOz: 26, itemDims: { l: 6, w: 4, h: 2 }, category: "hard_goods" });
+    expect(light.chosen?.usd).toBe(heavy.chosen?.usd);
+    expect(heavy.chosen!.band!.headroomOz).toBeLessThan(light.chosen!.band!.headroomOz);
+  });
+
+  it("carries no band for flat-rate packaging, where weight sets nothing", () => {
+    const e = estimateShipping({ itemOz: 40, itemDims: { l: 8, w: 5, h: 1 }, category: "hard_goods" });
+    const flat = e.options.find((o) => o.flatRate);
+    if (flat) expect(flat.band).toBeNull();
+  });
+});

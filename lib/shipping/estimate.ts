@@ -29,7 +29,9 @@ import {
   dimensionalOz,
   flatRateFor,
   rateTable,
+  weightBand,
   weightBasedRate,
+  type WeightBand,
   type RateTable,
   type ServiceId,
 } from "./rates";
@@ -54,6 +56,16 @@ export interface ShippingOption {
   flatRate: boolean;
   /** True for a poly mailer, which is priced on the item's own volume. */
   polyBag: boolean;
+  /**
+   * The weight band this price sits in.
+   *
+   * Postage is banded, not continuous — everything from 16 to 32 oz costs the
+   * same — which makes the estimator look broken: you change the size, the
+   * packed weight visibly moves, and the price doesn't. It didn't fail to
+   * update; there was nothing to update to. Null for flat-rate packaging, where
+   * weight doesn't set the price at all.
+   */
+  band: WeightBand | null;
 }
 
 /**
@@ -395,6 +407,7 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
         dimensionalPricing: pk.dimensional,
         flatRate: false,
         polyBag: Boolean(pk.carton.polyBag),
+        band: weightBand(serviceId, pk.billable, table),
       });
     }
   }
@@ -424,6 +437,8 @@ export function estimateShipping(input: EstimateInput): ShippingEstimate {
       dimensionalPricing: false,
       flatRate: true,
       polyBag: false,
+      // Flat rate means weight doesn't set the price, so there is no band.
+      band: null,
     });
   }
 

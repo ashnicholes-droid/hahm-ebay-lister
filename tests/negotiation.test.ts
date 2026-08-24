@@ -196,3 +196,44 @@ describe("sending one", () => {
     expect(JSON.stringify(r.debug)).not.toContain("super-secret-token");
   });
 });
+
+describe("counter-offers", () => {
+  // eBay's docs on allowCounterOffer: "Currently, you must set this field to
+  // false; counter-offers are not supported in this release." Sending true is
+  // rejected outright, which is what happened while the app offered it as a
+  // toggle and defaulted it ON.
+  const capture = async (input: Record<string, unknown>) => {
+    const original = globalThis.fetch;
+    let sent: any = null;
+    globalThis.fetch = (async (_url: any, init: any = {}) => {
+      sent = JSON.parse(init.body || "{}");
+      return new Response(JSON.stringify({ offers: [{ offerId: "OF-1" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const { sendOfferToInterestedBuyers } = await import("@/lib/ebay/negotiation");
+      await sendOfferToInterestedBuyers("token", {
+        listingId: "110000000001",
+        discountPercent: 10,
+        ...input,
+      } as never);
+    } finally {
+      globalThis.fetch = original;
+    }
+    return sent;
+  };
+
+  it("never sends true, even when asked to", async () => {
+    expect((await capture({ allowCounterOffer: true }))?.allowCounterOffer).toBe(false);
+  });
+
+  it("sends false by default", async () => {
+    expect((await capture({}))?.allowCounterOffer).toBe(false);
+  });
+
+  it("still sends the field — eBay expects it present", async () => {
+    expect(await capture({})).toHaveProperty("allowCounterOffer");
+  });
+});

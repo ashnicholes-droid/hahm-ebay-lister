@@ -4190,3 +4190,45 @@ textarea {
   background: var(--color-gold-soft);
   border-color: transparent;
 }
+
+/* ── Weight band + manual postage cost ────────────────────────────────────── */
+
+/* Answers "I changed the size and the price didn't move". Postage is banded,
+   so most size edits genuinely change nothing — this says how much room is
+   left before it does. */
+.ship-band {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.ship-override {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+/* Once it's in use it stops being an optional extra — every figure below is
+   built on it, and that should be visible at a glance. */
+.ship-override.active {
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.ship-override > span:first-child {
+  font-weight: 600;
+}
+
+.ship-override small {
+  color: var(--color-ink-soft);
+  line-height: 1.5;
+}

@@ -38,6 +38,15 @@ export interface ListingResult {
   // Absent means "whatever is cheapest", which is the default and what most
   // items should stay on. See lib/shipping/estimate.ts `optionId`.
   shipping_option_id?: string;
+  /**
+   * Postage cost the seller is fixing by hand, in dollars.
+   *
+   * The estimate is a national-average table, not a quote. A seller who knows
+   * what their label actually costs — a negotiated rate, a regional zone, a
+   * carrier the app doesn't model — should be able to say so, and have every
+   * margin figure use it. Empty means "use the estimate".
+   */
+  shipping_cost_override?: number | string;
   // Multiples of an identical item. Opt-in: unless `multi_quantity` is exactly
   // true, this publishes as a single unique item and `quantity` is ignored
   // entirely. See lib/quantity.ts — nothing should read these fields raw.

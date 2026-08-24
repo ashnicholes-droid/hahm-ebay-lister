@@ -309,6 +309,17 @@ Guard rails, because an offer cannot be unsent:
 - A 2xx from eBay with no offer in the body is **not** reported as sent — that
   would invite a duplicate.
 
+#### Counter-offers aren't available
+
+eBay does not support counter-offers on seller-initiated offers. Its own
+documentation for the `allowCounterOffer` field says *"Currently, you must set
+this field to false; counter-offers are not supported in this release"* — a
+request sending `true` is rejected outright.
+
+The app briefly offered this as a toggle, defaulted on, which meant every offer
+sent with it enabled failed. There is no toggle now, and the panel says buyers
+can accept or ignore an offer but not counter it.
+
 ### Which listings aren't working
 
 The seller view already had the numbers — age, impressions, views, watchers,
@@ -854,6 +865,33 @@ policy** matching your choice, instead of always using whichever policy happens
 to be first on your account. If your account has no policy of the requested
 kind, the listing publishes under your default and **says so in a warning**
 rather than quietly doing the opposite of what you asked.
+
+### Why a size change often moves no money
+
+Postage is **banded**, not continuous: on USPS Ground Advantage everything from
+16 to 32 oz costs the same $9.10. So you can resize a box, watch the packed
+weight change, and see the price sit still — which reads as a broken estimator
+when it's arithmetic.
+
+The panel now says where the edge is:
+
+> $9.10 covers up to **32 oz** billable — 3 oz of headroom, then $11.40.
+> Size changes only move the price when they cross a band.
+
+That answers "why didn't it update" and is the more useful fact anyway: it tells
+you how much room is left before the price steps.
+
+### Setting your own postage cost
+
+The estimate is a national-average rate table, not a quote. If you know what a
+label actually costs you — a negotiated rate, a regional zone, a carrier the app
+doesn't model — put it in **Use my own postage cost** and every margin figure
+uses it instead.
+
+The options list keeps showing estimated prices so you can still compare, and
+clearing the field goes back to the estimate. This is what the **label** costs
+you, not what the buyer is charged — that comes from your eBay fulfilment
+policy.
 
 ### About the numbers
 

@@ -133,7 +133,6 @@ function OfferPanel({
   const [percent, setPercent] = useState(String(MIN_DISCOUNT_PERCENT * 2));
   const [message, setMessage] = useState("");
   const [days, setDays] = useState<number>(OFFER_DURATION_DAYS[OFFER_DURATION_DAYS.length - 1]);
-  const [counter, setCounter] = useState(true);
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -163,7 +162,6 @@ function OfferPanel({
         discountPercent: pct,
         message: message.trim() || undefined,
         durationDays: days,
-        allowCounterOffer: counter,
         quantity: 1,
       });
       const data = (await res.json()) as { ok: boolean; error?: string; offerId?: string };
@@ -238,10 +236,14 @@ function OfferPanel({
           />
         </label>
 
-        <label className="lm-offer-counter">
-          <input type="checkbox" checked={counter} onChange={(e) => setCounter(e.target.checked)} />
-          <span>Let buyers counter-offer</span>
-        </label>
+        {/* Not a toggle, because it can't be one. eBay's docs on this field
+            say "Currently, you must set this field to false; counter-offers
+            are not supported in this release" — offering the choice just
+            produced a rejected request. */}
+        <p className="lm-offer-counter">
+          Buyers can accept or ignore this offer. eBay doesn&rsquo;t support counter-offers on
+          seller-sent offers yet.
+        </p>
 
         {problem ? (
           <p className="lm-err">{problem}</p>

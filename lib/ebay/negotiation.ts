@@ -54,6 +54,12 @@ export interface SendOfferInput {
   discountPercent: number;
   message?: string;
   durationDays?: number;
+  /**
+   * Accepted for compatibility and ignored.
+   *
+   * eBay does not support counter-offers on seller-initiated offers yet and
+   * rejects the request when this is true, so the payload always sends false.
+   */
   allowCounterOffer?: boolean;
   quantity?: number;
 }
@@ -250,7 +256,13 @@ export async function sendOfferToInterestedBuyers(
         discountPercentage: String(Math.round(input.discountPercent)),
       },
     ],
-    allowCounterOffer: input.allowCounterOffer ?? true,
+    // ALWAYS false, and not a choice. eBay's own docs on this field say
+    // "Currently, you must set this field to false; counter-offers are not
+    // supported in this release" — sending true is rejected outright, which is
+    // exactly what happened when the app offered it as a toggle and defaulted
+    // it on. Kept in the payload rather than omitted because eBay expects the
+    // field to be present.
+    allowCounterOffer: false,
     offerDuration: { unit: "DAY", value: input.durationDays ?? 2 },
     ...(input.message?.trim() ? { message: input.message.trim().slice(0, MAX_OFFER_MESSAGE) } : {}),
   };

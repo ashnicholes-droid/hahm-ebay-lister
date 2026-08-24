@@ -50,7 +50,16 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
   // Every figure below prices what will ACTUALLY be shipped, so a deliberate
   // choice to pay more for a flat-rate envelope shows its real effect on margin
   // instead of the cheapest option's.
-  const shipCost = estimate.chosen?.usd ?? 0;
+  // A seller-supplied postage cost outranks the estimate everywhere, because
+  // the estimate is a national-average table and they may know the real figure.
+  const overrideRaw = listing.shipping_cost_override;
+  const overrideCost =
+    overrideRaw === "" || overrideRaw === undefined || overrideRaw === null
+      ? null
+      : Number(overrideRaw);
+  const usingOverride = overrideCost !== null && Number.isFinite(overrideCost) && overrideCost >= 0;
+  const estimatedCost = estimate.chosen?.usd ?? 0;
+  const shipCost = usingOverride ? (overrideCost as number) : estimatedCost;
   const free = listing.shipping_free === true;
 
   // eBay's final value fee is roughly 13.25% + $0.40 on most categories — close
@@ -115,7 +124,11 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
     <section className={`shipping shipping-${estimate.basis}`} aria-labelledby={`ship-${groupId}`}>
       <header className="shipping-head">
         <strong id={`ship-${groupId}`}>📦 Shipping</strong>
-        {estimate.chosen ? (
+        {usingOverride ? (
+          <span className="shipping-headline">
+            {money(shipCost)} · your own postage cost
+          </span>
+        ) : estimate.chosen ? (
           <span className="shipping-headline">
             {money(estimate.chosen.usd)} · {estimate.chosen.serviceName}
             {estimate.chosen.flatRate ? "" : ` · ${estimate.chosen.boxName}`}
@@ -137,6 +150,61 @@ export function ShippingPanel({ listing, groupId, onEdit }: ShippingPanelProps) 
         {field("shipping_width_in", "Width", "in", estimate.itemDims.w, estimate.provided.w)}
         {field("shipping_height_in", "Height", "in", estimate.itemDims.h, estimate.provided.h)}
       </div>
+
+      {/* Postage is BANDED, not continuous — everything from 16 to 32 oz costs
+          the same — so changing the size moves the packed weight and leaves the
+          price alone. That reads as a broken estimator. Saying where the next
+          step is turns "it didn't update" into "there's 3.7 oz of headroom",
+          which is also the more useful fact. */}
+      {!usingOverride && estimate.chosen?.band && !estimate.chosen.flatRate && (
+        <p className="ship-band">
+          {money(estimate.chosen.usd)} covers up to <strong>{estimate.chosen.band.maxOz} oz</strong>{" "}
+          billable
+          {estimate.chosen.band.headroomOz > 0 && (
+            <> — {estimate.chosen.band.headroomOz} oz of headroom</>
+          )}
+          {estimate.chosen.band.nextUsd !== null && (
+            <>, then {money(estimate.chosen.band.nextUsd)}</>
+          )}
+          . Size changes only move the price when they cross a band.
+        </p>
+      )}
+
+      {/* The estimate is a national-average table, not a quote. Someone who
+          knows their real label cost should be able to say so rather than
+          watching every margin figure be quietly wrong. */}
+      <label className={`ship-override${usingOverride ? " active" : ""}`}>
+        <span>Use my own postage cost</span>
+        <span className="ship-input">
+          <em>$</em>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            placeholder={estimatedCost > 0 ? estimatedCost.toFixed(2) : "—"}
+            value={
+              overrideRaw === undefined || overrideRaw === null ? "" : String(overrideRaw)
+            }
+            onChange={(e) =>
+              onEdit(groupId, {
+                shipping_cost_override: e.target.value === "" ? "" : Number(e.target.value),
+              })
+            }
+          />
+        </span>
+        <small>
+          {usingOverride ? (
+            <>
+              Your margin figures use this instead of the {money(estimatedCost)} estimate. The
+              options list still shows estimated prices, so you can still compare. Clear it to go
+              back.
+            </>
+          ) : (
+            <>Leave blank to use the estimate. This is what the LABEL costs you, not what the buyer is charged.</>
+          )}
+        </small>
+      </label>
 
       {/* The single most-asked question this panel has to answer: "I changed the
           weight and nothing happened." It gets answered next to the weight
