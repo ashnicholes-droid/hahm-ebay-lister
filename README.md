@@ -480,6 +480,52 @@ per-item only — there is deliberately no bulk repricing.
 
 ---
 
+## Where you ship from
+
+eBay quotes **calculated shipping** from the postal code on your inventory
+location. Get it wrong and every buyer is quoted from the wrong place — you
+either overcharge them or absorb the difference. Free and flat-rate listings
+aren't affected.
+
+Set it under **⚙ Pricing → Ship-from ZIP**. It's stored the same way as your
+eBay connection: an httpOnly cookie, set once, good for 400 days.
+
+### Why this needed fixing rather than documenting
+
+The ZIP used to be settable only through `EBAY_LOCATION_POSTAL_CODE`, and it
+was read in exactly one place — when the app had to **create** an inventory
+location. Creation happens once. Every account that had ever published kept
+whatever location it was first given, and for a deployment that never set the
+variable that was the hardcoded fallback: **10001, Manhattan**. Changing the
+variable did nothing, and nothing on screen said so.
+
+Two things now make it work:
+
+- **A requested ZIP wins.** An existing eBay location that matches is reused; if
+  none matches, one is created keyed `SHIPFROM_<zip>`. Without a requested ZIP
+  the old "first enabled location" behaviour stands, so nothing changes for
+  anyone who hasn't set this.
+- **The panel shows what eBay actually has**, not what the setting says. Without
+  that there's no way to tell whether a change took — which is precisely how a
+  wrong ZIP survives for months.
+
+> ⚠️ New listings will ship from **19446**, but nothing on your eBay account
+> uses that ZIP yet — right now it ships from **10001**. The next publish
+> creates the location and starts using it.
+
+### The catch worth knowing
+
+**eBay does not allow an existing location's address to be changed at all.**
+`updateInventoryLocation` can change a location's name, phone and opening
+hours, and explicitly cannot change its address. That's why fixing this means
+selecting or creating a different location rather than editing the one you have.
+
+It also means **listings that are already live keep the ZIP they were published
+with**. This fixes the future, not the past — to move an old listing you have to
+end and relist it from the seller view.
+
+---
+
 ## Pricing: what to charge, and why
 
 ### Delivered price, not item price
@@ -1040,7 +1086,7 @@ and redeploy with `vercel --prod`.
 | `EBAY_RU_NAME` | for posting | Your eBay RuName — the short `Name-XXXX-XXXX-XXXX` identifier, **not** the long "Sign In (OAuth)" URL |
 | `SESSION_SECRET` | for posting | Random string to encrypt your eBay token. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_URL` | for posting | Your deployed URL, e.g. `https://your-app.vercel.app` |
-| `EBAY_LOCATION_POSTAL_CODE` | optional | Your ZIP (only used once to create an eBay inventory location) |
+| `EBAY_LOCATION_POSTAL_CODE` | optional | Fallback ship-from ZIP. Prefer **⚙ Pricing → Ship-from ZIP** in the app, which overrides this and takes effect without a redeploy. |
 | `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Used when neither the photos nor the seller supplied a weight; overrides the built-in per-item-class defaults (coats, shoes, media, etc.). A weight typed into a listing's shipping panel outranks this. Editable per listing on eBay. |
 | `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches. Same precedence as the weight above: per-listing edits win, then these, then the per-item-class defaults. |
 | `EBAY_STRICT_QUALITY` | optional | Set to `1` to **stop** a publish when eBay's item-specifics schema can't be retrieved, instead of publishing with a warning. |

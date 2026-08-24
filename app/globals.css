@@ -4139,3 +4139,54 @@ textarea {
   color: var(--color-ink-faint);
   max-width: 44rem;
 }
+
+/* ── Ship-from ZIP ────────────────────────────────────────────────────────── */
+
+.sf-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.sf-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.sf-field input {
+  width: 8rem;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* What eBay actually has, as opposed to what the setting says. A seller with
+   no way to check this is how a wrong ZIP survives for months. */
+.sf-status {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.sf-status p {
+  margin: 0;
+}
+
+.sf-status p + p {
+  margin-top: 0.4rem;
+}
+
+.sf-status.warn {
+  background: var(--color-gold-soft);
+  border-color: transparent;
+}

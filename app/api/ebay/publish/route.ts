@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
 import { BODY_LIMIT_PHOTOS, enforceBodyLimit, guardApiRequest } from "@/lib/api-guard";
 import { fetchAccountSetup, publishListing } from "@/lib/ebay/publish";
+import { SHIP_FROM_COOKIE, normalizeZip } from "@/lib/shipFrom";
 import type { PublishInput } from "@/lib/ebay/publish";
 
 // Photo upload + several eBay calls + recovery loops — give it room.
@@ -49,7 +50,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const setup = await fetchAccountSetup(accessToken);
+    // The seller's ship-from ZIP decides which inventory location this
+    // publishes against, and eBay quotes calculated shipping from it.
+    const shipFromZip =
+      normalizeZip(req.cookies.get(SHIP_FROM_COOKIE)?.value) ??
+      normalizeZip(process.env.EBAY_LOCATION_POSTAL_CODE);
+    const setup = await fetchAccountSetup(accessToken, shipFromZip);
     const result = await publishListing(accessToken, setup, body);
     // A failed publish is a business outcome (eBay rejected the listing), not a
     // server error. Return 422 so it can't be confused with Vercel's own

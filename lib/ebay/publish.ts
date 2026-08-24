@@ -33,6 +33,11 @@ import { listingQuantity, quantityWarnings, volumeDiscount } from "@/lib/quantit
 import { applyVolumeDiscount } from "./promotions";
 import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
 import type { ListingResult, PublishDebug } from "@/lib/types";
+import {
+  FALLBACK_POSTAL_CODE,
+  locationKeyForZip,
+  resolveLocation,
+} from "@/lib/shipFrom";
 
 // ── Constants (from the Python script) ───────────────────────────────────────
 
@@ -1118,19 +1123,29 @@ export function selectFulfillmentPolicy(
 const setupCache = new Map<string, { setup: AccountSetup; expiresAt: number }>();
 const SETUP_TTL_MS = 10 * 60_000;
 
-export async function fetchAccountSetup(accessToken: string): Promise<AccountSetup> {
-  const cached = setupCache.get(accessToken);
+export async function fetchAccountSetup(
+  accessToken: string,
+  shipFromZip: string | null = null
+): Promise<AccountSetup> {
+  // The ZIP is part of the cache key, or changing the setting would appear to
+  // do nothing for ten minutes — the same "it didn't take" confusion this
+  // whole change exists to remove.
+  const cacheKey = `${accessToken}|${shipFromZip ?? ""}`;
+  const cached = setupCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.setup;
-  const setup = await fetchAccountSetupUncached(accessToken);
+  const setup = await fetchAccountSetupUncached(accessToken, shipFromZip);
   // Only cache complete setups — a transient miss shouldn't stick for 10 min.
   if (setup.fulfillmentPolicyId && setup.paymentPolicyId && setup.returnPolicyId) {
     if (setupCache.size > 50) setupCache.clear();
-    setupCache.set(accessToken, { setup, expiresAt: Date.now() + SETUP_TTL_MS });
+    setupCache.set(cacheKey, { setup, expiresAt: Date.now() + SETUP_TTL_MS });
   }
   return setup;
 }
 
-async function fetchAccountSetupUncached(accessToken: string): Promise<AccountSetup> {
+async function fetchAccountSetupUncached(
+  accessToken: string,
+  shipFromZip: string | null = null
+): Promise<AccountSetup> {
   const mp = `marketplace_id=${EBAY_MARKETPLACE_ID}`;
   const [ful, pay, ret] = await Promise.all([
     ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/fulfillment_policy?${mp}`),
@@ -1142,37 +1157,55 @@ async function fetchAccountSetupUncached(accessToken: string): Promise<AccountSe
     fulfillmentPolicies: summarizePolicies(ful),
     paymentPolicyId: pickFirstPolicy(pay, "paymentPolicies", "paymentPolicyId"),
     returnPolicyId: pickFirstPolicy(ret, "returnPolicies", "returnPolicyId"),
-    locationKey: await fetchOrCreateLocation(accessToken),
+    locationKey: await fetchOrCreateLocation(accessToken, shipFromZip),
   };
 }
 
-async function fetchOrCreateLocation(accessToken: string): Promise<string> {
+/**
+ * Which inventory location this account publishes against.
+ *
+ * eBay quotes calculated shipping from this location's postal code, so getting
+ * it wrong quotes every buyer from the wrong place. The old rule — "the first
+ * ENABLED location eBay happens to return" — is why setting a ZIP appeared to
+ * do nothing: it was consulted only when creating a location, and creation only
+ * ever happens once.
+ *
+ * eBay does not permit editing an existing location's address, so honouring a
+ * changed ZIP means selecting a different location or making one. Both are
+ * handled here; see resolveLocation for the choice itself.
+ */
+async function fetchOrCreateLocation(
+  accessToken: string,
+  requestedZip: string | null = null
+): Promise<string> {
   const list = await ebayRequest(accessToken, "GET", `${EBAY_INV_BASE}/location`);
-  if (list.ok) {
-    for (const loc of list.json?.locations || []) {
-      if (loc.merchantLocationStatus === "ENABLED" && loc.merchantLocationKey) {
-        return loc.merchantLocationKey;
-      }
-    }
-  }
-  const key = "HOME_OFFICE";
-  const payload = {
-    name: "Home Office",
-    merchantLocationStatus: "ENABLED",
-    locationTypes: ["WAREHOUSE"],
-    location: {
-      address: {
-        // Set EBAY_LOCATION_POSTAL_CODE to your own ZIP. Only used the first
-        // time, to create an inventory location if you don't already have one.
-        postalCode: process.env.EBAY_LOCATION_POSTAL_CODE || "10001",
-        country: "US",
-      },
+  const choice = resolveLocation(list.ok ? (list.json?.locations ?? []) : [], requestedZip);
+
+  if (!choice.mustCreate && choice.key) return choice.key;
+
+  const zip = requestedZip || process.env.EBAY_LOCATION_POSTAL_CODE || FALLBACK_POSTAL_CODE;
+  const key = choice.key ?? locationKeyForZip(zip);
+  const created = await ebayRequest(accessToken, "POST", `${EBAY_INV_BASE}/location/${key}`, {
+    body: {
+      name: `Ship from ${zip}`,
+      merchantLocationStatus: "ENABLED",
+      locationTypes: ["WAREHOUSE"],
+      location: { address: { postalCode: zip, country: "US" } },
     },
-  };
-  await ebayRequest(accessToken, "POST", `${EBAY_INV_BASE}/location/${key}`, {
-    body: payload,
     extraHeaders: { "Content-Language": "en-US" },
   });
+
+  // 409 means it already exists under this key, which is a success for us —
+  // the key is deterministic precisely so a second publish reuses it.
+  if (!created.ok && created.status !== 409) {
+    console.warn(
+      `[ebay/publish] couldn't create ship-from location ${key} (${zip}): HTTP ${created.status}`
+    );
+    // Fall back to whatever the account already has rather than failing the
+    // publish outright — a listing from the wrong ZIP beats no listing.
+    const fallback = resolveLocation(list.ok ? (list.json?.locations ?? []) : [], null);
+    if (fallback.key) return fallback.key;
+  }
   return key;
 }
 
