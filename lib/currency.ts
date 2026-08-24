@@ -1,21 +1,22 @@
-export const CURRENCY_CODES = ["USD", "GBP", "EUR", "AUD", "CAD"] as const;
+export const CURRENCY_CODES = ["USD", "GBP", "EUR"] as const;
 export type CurrencyCode = (typeof CURRENCY_CODES)[number];
 
 export interface CurrencyOption {
   code: CurrencyCode;
   symbol: string;
-  label: string;
+  name: string;
 }
 
 export const CURRENCIES: CurrencyOption[] = [
-  { code: "USD", symbol: "$", label: "$ US dollars" },
-  { code: "GBP", symbol: "£", label: "£ British pounds" },
-  { code: "EUR", symbol: "€", label: "€ Euros" },
-  { code: "AUD", symbol: "$", label: "$ Australian dollars" },
-  { code: "CAD", symbol: "$", label: "$ Canadian dollars" },
+  { code: "USD", symbol: "$", name: "Dollar" },
+  { code: "GBP", symbol: "£", name: "Pound" },
+  { code: "EUR", symbol: "€", name: "Euro" },
 ];
 
 const FALLBACK: CurrencyCode = "USD";
+
+/** Older prefs and other dollar markets all share the $ symbol. */
+const DOLLAR_ALIASES = new Set(["USD", "AUD", "CAD", "$"]);
 
 export function defaultCurrency(): CurrencyCode {
   return resolveCurrency(
@@ -31,6 +32,9 @@ export function isCurrencyCode(value: unknown): value is CurrencyCode {
 export function resolveCurrency(requested: unknown): CurrencyCode {
   const raw = typeof requested === "string" ? requested.trim().toUpperCase() : "";
   if (isCurrencyCode(raw)) return raw;
+  if (raw === "GBP" || raw === "£") return "GBP";
+  if (raw === "EUR" || raw === "€") return "EUR";
+  if (DOLLAR_ALIASES.has(raw)) return "USD";
   const fallback = (
     process.env.NEXT_PUBLIC_EBAY_CURRENCY ||
     process.env.EBAY_CURRENCY ||
@@ -38,7 +42,9 @@ export function resolveCurrency(requested: unknown): CurrencyCode {
   )
     .trim()
     .toUpperCase();
-  return isCurrencyCode(fallback) ? fallback : FALLBACK;
+  if (isCurrencyCode(fallback)) return fallback;
+  if (DOLLAR_ALIASES.has(fallback)) return "USD";
+  return FALLBACK;
 }
 
 export function currencyOption(code?: unknown): CurrencyOption {
@@ -66,7 +72,7 @@ export function formatMoney(
 export function suggestedPriceGuidance(code?: unknown): string {
   const opt = currencyOption(code);
   return (
-    `For suggested_price: Price realistically in ${opt.code} (${opt.symbol}). ` +
+    `For suggested_price: Price realistically in ${opt.name.toLowerCase()}s (${opt.symbol}). ` +
     `Return a number only (e.g. 12.99), no currency symbol. Be honest. ` +
     `If the item can't be identified well enough to price it, use 0 — the seller will price it manually (a wrong guess is worse than no guess).`
   );

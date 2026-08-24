@@ -141,7 +141,7 @@ export function ModelSelector() {
           </div>
 
           <div className="field currency-field">
-            <label htmlFor="currency">Price currency</label>
+            <label htmlFor="currency">Currency</label>
             <select
               id="currency"
               value={currency}
@@ -150,13 +150,10 @@ export function ModelSelector() {
             >
               {CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
-                  {c.label}
+                  {c.symbol} {c.name}
                 </option>
               ))}
             </select>
-            <span className="field-hint model-hint">
-              Symbol on listing cards, and the currency the AI prices in.
-            </span>
           </div>
         </div>
       )}

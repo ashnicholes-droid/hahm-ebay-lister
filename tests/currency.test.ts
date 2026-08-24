@@ -6,12 +6,15 @@ import {
 } from "@/lib/currency";
 
 describe("resolveCurrency", () => {
-  test("accepts common marketplace codes", () => {
+  test("accepts the three symbols' codes", () => {
     expect(resolveCurrency("gbp")).toBe("GBP");
     expect(resolveCurrency("USD")).toBe("USD");
     expect(resolveCurrency(" eur ")).toBe("EUR");
-    expect(resolveCurrency("AUD")).toBe("AUD");
-    expect(resolveCurrency("CAD")).toBe("CAD");
+  });
+
+  test("treats other dollar markets as $", () => {
+    expect(resolveCurrency("AUD")).toBe("USD");
+    expect(resolveCurrency("CAD")).toBe("USD");
   });
 
   test("falls back to USD for unknown values", () => {
@@ -22,18 +25,16 @@ describe("resolveCurrency", () => {
 });
 
 describe("formatMoney", () => {
-  test("uses the requested symbol", () => {
+  test("uses the symbol only", () => {
     expect(formatMoney(12.5, 2, "GBP")).toBe("£12.50");
     expect(formatMoney(12.5, 2, "USD")).toBe("$12.50");
     expect(formatMoney(12.5, 2, "EUR")).toBe("€12.50");
-    expect(formatMoney(12.5, 2, "AUD")).toBe("$12.50");
-    expect(formatMoney(12.5, 2, "CAD")).toBe("$12.50");
   });
 });
 
 describe("suggestedPriceGuidance", () => {
-  test("asks the model for the selected currency", () => {
-    expect(suggestedPriceGuidance("GBP")).toMatch(/GBP/);
-    expect(suggestedPriceGuidance("USD")).toMatch(/USD/);
+  test("asks the model for the selected symbol", () => {
+    expect(suggestedPriceGuidance("GBP")).toMatch(/pound/i);
+    expect(suggestedPriceGuidance("USD")).toMatch(/dollar/i);
   });
 });
