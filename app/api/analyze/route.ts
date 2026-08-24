@@ -11,6 +11,7 @@ import { toImageBlock, type ImageBlock } from "@/lib/images";
 import { optimizeTitle } from "@/lib/titleOptimizer";
 import { applyPriceMarkup, priceMarkupPercent } from "@/lib/pricing";
 import { resolveModel } from "@/lib/models";
+import { resolveCurrency } from "@/lib/currency";
 import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 
 // Analysis takes 20-40s for a multi-photo item on a good day — and far longer
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
   // premium model to the owner's key).
   const analysisModel = resolveModel(body.analysisModel, ANALYSIS_MODEL);
   const routerModel = resolveModel(body.routerModel, ROUTER_MODEL);
+  const currency = resolveCurrency(body.currency);
 
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(
@@ -140,7 +142,7 @@ export async function POST(req: NextRequest) {
   try {
     const deadline = Date.now() + ANALYZE_TIME_BUDGET_MS;
     const profile = await routeProfile(client, imageBlocks, body.profile, routerModel, deadline);
-    const systemPrompt = buildProfiledAnalysisPrompt(profile);
+    const systemPrompt = buildProfiledAnalysisPrompt(profile, currency);
 
     // Retry up to 3 times, mirroring the Python analyze_photos() loop — but
     // never start an attempt the time budget can't cover.

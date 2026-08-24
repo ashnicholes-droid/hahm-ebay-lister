@@ -1055,6 +1055,10 @@ textarea {
   border-radius: var(--radius-sm);
 }
 
+.model-settings-body .currency-field {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 560px) {
   .model-settings-body {
     grid-template-columns: 1fr;

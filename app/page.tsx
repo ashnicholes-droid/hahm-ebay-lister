@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiPost } from "@/lib/api-client";
 import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
+import { getCurrency } from "@/lib/currency-preferences";
 import { resizeImage } from "@/lib/resize";
 import { buildSku } from "@/lib/sku";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
@@ -376,6 +377,7 @@ export default function Home() {
           images: imgs,
           analysisModel: getAnalysisModel() ?? undefined,
           routerModel: getSortModel() ?? undefined,
+          currency: getCurrency(),
         });
         const data = (await readJson(res)) as AnalyzeResponse;
         if (!data.ok || !data.listing) {
@@ -392,7 +394,10 @@ export default function Home() {
         // background and silently stays hidden if it can't answer.
         void (async () => {
           try {
-            const res = await apiPost("/api/ebay/comps", { listing: data.listing });
+            const res = await apiPost("/api/ebay/comps", {
+              listing: data.listing,
+              currency: getCurrency(),
+            });
             const d = (await readJson(res)) as { ok?: boolean; comps?: CompsSummary };
             if (d.ok && d.comps?.ok) {
               setGroups((prev) =>

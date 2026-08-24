@@ -29,6 +29,7 @@ export interface AnalyzeRequestBody {
   // Optional model overrides; server falls back to its defaults when omitted.
   analysisModel?: string;
   routerModel?: string;
+  currency?: string;
 }
 
 export interface AnalyzeResponse {

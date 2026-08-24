@@ -1,6 +1,7 @@
 "use client";
 
 import { ListingCard } from "./ListingCard";
+import { ModelSelector } from "./ModelSelector";
 import {
   downloadFile,
   listingsToCsv,
@@ -93,6 +94,7 @@ export function ListingsView({
       </div>
 
       <div className="result-actions">
+        <ModelSelector />
         <button type="button" className="btn btn-ghost" onClick={onBack}>
           ← Back to items
         </button>

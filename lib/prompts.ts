@@ -1,6 +1,8 @@
 // Listing-analysis prompts ported verbatim from ebay_lister_v2_robust.py so the
 // web app writes listings exactly the way the original script did.
 
+import { suggestedPriceGuidance } from "./currency";
+
 export const ITEM_PROFILES = [
   "auto",
   "clothing",
@@ -198,15 +200,22 @@ Return ONLY valid JSON — no markdown, no code fences, no explanation. Use this
 
 For title: Make it read like a strong live eBay title, using the most searchable nouns, brand, model, type, material, size, era, character, theme, or pattern when supported by the photos.
 For condition: Do NOT use LIKE_NEW. If an item is near mint but preowned, use EXCELLENT instead.
-For suggested_price: Price realistically for what this exact item sells for on eBay. Be honest. If the item can't be identified well enough to price it, use 0 — the seller will price it manually (a wrong guess is worse than no guess).
+{{PRICE_GUIDANCE}}
 For item_specifics: Only include fields relevant to this item. Leave any field blank ("") if not applicable or unknown — do NOT guess. Omit all section-label keys (the ones that look like "--- TOPS ---") from your response.
 For category/category_hint: The broad category can be approximate, but the category_hint should help eBay find the exact leaf category for whatever type of item this is.
 For all item types: include as many accurate specifics as the photos support, even for non-clothing items such as collectibles, media, home decor, toys, tools, sporting goods, art, kitchenware, and electronics accessories.`;
 
-export function buildProfiledAnalysisPrompt(profile: string): string {
+export function buildProfiledAnalysisPrompt(
+  profile: string,
+  currency?: string
+): string {
   const normalized = normalizeItemProfile(profile);
   const addon = PROFILE_PROMPT_ADDONS[normalized] ?? "";
-  return ANALYSIS_PROMPT + addon;
+  const priced = ANALYSIS_PROMPT.replace(
+    "{{PRICE_GUIDANCE}}",
+    suggestedPriceGuidance(currency)
+  );
+  return priced + addon;
 }
 
 // ── Sorting prompts (ported from sort_photos in the Python script) ──────────
