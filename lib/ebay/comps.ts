@@ -121,15 +121,14 @@ const COMPS_CACHE_MAX = 200;
 export async function searchComps(
   appToken: string,
   listing: ListingResult,
-  currency: string = EBAY_CURRENCY,
-  marketplaceId: string = EBAY_MARKETPLACE_ID
+  currency: string = EBAY_CURRENCY
 ): Promise<CompsSummary> {
   const query = buildCompQuery(listing);
   const empty: CompsSummary = { ok: false, query, count: 0, confidence: 0, basis: "" };
   if (!query) return empty;
 
   const wantNew = isNewGrade(listing.condition);
-  const cacheKey = `${query}|${wantNew ? "new" : "used"}|${currency}|${marketplaceId}`;
+  const cacheKey = `${query}|${wantNew ? "new" : "used"}|${currency}`;
   const cached = compsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.summary;
   const params = new URLSearchParams({
@@ -141,7 +140,7 @@ export async function searchComps(
     headers: {
       Authorization: `Bearer ${appToken}`,
       Accept: "application/json",
-      "X-EBAY-C-MARKETPLACE-ID": marketplaceId,
+      "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE_ID,
     },
   });
   if (!resp.ok) return empty;

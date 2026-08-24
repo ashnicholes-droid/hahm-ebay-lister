@@ -155,9 +155,7 @@ export function ModelSelector() {
               ))}
             </select>
             <span className="field-hint model-hint">
-              Shown on listing cards and used when the AI suggests a price.
-              Choose this before writing listings. Posting still follows your
-              EBAY_CURRENCY environment variable.
+              Symbol on listing cards, and the currency the AI prices in.
             </span>
           </div>
         </div>

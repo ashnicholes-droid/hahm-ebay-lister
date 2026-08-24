@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SIZE_REQUIRED_CATEGORIES } from "@/lib/categories";
-import { currencyOption, currencySymbol, formatMoney } from "@/lib/currency";
+import { currencySymbol, formatMoney } from "@/lib/currency";
 import type { ItemGroup, ListingResult, Photo } from "@/lib/types";
 import { useCurrency } from "./CurrencyContext";
 
@@ -329,7 +329,7 @@ export function ListingCard({
                     {" "}
                     ·{" "}
                     <a
-                      href={`https://${currencyOption(currency).listingHost}/itm/${group.listingId}`}
+                      href={`https://www.ebay.com/itm/${group.listingId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

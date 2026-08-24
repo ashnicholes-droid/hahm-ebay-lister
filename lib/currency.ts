@@ -5,48 +5,14 @@ export interface CurrencyOption {
   code: CurrencyCode;
   symbol: string;
   label: string;
-  marketplaceId: string;
-  listingHost: string;
 }
 
-// Common eBay selling currencies. USD is first: that's the tested default
-// marketplace. The in-app Settings picker can switch the rest per device.
 export const CURRENCIES: CurrencyOption[] = [
-  {
-    code: "USD",
-    symbol: "$",
-    label: "$ US dollars",
-    marketplaceId: "EBAY_US",
-    listingHost: "www.ebay.com",
-  },
-  {
-    code: "GBP",
-    symbol: "£",
-    label: "£ British pounds",
-    marketplaceId: "EBAY_GB",
-    listingHost: "www.ebay.co.uk",
-  },
-  {
-    code: "EUR",
-    symbol: "€",
-    label: "€ Euros",
-    marketplaceId: "EBAY_DE",
-    listingHost: "www.ebay.de",
-  },
-  {
-    code: "AUD",
-    symbol: "A$",
-    label: "A$ Australian dollars",
-    marketplaceId: "EBAY_AU",
-    listingHost: "www.ebay.com.au",
-  },
-  {
-    code: "CAD",
-    symbol: "C$",
-    label: "C$ Canadian dollars",
-    marketplaceId: "EBAY_CA",
-    listingHost: "www.ebay.ca",
-  },
+  { code: "USD", symbol: "$", label: "$ US dollars" },
+  { code: "GBP", symbol: "£", label: "£ British pounds" },
+  { code: "EUR", symbol: "€", label: "€ Euros" },
+  { code: "AUD", symbol: "A$", label: "A$ Australian dollars" },
+  { code: "CAD", symbol: "C$", label: "C$ Canadian dollars" },
 ];
 
 const FALLBACK: CurrencyCode = "USD";
@@ -84,10 +50,6 @@ export function currencySymbol(code?: unknown): string {
   return currencyOption(code).symbol;
 }
 
-export function currencyCode(): CurrencyCode {
-  return defaultCurrency();
-}
-
 export function formatMoney(
   value: number | string | undefined | null,
   fractionDigits = 2,
@@ -103,19 +65,9 @@ export function formatMoney(
 
 export function suggestedPriceGuidance(code?: unknown): string {
   const opt = currencyOption(code);
-  const market =
-    opt.code === "GBP"
-      ? "eBay UK"
-      : opt.code === "EUR"
-        ? "eBay in euros"
-        : opt.code === "AUD"
-          ? "eBay Australia"
-          : opt.code === "CAD"
-            ? "eBay Canada"
-            : "eBay US";
   return (
-    `For suggested_price: Price realistically in ${opt.code} (${opt.symbol}) for what this exact item sells for on ${market}. ` +
-    `Return a number only (e.g. 12.99), no currency symbol. Do not convert from another currency. Be honest. ` +
+    `For suggested_price: Price realistically in ${opt.code} (${opt.symbol}). ` +
+    `Return a number only (e.g. 12.99), no currency symbol. Be honest. ` +
     `If the item can't be identified well enough to price it, use 0 — the seller will price it manually (a wrong guess is worse than no guess).`
   );
 }

@@ -32,7 +32,6 @@ describe("formatMoney", () => {
 describe("suggestedPriceGuidance", () => {
   test("asks the model for the selected currency", () => {
     expect(suggestedPriceGuidance("GBP")).toMatch(/GBP/);
-    expect(suggestedPriceGuidance("GBP")).toMatch(/eBay UK/);
-    expect(suggestedPriceGuidance("USD")).toMatch(/eBay US/);
+    expect(suggestedPriceGuidance("USD")).toMatch(/USD/);
   });
 });

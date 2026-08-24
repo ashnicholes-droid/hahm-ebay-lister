@@ -4,7 +4,7 @@ import { isEbayConfigured } from "@/lib/ebay/config";
 import { appToken } from "@/lib/ebay/taxonomy";
 import { searchComps } from "@/lib/ebay/comps";
 import { applyPriceMarkup, priceMarkupPercent } from "@/lib/pricing";
-import { currencyOption, resolveCurrency } from "@/lib/currency";
+import { resolveCurrency } from "@/lib/currency";
 import type { ListingResult } from "@/lib/types";
 
 // One Browse-API search; quick.
@@ -32,9 +32,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const token = await appToken();
-    const currency = resolveCurrency(body.currency);
-    const marketplaceId = currencyOption(currency).marketplaceId;
-    const comps = await searchComps(token, body.listing, currency, marketplaceId);
+    const comps = await searchComps(token, body.listing, resolveCurrency(body.currency));
     // The band stays raw market truth; the "use median" affordance carries the
     // deployment's storewide markup so it matches analysis-suggested pricing.
     const markup = priceMarkupPercent();
