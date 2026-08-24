@@ -26,6 +26,8 @@ describe("formatMoney", () => {
     expect(formatMoney(12.5, 2, "GBP")).toBe("£12.50");
     expect(formatMoney(12.5, 2, "USD")).toBe("$12.50");
     expect(formatMoney(12.5, 2, "EUR")).toBe("€12.50");
+    expect(formatMoney(12.5, 2, "AUD")).toBe("$12.50");
+    expect(formatMoney(12.5, 2, "CAD")).toBe("$12.50");
   });
 });
 

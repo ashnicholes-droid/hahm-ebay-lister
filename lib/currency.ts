@@ -11,8 +11,8 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: "USD", symbol: "$", label: "$ US dollars" },
   { code: "GBP", symbol: "£", label: "£ British pounds" },
   { code: "EUR", symbol: "€", label: "€ Euros" },
-  { code: "AUD", symbol: "A$", label: "A$ Australian dollars" },
-  { code: "CAD", symbol: "C$", label: "C$ Canadian dollars" },
+  { code: "AUD", symbol: "$", label: "$ Australian dollars" },
+  { code: "CAD", symbol: "$", label: "$ Canadian dollars" },
 ];
 
 const FALLBACK: CurrencyCode = "USD";
