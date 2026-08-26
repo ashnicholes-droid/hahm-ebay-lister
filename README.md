@@ -663,6 +663,56 @@ views; they were previously display-only.
 
 ---
 
+## Photo uploads: the September 2026 deadline
+
+eBay is **decommissioning `UploadSiteHostedPictures` on 30 September 2026**. It
+was deprecated in November 2025 and has been returning deprecation warnings in
+its response headers since. Every photo of every listing went through that one
+call, so when it stops, posting stops.
+
+The replacement is the **Media API**'s `create_image_from_file` — same idea,
+same multipart upload, a REST endpoint instead of an XML one. It runs on the
+`sell.inventory` scope, which is already one of this app's core scopes, so
+there is **no reconnect and no new permission** to grant.
+
+### Both paths run until the deadline
+
+The new path is written from eBay's documentation and has not been exercised
+against a live seller account, while the old one still works today. So the
+default tries the new one and **falls back to the old one** if it doesn't
+produce a usable URL — a wrong guess about the endpoint or the response shape
+costs one wasted request instead of a broken publish, and the first real batch
+reports the truth in the logs rather than the deadline reporting it.
+
+Two details resisted confirmation from eBay's docs, which are JavaScript-
+rendered and don't read cleanly: the exact path under `/image`, and whether the
+EPS URL arrives in the response body or only via the `Location` header. Both
+are handled — the body is checked for several plausible field names, and an
+id-only response triggers a follow-up read.
+
+| `EBAY_PHOTO_UPLOAD` | Behaviour |
+|---|---|
+| unset / `auto` | **Default.** Media API, falling back to the retired call |
+| `media` | Media API only. A failure is visible rather than papered over by a call that is about to stop existing |
+| `trading` | The retired call only. The escape hatch back to known-good behaviour |
+
+`EBAY_MEDIA_BASE` overrides the host if eBay's docs turn out to disagree with
+eBay's servers — no code change needed.
+
+### What to check on your next batch
+
+The server log says which path ran, once per deploy rather than once per photo:
+
+```
+[ebay/publish] photo upload: Media API OK
+```
+
+If instead it warns and names the retirement date, the new path isn't working
+yet and the old one carried the batch. That's the signal to send me the logged
+response — it contains eBay's own words about why.
+
+---
+
 ## When eBay rejects a listing
 
 eBay's one-line rejection is often unactionable, because the part that names the
@@ -1127,6 +1177,8 @@ and redeploy with `vercel --prod`.
 | `EBAY_LOCATION_POSTAL_CODE` | optional | Fallback ship-from ZIP. Prefer **⚙ Pricing → Ship-from ZIP** in the app, which overrides this and takes effect without a redeploy. |
 | `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Used when neither the photos nor the seller supplied a weight; overrides the built-in per-item-class defaults (coats, shoes, media, etc.). A weight typed into a listing's shipping panel outranks this. Editable per listing on eBay. |
 | `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches. Same precedence as the weight above: per-listing edits win, then these, then the per-item-class defaults. |
+| `EBAY_PHOTO_UPLOAD` | optional | `auto` (default), `media`, or `trading`. Which photo-upload path to use before eBay retires `UploadSiteHostedPictures` on 2026-09-30. |
+| `EBAY_MEDIA_BASE` | optional | Override the Media API host. Defaults to `https://apim.ebay.com/commerce/media/v1_beta`. |
 | `EBAY_STRICT_QUALITY` | optional | Set to `1` to **stop** a publish when eBay's item-specifics schema can't be retrieved, instead of publishing with a warning. |
 | `PRICE_MARKUP_PERCENT` | optional | Storewide markup applied to every **auto-suggested** price (the AI estimate and the comps "use median" button) before you review it — for sellers who run a permanent store-level sale that discounts everything. `40` lists at 1.4×. The marked-up price is what you see on the card, and you can still edit it; manually typed prices are never touched. Note the math: +40% then a 40%-off sale nets 84% of the original — to land back on the suggested price after an X%-off sale, set `100·X/(100−X)` (≈`66.7` for 40% off). Unset = no markup. |
 | `EBAY_MARKETPLACE_ID` / `EBAY_CATEGORY_TREE_ID` / `EBAY_CURRENCY` | optional, experimental | Marketplace override, e.g. `EBAY_GB` / `3` / `GBP` for eBay UK — set all three together. Defaults: `EBAY_US` / `0` / `USD`. ⚠️ **The US site is the only tested marketplace.** Known gaps on other sites: photo uploads still use the US site ID, condition-tier and size-standardization handling were validated against eBay US, and the UI shows prices with a `$` symbol. After changing marketplace, regenerate the offline category map: `npx tsx scripts/refresh-category-map.ts`. |

@@ -33,6 +33,7 @@ import { listingQuantity, quantityWarnings, volumeDiscount } from "@/lib/quantit
 import { applyVolumeDiscount } from "./promotions";
 import { APPAREL_CATEGORIES, PANTS_CATEGORIES } from "@/lib/categories";
 import type { ListingResult, PublishDebug } from "@/lib/types";
+import { TRADING_UPLOAD_SUNSET, uploadImageViaMedia, uploadMode } from "./media";
 import {
   FALLBACK_POSTAL_CODE,
   locationKeyForZip,
@@ -996,9 +997,70 @@ function updateOfferBody(offer: Record<string, unknown>): Record<string, unknown
   return Object.fromEntries(Object.entries(offer).filter(([k]) => !skip.has(k)));
 }
 
-// ── Photo upload to eBay Picture Services (Trading API, XML) ──────────────────
+// ── Photo upload to eBay Picture Services ────────────────────────────────────
+//
+// Two paths, on purpose, until 30 September 2026.
+//
+// eBay is decommissioning UploadSiteHostedPictures on that date. It has been
+// deprecated since November 2025 and every photo of every listing goes through
+// it, so when it stops the app stops posting. The Media API replaces it.
+//
+// The new path is written from docs and unproven against a live account, and
+// the old one still works today — so the default tries the new one and falls
+// back. A wrong guess about the endpoint or the response shape costs one
+// wasted request instead of a broken publish, and the first real batch tells
+// us the truth from the logs rather than the deadline telling us.
+//
+// Set EBAY_PHOTO_UPLOAD=media once it's proven, or =trading to get straight
+// back to known-good behaviour if it isn't.
+
+/** Logged once per process, not per photo — twelve identical lines help nobody. */
+let mediaOutcomeLogged = false;
 
 async function uploadPhoto(
+  accessToken: string,
+  base64: string,
+  mediaType: string,
+  name: string
+): Promise<string | null> {
+  const mode = uploadMode();
+
+  if (mode !== "trading") {
+    try {
+      const result = await uploadImageViaMedia(accessToken, base64, mediaType, name);
+      if (result.url) {
+        if (!mediaOutcomeLogged) {
+          mediaOutcomeLogged = true;
+          console.log("[ebay/publish] photo upload: Media API OK");
+        }
+        return result.url;
+      }
+      if (!mediaOutcomeLogged) {
+        mediaOutcomeLogged = true;
+        console.warn(
+          `[ebay/publish] Media API upload did not return a URL; falling back to ` +
+            `UploadSiteHostedPictures (retired ${TRADING_UPLOAD_SUNSET}). ` +
+            `Response: ${JSON.stringify(result.debug)}`
+        );
+      }
+      // Explicitly asked for the new path only — don't quietly use the old one.
+      if (mode === "media") return null;
+    } catch (e) {
+      if (!mediaOutcomeLogged) {
+        mediaOutcomeLogged = true;
+        console.warn(
+          `[ebay/publish] Media API upload threw, falling back: ${(e as Error).message}`
+        );
+      }
+      if (mode === "media") return null;
+    }
+  }
+
+  return uploadPhotoViaTrading(accessToken, base64, mediaType, name);
+}
+
+/** The legacy path. Retired by eBay on 30 September 2026. */
+async function uploadPhotoViaTrading(
   accessToken: string,
   base64: string,
   mediaType: string,
