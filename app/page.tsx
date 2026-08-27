@@ -7,6 +7,7 @@ import { resizeImage } from "@/lib/resize";
 import { buildSku, sanitizeSku } from "@/lib/sku";
 import { groupByQrDelimiters, type GroupingWarning } from "@/lib/qrGrouping";
 import { decoderName, loadImageForScan, scanQrSku } from "@/lib/qrScan";
+import { analysisImages, publishImages } from "@/lib/photoSizes";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
 import {
   clearBatch,
@@ -211,13 +212,21 @@ export default function Home() {
   // are the bulk of the batch and nothing later changes them.
   useEffect(() => {
     if (photos.length === 0) return;
-    savePhotos(photos).catch((e) => {
-      setSaveError(
-        isQuotaError(e)
-          ? "This browser is out of storage, so the batch isn't being saved. Post what you have, or start a smaller batch — everything on screen still works."
-          : "The batch couldn't be saved locally, so closing this tab would lose it."
-      );
-    });
+    savePhotos(photos)
+      .then(({ degraded }) => {
+        setSaveError(
+          degraded
+            ? "Storage is nearly full, so the batch is saved without the full-size copies. Everything on screen is unaffected — but if you close this tab and come back, photos will publish at the smaller size."
+            : null
+        );
+      })
+      .catch((e) => {
+        setSaveError(
+          isQuotaError(e)
+            ? "This browser is out of storage, so the batch isn't being saved. Post what you have, or start a smaller batch — everything on screen still works."
+            : "The batch couldn't be saved locally, so closing this tab would lose it."
+        );
+      });
   }, [photos]);
 
   // The session is small and changes constantly, so it is debounced. Saving on
@@ -647,11 +656,12 @@ export default function Home() {
     async (groupId: string) => {
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group?.listing) return;
-      const images = group.photoIds
-        .map((id) => photoMap.get(id))
-        .filter((p): p is Photo => Boolean(p))
-        .map((p) => ({ mediaType: p.mediaType, data: p.data }))
-        .slice(0, MAX_PUBLISH_PHOTOS);
+      const images = analysisImages(
+        group.photoIds
+          .map((id) => photoMap.get(id))
+          .filter((p): p is Photo => Boolean(p))
+          .slice(0, MAX_PUBLISH_PHOTOS)
+      );
       if (images.length === 0) return;
 
       setGroups((prev) =>
@@ -711,10 +721,9 @@ export default function Home() {
       // Snapshot this group's photos from the latest state (no stale closure).
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group) return;
-      const imgs = group.photoIds
-        .map((id) => photoMap.get(id))
-        .filter((p): p is Photo => Boolean(p))
-        .map((p) => ({ mediaType: p.mediaType, data: p.data }));
+      const imgs = analysisImages(
+        group.photoIds.map((id) => photoMap.get(id)).filter((p): p is Photo => Boolean(p))
+      );
       setGroups((prev) =>
         prev.map((g) =>
           g.id === groupId ? { ...g, status: "writing", error: undefined } : g
@@ -799,10 +808,9 @@ export default function Home() {
       const hint = group?.listing?.title?.trim();
       if (!group || !hint) return;
 
-      const imgs = group.photoIds
-        .map((id) => photoMap.get(id))
-        .filter((p): p is Photo => Boolean(p))
-        .map((p) => ({ mediaType: p.mediaType, data: p.data }));
+      const imgs = analysisImages(
+        group.photoIds.map((id) => photoMap.get(id)).filter((p): p is Photo => Boolean(p))
+      );
       if (imgs.length === 0) return;
 
       const keep = group.listing!;
@@ -912,11 +920,11 @@ export default function Home() {
     async (groupId: string) => {
       const group = groupsRef.current.find((g) => g.id === groupId);
       if (!group || !group.listing) return;
-      const images = group.photoIds
+      const chosen = group.photoIds
         .map((id) => photoMap.get(id))
         .filter((p): p is Photo => Boolean(p))
-        .map((p) => ({ mediaType: p.mediaType, data: p.data }))
         .slice(0, MAX_PUBLISH_PHOTOS);
+      const images = publishImages(chosen);
       setGroups((prev) =>
         prev.map((g) =>
           g.id === groupId

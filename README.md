@@ -1021,12 +1021,42 @@ Two things this fixed along the way:
   on the longest side; below that, buyers cannot magnify your photos. The
   viewer says so when a photo falls short.
 
-⚠️ **Photos are currently downscaled to 1024px before upload**, which is above
-eBay's 500px minimum but below the 1600px zoom threshold. If you shoot with a
-phone, you are giving away detail buyers could otherwise zoom into. Raising it
-is a real change — it roughly doubles the analysis payload and the browser
-storage per photo, and the write path has a 4.5MB request limit — so it is
-called out here rather than changed quietly.
+### Photos are kept at three sizes, and eBay gets the big one
+
+For a long time every photo was downscaled to **1024px** and that one file was
+used for everything. It was chosen for the model, and it is a good size for the
+model — but it was also the file that went to eBay, which is below the **1600px**
+zoom threshold. Every listing this app ever posted quietly gave away the ability
+to magnify a photo.
+
+One file could not fix that, because the three jobs want genuinely different
+things:
+
+| Copy | Size | Where it goes | Why that size |
+| --- | --- | --- | --- |
+| `previewUrl` | ~360px | on-screen thumbnails, the sort pass | The sort only has to tell items apart. Keeping it tiny is what stops a batch hitting the request body limit. |
+| `data` | ~1024px | Claude — analysis, verification, re-research | Enough to read a maker's mark. Deliberately **not** bigger: Claude downsamples to ~1568px anyway, so more pixels buy no accuracy, and twelve 1600px photos in one request would strain the body limit. |
+| `full` | ~1600px | **eBay** | The threshold where eBay turns buyer zoom on. |
+
+So the same capture is encoded twice, at 1024 and at 1600, and
+`lib/photoSizes.ts` names which one each destination gets — a bare
+`p.full ?? p.data` at four call sites is exactly how the wrong copy ends up on a
+listing again.
+
+Three consequences worth knowing:
+
+- **`full` is skipped when the source was already small.** Upscaling a 900px
+  photo to 1600 adds bytes and no detail, and eBay's zoom would have nothing
+  extra to show. Then `data` is what publishes, because it is genuinely the best
+  there is.
+- **Uploads make more requests, not bigger ones.** Photos reach eBay through
+  `/api/ebay/upload-photos` in batches budgeted by *bytes*, so tripling the photo
+  size produces two or three per request instead of four. No request in the
+  posting flow can approach the 4.5MB platform limit.
+- **A full storage quota degrades instead of failing.** A saved batch now takes
+  roughly three times the space. If IndexedDB fills, the save retries without the
+  1600px copies rather than losing the batch — and says so. You keep the hour of
+  photographing; photos restored from that save publish at the smaller size.
 
 ---
 

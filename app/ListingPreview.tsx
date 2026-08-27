@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/api-client";
+import { publishDataUrl } from "@/lib/photoSizes";
 import type { ListingPreview as PreviewData } from "@/lib/ebay/preview";
 import type { ItemGroup, Photo } from "@/lib/types";
 import { PhotoViewer } from "./PhotoViewer";
@@ -17,9 +18,9 @@ interface ListingPreviewProps {
   onClose: () => void;
 }
 
-/** The image that actually publishes, not the small sorting thumbnail. */
-const fullUrl = (p: Photo) =>
-  p.data.startsWith("data:") ? p.data : `data:${p.mediaType};base64,${p.data}`;
+/** The image that actually publishes — the 1600px copy, not the 1024px one the
+ * model reads, and certainly not the 360px sorting thumbnail this once used. */
+const fullUrl = publishDataUrl;
 
 function formatPrice(value: number | null, currency: string): string {
   if (value === null) return "—";

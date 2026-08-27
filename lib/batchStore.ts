@@ -85,20 +85,61 @@ function tx<T>(
  */
 type StoredPhoto = Omit<Photo, "previewUrl">;
 
-export async function savePhotos(photos: Photo[]): Promise<void> {
-  if (photos.length === 0) return;
+export interface SavePhotosResult {
+  /**
+   * True when the 1600px eBay copies had to be dropped to fit.
+   *
+   * The batch is still fully recoverable; photos restored from it publish at
+   * the 1024px analysis size instead, which costs eBay's buyer zoom. Worth
+   * saying out loud rather than silently downgrading someone's listings.
+   */
+  degraded: boolean;
+}
+
+/**
+ * Persist photo bytes.
+ *
+ * Photos now carry TWO encodings — 1024px for the model, 1600px for eBay — so a
+ * batch takes roughly three times the space it used to. That is a real risk of
+ * filling a phone's quota mid-batch, and the old behaviour there was to lose the
+ * whole save. So a quota failure retries WITHOUT the big copies: half a loaf,
+ * reported, beats an hour of photographing gone.
+ */
+export async function savePhotos(photos: Photo[]): Promise<SavePhotosResult> {
+  if (photos.length === 0) return { degraded: false };
   const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(PHOTO_STORE, "readwrite");
-    const store = t.objectStore(PHOTO_STORE);
-    for (const p of photos) {
-      const { previewUrl: _drop, ...rest } = p;
-      store.put(rest as StoredPhoto, p.id);
+  const write = (dropFull: boolean) =>
+    new Promise<void>((resolve, reject) => {
+      const t = db.transaction(PHOTO_STORE, "readwrite");
+      const store = t.objectStore(PHOTO_STORE);
+      for (const p of photos) {
+        const { previewUrl: _drop, full, ...rest } = p;
+        const record = dropFull || !full ? rest : { ...rest, full };
+        store.put(record as StoredPhoto, p.id);
+      }
+      t.oncomplete = () => resolve();
+      // put() can throw QuotaExceededError synchronously as well as aborting
+      // the transaction, so both paths have to land in the same rejection.
+      t.onabort = () => reject(t.error ?? new Error("Couldn't save photos."));
+      t.onerror = () => reject(t.error ?? new Error("Couldn't save photos."));
+    });
+
+  try {
+    await write(false);
+    db.close();
+    return { degraded: false };
+  } catch (e) {
+    if (!isQuotaError(e) || !photos.some((p) => p.full)) {
+      db.close();
+      throw e;
     }
-    t.oncomplete = () => resolve();
-    t.onerror = () => reject(t.error ?? new Error("Couldn't save photos."));
-  });
-  db.close();
+    try {
+      await write(true);
+      return { degraded: true };
+    } finally {
+      db.close();
+    }
+  }
 }
 
 export async function saveSession(session: Omit<SavedSession, "schema" | "savedAt">): Promise<void> {
