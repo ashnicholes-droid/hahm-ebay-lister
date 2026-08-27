@@ -1079,6 +1079,9 @@ export default function Home() {
         <a className="btn-ghost nav-link" href="/listings">
           🏷️ My listings
         </a>
+        <a className="btn-ghost nav-link" href="/sold">
+          💵 What sold
+        </a>
       </header>
 
       {setupError && (

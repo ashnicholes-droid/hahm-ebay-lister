@@ -71,6 +71,10 @@ body {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: var(--space-section);
+  /* Wraps because the masthead now carries three nav links. Without this they
+     overflowed the viewport on a phone — .nav-link sets margin-left:auto, which
+     on a nowrap row pushes every link past the right edge instead of stacking. */
+  flex-wrap: wrap;
 }
 
 .logo-mark {
@@ -2684,6 +2688,12 @@ textarea {
   white-space: nowrap;
 }
 
+/* Only the FIRST link pushes the group right; the rest sit beside it. Leaving
+   auto on all of them spreads them across the row and forces the overflow. */
+.nav-link + .nav-link {
+  margin-left: 0;
+}
+
 .lm-intro {
   margin: 0 0 1rem;
   font-size: 0.85rem;
@@ -4231,4 +4241,196 @@ textarea {
 .ship-override small {
   color: var(--color-ink-soft);
   line-height: 1.5;
+}
+
+/* ── What sold ─────────────────────────────────────────────────────────────
+   The one screen built from facts rather than projections: eBay's real fee,
+   the buyer's real payment, the cost recorded at listing time. The styling
+   leans on the same .panel/.stat vocabulary as the seller view so the two read
+   as one app, and adds only what this screen genuinely needs — a way to show a
+   figure as UNKNOWN that can't be mistaken for a zero. */
+
+.sold-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.sold-summary h2,
+.sold-month h2,
+.sold-feecheck h2,
+.sold-ship h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1.05rem;
+}
+
+.sold-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.7rem;
+}
+
+/* .stat's .k and .v are inline spans, so without this the label and the figure
+   run together — "BUYERS PAID$250.10". Scoped here rather than fixed on .stat
+   itself, which other screens lay out their own way. */
+.sold-stats .stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* The line that keeps a partial total honest. Deliberately not an error
+   colour — nothing is broken, the number is just incomplete and says so. */
+.sold-incomplete {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--color-gold);
+  background: var(--color-gold-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--color-ink-soft);
+  line-height: 1.5;
+}
+
+.sold-feecheck p {
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.sold-feecheck-verdict {
+  color: var(--color-ink-soft);
+}
+
+.sold-feecheck.off {
+  border-color: var(--color-gold);
+  background: var(--color-gold-soft);
+}
+
+.sold-feecheck.off .sold-feecheck-verdict {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.sold-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sold-row,
+.sold-shiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.sold-row.cancelled {
+  opacity: 0.55;
+}
+
+.sold-row-what,
+.sold-shiprow-what {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+  flex: 1 1 16rem;
+}
+
+.sold-meta {
+  font-size: 0.8rem;
+  color: var(--color-ink-faint);
+}
+
+.sold-row-money {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.1rem;
+  align-items: baseline;
+}
+
+.sold-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.95rem;
+  min-width: 4.5rem;
+}
+
+.sold-fig em {
+  font-style: normal;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+  font-weight: 500;
+}
+
+.sold-fig small {
+  font-weight: 500;
+  color: var(--color-ink-faint);
+}
+
+.sold-fig.profit {
+  color: var(--color-accent-deep);
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+}
+
+.sold-fig.profit.loss {
+  color: var(--color-danger);
+}
+
+/* An unknown, styled so it can never be skimmed as a number. */
+.sold-unknown {
+  font-weight: 500;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--color-ink-faint);
+}
+
+.sold-ship {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.sold-shiprow-do {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.sold-shiprow-do select {
+  padding: 0.45rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.sold-tracking {
+  padding: 0.45rem 0.55rem;
+  font-size: 0.9rem;
+  width: 13rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 620px) {
+  .sold-row-money {
+    gap: 0.5rem 0.9rem;
+  }
+  .sold-tracking {
+    width: 100%;
+  }
+  .sold-shiprow-do {
+    width: 100%;
+  }
 }

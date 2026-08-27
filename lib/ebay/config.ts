@@ -20,6 +20,7 @@ export const EBAY_INV_BASE = "https://api.ebay.com/sell/inventory/v1";
 export const EBAY_ACC_BASE = "https://api.ebay.com/sell/account/v1";
 export const EBAY_META_BASE = "https://api.ebay.com/sell/metadata/v1";
 export const EBAY_TAX_BASE = "https://api.ebay.com/commerce/taxonomy/v1";
+export const EBAY_FUL_BASE = "https://api.ebay.com/sell/fulfillment/v1";
 export const EBAY_TRADING = "https://api.ebay.com/ws/api.dll";
 export const EBAY_MARKETPLACE_ID = process.env.EBAY_MARKETPLACE_ID || "EBAY_US";
 export const EBAY_CATEGORY_TREE_ID = process.env.EBAY_CATEGORY_TREE_ID || "0";

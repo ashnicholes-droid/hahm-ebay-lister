@@ -35,6 +35,10 @@ own eBay developer keys, so you're in full control and there's no middleman.
   (the only way to edit listings this app posted), rewrite titles and
   descriptions in place, record what you paid, send offers to watchers, and end
   or relist dead stock
+- 💵 **What sold** — completed sales with eBay's *actual* per-order fee rather
+  than an estimate of it, realized profit against what you paid, a check on
+  whether the app's fee model matches your real invoices, and tracking upload
+  without a trip to Seller Hub
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
 
@@ -488,6 +492,74 @@ screen — the same mistake the publish path used to make.
 been exercised against a live seller account. The read path is harmless if
 wrong; the price write is validated, confirmed by reading the offer back, and
 per-item only — there is deliberately no bulk repricing.
+
+---
+
+## What sold, and what you actually made
+
+Everything else in this app happens **before** a sale. It writes listings, prices
+them against comps, estimates postage, estimates fees, and publishes. Then an
+item sold and the app never found out — which left two holes worth closing.
+
+The first is that **profit was always a projection.** `lib/fees.ts` models eBay's
+cut as 13.25% + $0.40, which is right for most categories and wrong for some, and
+it cannot know about promoted-listing fees, international surcharges, or a
+below-standard penalty. The second is that there was no answer to "what did I
+make last month" — which is also the number you need at tax time.
+
+**`/sold` is the only screen in this app built from facts.** It reads eBay's
+Fulfillment API, which reports the real per-order fee in `totalMarketplaceFee`,
+and joins it to the acquisition cost recorded in the listing's private note. This
+runs on `sell.fulfillment`, which has been in the core scope set since the first
+version of the OAuth flow, so **no reconnect and no new permission**.
+
+It shows, per period (30 days / 90 days / 12 months):
+
+- what buyers paid, what eBay actually took, refunds, and net — which subtract
+  to each other exactly, on screen
+- cost of goods and **realized profit**, with margin
+- sales grouped by calendar month
+- an inline queue for the orders still waiting on tracking, so marking something
+  shipped doesn't mean a trip to Seller Hub
+
+### It grades the estimate it used to trust
+
+`lib/fees.ts` sits underneath every recommended price, every break-even, and
+every profit projection the app makes, and until orders came back nothing had
+ever checked it. The Sold screen now scores it: across your real sales, what did
+eBay actually charge as a percentage? If the real rate is meaningfully higher —
+promoted listings and some categories will do that — then every marginal item has
+been priced on a number that was wrong in the expensive direction, and the screen
+says so in those words.
+
+### An unknown is never shown as a zero
+
+This is the governing rule of the whole feature. Three things can genuinely be
+unknown per order, and each one silently treated as zero **inflates** profit —
+the one kind of error nobody goes looking for:
+
+| Unknown | What it would do as a zero | What happens instead |
+| --- | --- | --- |
+| No cost recorded on the listing | Reports the entire net as profit | Row reads *not recorded*; the order is excluded from the profit total, and the summary says how many were excluded |
+| eBay hasn't posted a fee yet (very fresh orders) | Overstates net by eBay's cut | Row reads *pending*; the order is held out of gross, fees **and** net together, and reported separately with its value |
+| Cancelled order | Counts as a bad sale | Excluded entirely, and counted |
+
+The pending case is held out of all three totals rather than just out of fees for
+a specific reason: letting it into gross alone produced a summary whose gross,
+fees, and net visibly did not subtract to each other. A money screen whose
+arithmetic fails in front of the reader is worth less than no screen.
+
+⚠️ Written from eBay's API docs and not yet exercised against a live seller
+account. Everything except *Mark shipped* is read-only. Two specific defences in
+`lib/ebay/orders.ts`: the date filter is applied **again** locally, and a filter
+eBay rejects falls back to an unfiltered read — because the worst available
+failure here is a query-string mistake rendering as "you sold nothing."
+
+**One real limit:** the cost basis lives in eBay's per-listing private note, and
+eBay only returns notes for roughly the last 60 days of sold items. A sale older
+than that window has no recoverable cost, and the screen says so rather than
+guessing. Recording a cost on each listing *before* it sells is what makes the
+profit figure exact.
 
 ---
 
