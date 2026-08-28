@@ -12,9 +12,12 @@ export interface UploadImage {
   data: string; // raw base64, no data-url prefix
 }
 
-// ~2.8 MB of base64 (~2.1 MB of image data) per request. Browser-resized
-// photos run ~200–800 KB of base64 each, so batches hold 3–4 photos and even
-// a worst-case single photo stays nowhere near the 4.5 MB platform limit.
+// ~2.8 MB of base64 (~2.1 MB of image data) per request. Photos bound for eBay
+// are now encoded at 1600px — the size that earns buyer zoom — which runs
+// ~400 KB–1.4 MB of base64 each, so batches hold two or three rather than the
+// four a 1024px copy allowed. That is exactly what a byte budget is for: bigger
+// photos make more, smaller requests instead of one that 413s. Even a worst-case
+// single photo shipped alone stays well under the 4.5 MB platform limit.
 export const MAX_BATCH_BASE64_CHARS = 2_800_000;
 // Bound the count too, so many tiny photos don't pile into one slow request.
 export const MAX_BATCH_PHOTOS = 4;

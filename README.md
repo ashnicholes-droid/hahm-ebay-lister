@@ -12,6 +12,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
 
 ## What it does
 
+- 🔦 **Scout before you buy** — point it at something in a shop and get the most
+  you should pay, from live comps minus eBay's fee and postage
 - 📸 Upload a whole batch of photos at once
 - 🏷️ **Split items by QR label** — shoot each item, then a QR code holding its
   inventory number, and the batch is cut at the labels with zero guessing
@@ -35,8 +37,98 @@ own eBay developer keys, so you're in full control and there's no middleman.
   (the only way to edit listings this app posted), rewrite titles and
   descriptions in place, record what you paid, send offers to watchers, and end
   or relist dead stock
+- 💵 **What sold** — completed sales with eBay's *actual* per-order fee rather
+  than an estimate of it, realized profit against what you paid, a check on
+  whether the app's fee model matches your real invoices, and tracking upload
+  without a trip to Seller Hub
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
+
+---
+
+## Scout: should you buy it?
+
+Everything else in this app starts once the item is already yours. But the
+decision that decides whether a reselling month is profitable happens earlier and
+faster — standing in a thrift store with a $6 sticker in your hand and about
+fifteen seconds to make up your mind.
+
+**`/scout` runs the app's own maths backwards.** Instead of "what should I charge
+for this?", it answers "what can I pay?"
+
+Photograph the item (or just type what it is) and it comes back with:
+
+> **PAY UP TO $4.52**
+>
+> Based on 14 live listings ($30.00–$70.00 delivered). Planned on the cheap end,
+> since those are asking prices and the cheapest listings are the ones that
+> actually sell.
+
+Type the sticker price and the verdict resolves live:
+
+| Sticker | Verdict | Why |
+|---|---|---|
+| $4 | **BUY** | $12.52 profit · 313% return — clears both your rules |
+| $12 | **YOUR CALL** | $4.52 profit — under your $10 minimum and your 100% return rule |
+| $40 | **SKIP** | You'd lose $23.48. Worth it under $4.52 |
+
+The max-buy price is the useful one, and it's useful *before* you look at the
+sticker: it turns "is this worth $6?" into "check whether it's under $4.52."
+
+### It is allowed to say it doesn't know
+
+Under three comparable listings, **no verdict is offered at all** — not a
+cautious one, none:
+
+> **CAN'T TELL** · Only 2 comparable listings — too few to judge. Trust your own
+> knowledge here.
+
+This is the same rule the Sold screen follows, and it matters more here than
+anywhere else in the app: a confident wrong answer is spent on an item you cannot
+return. The screen also distinguishes "can't tell" from **ADD PRICE**, which
+looks similar and means the opposite — the app knows exactly what the item is
+worth and is waiting on you.
+
+### Asking prices are not sale prices
+
+eBay retired `findCompletedItems` in February 2025 and Marketplace Insights (real
+sold data) is a closed Limited Release, so **active listings are all this app can
+see** — and active listings skew high, because the ones priced right already sold
+and left. Scout corrects for that, but only **once**:
+
+- **Low end** (default) — plans on the 10th percentile of the asking band. The
+  cheapest active listings are the ones about to sell, so the correction is
+  already baked in.
+- **Middle** — plans on the median with a 12% discount applied.
+
+An early build did both, and planned on $26.40 against a band whose cheapest comp
+was $30 — below every listing in the set, turning a good $4 buy into "your call".
+Conservative is the point; impossible isn't.
+
+### Your rules, not mine
+
+Under **⚙ Rules**: minimum profit (default $10), minimum return (default 100% —
+doubling your money), and which end of the band to plan on. They're saved on the
+device. Which rule binds flips with price — on a cheap item the flat minimum is
+the ceiling, on an expensive one the ratio is — which is why there are two.
+
+### Built for an aisle, not a desk
+
+- Two taps to an answer, and the verdict is above the fold on a phone.
+- One round trip: identify, comps and postage come back together, because shop
+  wifi gives you one chance.
+- A **fast model and a narrow prompt** — this doesn't write a description or item
+  specifics, so it answers in seconds rather than the 20–40 the full listing pass
+  takes.
+- Wrong identification? Retype the title and re-check — same fix as the main flow.
+- **Postage is costed first**, before comps, because a cheap bulky item is a skip
+  regardless of what it's worth.
+- A running **trip list** of what you've checked, because sourcing is comparative:
+  the question is rarely "is this good?" and usually "is this better than the
+  other thing I'm holding?"
+
+⚠️ Scout does not create a listing. It's a decision tool — nothing it does
+touches eBay beyond a read-only comp search.
 
 ---
 
@@ -488,6 +580,74 @@ screen — the same mistake the publish path used to make.
 been exercised against a live seller account. The read path is harmless if
 wrong; the price write is validated, confirmed by reading the offer back, and
 per-item only — there is deliberately no bulk repricing.
+
+---
+
+## What sold, and what you actually made
+
+Everything else in this app happens **before** a sale. It writes listings, prices
+them against comps, estimates postage, estimates fees, and publishes. Then an
+item sold and the app never found out — which left two holes worth closing.
+
+The first is that **profit was always a projection.** `lib/fees.ts` models eBay's
+cut as 13.25% + $0.40, which is right for most categories and wrong for some, and
+it cannot know about promoted-listing fees, international surcharges, or a
+below-standard penalty. The second is that there was no answer to "what did I
+make last month" — which is also the number you need at tax time.
+
+**`/sold` is the only screen in this app built from facts.** It reads eBay's
+Fulfillment API, which reports the real per-order fee in `totalMarketplaceFee`,
+and joins it to the acquisition cost recorded in the listing's private note. This
+runs on `sell.fulfillment`, which has been in the core scope set since the first
+version of the OAuth flow, so **no reconnect and no new permission**.
+
+It shows, per period (30 days / 90 days / 12 months):
+
+- what buyers paid, what eBay actually took, refunds, and net — which subtract
+  to each other exactly, on screen
+- cost of goods and **realized profit**, with margin
+- sales grouped by calendar month
+- an inline queue for the orders still waiting on tracking, so marking something
+  shipped doesn't mean a trip to Seller Hub
+
+### It grades the estimate it used to trust
+
+`lib/fees.ts` sits underneath every recommended price, every break-even, and
+every profit projection the app makes, and until orders came back nothing had
+ever checked it. The Sold screen now scores it: across your real sales, what did
+eBay actually charge as a percentage? If the real rate is meaningfully higher —
+promoted listings and some categories will do that — then every marginal item has
+been priced on a number that was wrong in the expensive direction, and the screen
+says so in those words.
+
+### An unknown is never shown as a zero
+
+This is the governing rule of the whole feature. Three things can genuinely be
+unknown per order, and each one silently treated as zero **inflates** profit —
+the one kind of error nobody goes looking for:
+
+| Unknown | What it would do as a zero | What happens instead |
+| --- | --- | --- |
+| No cost recorded on the listing | Reports the entire net as profit | Row reads *not recorded*; the order is excluded from the profit total, and the summary says how many were excluded |
+| eBay hasn't posted a fee yet (very fresh orders) | Overstates net by eBay's cut | Row reads *pending*; the order is held out of gross, fees **and** net together, and reported separately with its value |
+| Cancelled order | Counts as a bad sale | Excluded entirely, and counted |
+
+The pending case is held out of all three totals rather than just out of fees for
+a specific reason: letting it into gross alone produced a summary whose gross,
+fees, and net visibly did not subtract to each other. A money screen whose
+arithmetic fails in front of the reader is worth less than no screen.
+
+⚠️ Written from eBay's API docs and not yet exercised against a live seller
+account. Everything except *Mark shipped* is read-only. Two specific defences in
+`lib/ebay/orders.ts`: the date filter is applied **again** locally, and a filter
+eBay rejects falls back to an unfiltered read — because the worst available
+failure here is a query-string mistake rendering as "you sold nothing."
+
+**One real limit:** the cost basis lives in eBay's per-listing private note, and
+eBay only returns notes for roughly the last 60 days of sold items. A sale older
+than that window has no recoverable cost, and the screen says so rather than
+guessing. Recording a cost on each listing *before* it sells is what makes the
+profit figure exact.
 
 ---
 
@@ -1021,12 +1181,42 @@ Two things this fixed along the way:
   on the longest side; below that, buyers cannot magnify your photos. The
   viewer says so when a photo falls short.
 
-⚠️ **Photos are currently downscaled to 1024px before upload**, which is above
-eBay's 500px minimum but below the 1600px zoom threshold. If you shoot with a
-phone, you are giving away detail buyers could otherwise zoom into. Raising it
-is a real change — it roughly doubles the analysis payload and the browser
-storage per photo, and the write path has a 4.5MB request limit — so it is
-called out here rather than changed quietly.
+### Photos are kept at three sizes, and eBay gets the big one
+
+For a long time every photo was downscaled to **1024px** and that one file was
+used for everything. It was chosen for the model, and it is a good size for the
+model — but it was also the file that went to eBay, which is below the **1600px**
+zoom threshold. Every listing this app ever posted quietly gave away the ability
+to magnify a photo.
+
+One file could not fix that, because the three jobs want genuinely different
+things:
+
+| Copy | Size | Where it goes | Why that size |
+| --- | --- | --- | --- |
+| `previewUrl` | ~360px | on-screen thumbnails, the sort pass | The sort only has to tell items apart. Keeping it tiny is what stops a batch hitting the request body limit. |
+| `data` | ~1024px | Claude — analysis, verification, re-research | Enough to read a maker's mark. Deliberately **not** bigger: Claude downsamples to ~1568px anyway, so more pixels buy no accuracy, and twelve 1600px photos in one request would strain the body limit. |
+| `full` | ~1600px | **eBay** | The threshold where eBay turns buyer zoom on. |
+
+So the same capture is encoded twice, at 1024 and at 1600, and
+`lib/photoSizes.ts` names which one each destination gets — a bare
+`p.full ?? p.data` at four call sites is exactly how the wrong copy ends up on a
+listing again.
+
+Three consequences worth knowing:
+
+- **`full` is skipped when the source was already small.** Upscaling a 900px
+  photo to 1600 adds bytes and no detail, and eBay's zoom would have nothing
+  extra to show. Then `data` is what publishes, because it is genuinely the best
+  there is.
+- **Uploads make more requests, not bigger ones.** Photos reach eBay through
+  `/api/ebay/upload-photos` in batches budgeted by *bytes*, so tripling the photo
+  size produces two or three per request instead of four. No request in the
+  posting flow can approach the 4.5MB platform limit.
+- **A full storage quota degrades instead of failing.** A saved batch now takes
+  roughly three times the space. If IndexedDB fills, the save retries without the
+  1600px copies rather than losing the batch — and says so. You keep the hour of
+  photographing; photos restored from that save publish at the smaller size.
 
 ---
 

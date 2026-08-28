@@ -21,6 +21,9 @@ export default function ListingsPage() {
           <h1>Listing Writer</h1>
           <p>Seller view — live listings and prices</p>
         </div>
+        <Link className="btn-ghost nav-link" href="/sold">
+          💵 What sold
+        </Link>
         <Link className="btn-ghost nav-link" href="/">
           ← Back to posting
         </Link>

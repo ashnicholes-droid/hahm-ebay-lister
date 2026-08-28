@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cropRect, type FramingMode } from "@/lib/cameraFraming";
 import { scanQrSku } from "@/lib/qrScan";
-import type { ResizedImage } from "@/lib/resize";
+import { EBAY_DIM, EBAY_QUALITY, type ResizedImage } from "@/lib/resize";
 
 // Rapid multi-shot capture.
 //
@@ -17,6 +17,9 @@ import type { ResizedImage } from "@/lib/resize";
 // register before you shoot, instead of finding out at import time that a label
 // didn't read.
 
+// Three sizes per shot, for the three different jobs — see lib/resize.ts for
+// why they can't be one file. In short: 1024px is what the model reads, 1600px
+// is what earns eBay's buyer zoom, 360px is what the screen shows.
 const FULL_DIM = 1024;
 const FULL_QUALITY = 0.82;
 const THUMB_DIM = 360;
@@ -185,6 +188,14 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     const crop = cropRect(video.videoWidth, video.videoHeight, framingRef.current);
     const full = drawToJpeg(video, crop, FULL_DIM, FULL_QUALITY);
     const thumb = drawToJpeg(video, crop, THUMB_DIM, THUMB_QUALITY);
+    // The camera asks for 1920×1080, so a shot almost always has more pixels
+    // than the 1024px analysis copy keeps. Encoding a second time at 1600 is
+    // what gets those pixels to eBay — drawToJpeg never upscales, so when the
+    // crop is smaller than 1600 this is simply the largest frame available.
+    const ebay =
+      Math.max(crop.sw, crop.sh) > FULL_DIM
+        ? drawToJpeg(video, crop, EBAY_DIM, EBAY_QUALITY)
+        : null;
 
     // Scan the captured frame rather than trusting the live preview: the live
     // pass runs on a throttled tick and may be a beat behind what you shot.
@@ -200,7 +211,13 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
 
     setShots((prev) => [
       ...prev,
-      { mediaType: "image/jpeg", data: full.split(",")[1], previewUrl: thumb, ...(sku ? { sku } : {}) },
+      {
+        mediaType: "image/jpeg",
+        data: full.split(",")[1],
+        previewUrl: thumb,
+        ...(ebay ? { full: ebay.split(",")[1] } : {}),
+        ...(sku ? { sku } : {}),
+      },
     ]);
     setFlash(true);
     setTimeout(() => setFlash(false), 120);

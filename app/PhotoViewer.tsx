@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { publishDataUrl } from "@/lib/photoSizes";
 import type { Photo } from "@/lib/types";
 
 // Seeing a photo as it actually is.
@@ -15,8 +16,10 @@ import type { Photo } from "@/lib/types";
 // This shows the real frame: uncropped, at the resolution that publishes, with
 // the pixel dimensions stated so there is no guessing about what eBay receives.
 
-const dataUrl = (p: Photo) =>
-  p.data.startsWith("data:") ? p.data : `data:${p.mediaType};base64,${p.data}`;
+// Show the copy that PUBLISHES, not the one the model reads. They are different
+// files now — 1600px to eBay, 1024px to the model — and a viewer that exists to
+// answer "what does the buyer get?" has to show the former.
+const dataUrl = publishDataUrl;
 
 export function PhotoViewer({
   photos,

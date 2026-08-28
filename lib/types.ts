@@ -96,7 +96,16 @@ export interface Photo {
   id: string;
   previewUrl: string;
   mediaType: string;
-  data: string; // base64, no prefix
+  data: string; // base64, no prefix — ~1024px, what the model reads
+  /**
+   * ~1600px, what eBay receives. Absent when the original wasn't big enough to
+   * be worth encoding larger, in which case `data` is used instead.
+   *
+   * Separate from `data` because eBay turns on buyer zoom at 1600px while a
+   * 12-photo analysis request at that size would strain the body limit — one
+   * file cannot serve both.
+   */
+  full?: string;
   // Inventory number read from a QR label in this photo during import. Its
   // presence is what makes the photo an item delimiter (see lib/qrGrouping.ts).
   sku?: string;
