@@ -11,8 +11,6 @@ import { ShippingPanel } from "./ShippingPanel";
 import type { ItemGroup, ListingResult, Photo, PublishDebug } from "@/lib/types";
 import { DEFAULT_RULES, recommendedPrice, type PricingRules } from "@/lib/pricingRules";
 import { RULES_CHANGED, loadRules } from "@/lib/pricingSettings";
-import { ebayItemUrl } from "@/lib/ebay/environment";
-import { useEbayEnv } from "./useEbayEnv";
 
 const TITLE_LIMIT = 80;
 
@@ -211,9 +209,6 @@ export function ListingCard({
   onPost,
   onVerify,
 }: ListingCardProps) {
-  // A sandbox listing doesn't exist on www.ebay.com, so "View listing" has to
-  // point at the environment it was actually published to.
-  const ebayEnv = useEbayEnv();
   const [open, setOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [compsOpen, setCompsOpen] = useState(false);
@@ -649,7 +644,7 @@ export function ListingCard({
                     {" "}
                     ·{" "}
                     <a
-                      href={ebayItemUrl(group.listingId, ebayEnv)}
+                      href={`https://www.ebay.com/itm/${group.listingId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

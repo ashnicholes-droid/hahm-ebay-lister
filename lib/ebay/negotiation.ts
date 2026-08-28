@@ -11,9 +11,9 @@
 // rather than being inferred, every bound is checked before the call, and the
 // UI confirms the actual discounted price before anything is sent.
 
-import { EBAY_MARKETPLACE_ID, EBAY_NEGOTIATION_BASE } from "./config";
+import { EBAY_MARKETPLACE_ID } from "./config";
 
-const NEGOTIATION_BASE = EBAY_NEGOTIATION_BASE;
+const NEGOTIATION_BASE = "https://api.ebay.com/sell/negotiation/v1";
 
 /**
  * eBay requires a real discount — Seller Hub enforces 5% as the floor, and

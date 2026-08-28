@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimitRequest } from "@/lib/api-guard";
-import { EBAY_ENV, isEbayConfigured } from "@/lib/ebay/config";
+import { isEbayConfigured } from "@/lib/ebay/config";
 import { EBAY_COOKIE, openConnection } from "@/lib/ebay/session";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +31,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     configured,
     connected: Boolean(conn),
-    // Which eBay this deployment talks to, reported by the server that actually
-    // makes the calls. Deliberately NOT a NEXT_PUBLIC_ variable: two variables
-    // can disagree, and the dangerous direction of that disagreement is a
-    // sandbox deployment showing no sandbox banner.
-    env: EBAY_ENV,
     ...(setupError ? { setupError } : {}),
   });
 }

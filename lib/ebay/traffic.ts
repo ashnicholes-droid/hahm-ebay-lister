@@ -12,9 +12,9 @@
 // the same mistake the publish path used to make with eBay's rejections. eBay's
 // actual reply is now kept and surfaced.
 
-import { EBAY_ANALYTICS_BASE, EBAY_MARKETPLACE_ID } from "./config";
+import { EBAY_MARKETPLACE_ID } from "./config";
 
-const ANALYTICS_BASE = EBAY_ANALYTICS_BASE;
+const ANALYTICS_BASE = "https://api.ebay.com/sell/analytics/v1";
 
 /** How far back the report looks. eBay serves at most 90 days. */
 export const TRAFFIC_WINDOW_DAYS = 30;

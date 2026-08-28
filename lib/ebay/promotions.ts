@@ -20,10 +20,10 @@
 // save 10%" is one promotion that accumulates listing IDs — and a new listing
 // joins the existing one.
 
-import { EBAY_MARKETPLACE_ID, EBAY_MARKETING_BASE } from "./config";
+import { EBAY_MARKETPLACE_ID } from "./config";
 import { describeVolumeDiscount, type VolumeDiscount } from "@/lib/quantity";
 
-const MARKETING_BASE = EBAY_MARKETING_BASE;
+const MARKETING_BASE = "https://api.ebay.com/sell/marketing/v1";
 
 /**
  * eBay's documented ceiling on listing IDs in one INVENTORY_BY_VALUE promotion.

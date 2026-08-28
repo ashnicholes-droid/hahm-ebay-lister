@@ -1148,66 +1148,6 @@ and the posting flow already recovers from them.
 
 ---
 
-## A dev deployment that can't touch your real account
-
-Once there are two deployments, the most expensive mistake available is doing
-something on the wrong one. This app ends listings, relists them, sends offers to
-real buyers, and marks real orders shipped — and a dev deployment looks exactly
-like production, because it *is* the same code on a similar URL.
-
-Set **`EBAY_ENV=sandbox`** and every eBay call goes to eBay's test environment
-instead: OAuth, inventory, publishing, the Trading API, photo upload, Browse
-comps, analytics, marketing, negotiation, orders. Nothing reaches your live
-account, and a purple **SANDBOX** banner sits on every page.
-
-### Setting it up
-
-1. **developer.ebay.com → Application Keys → Sandbox.** You get a separate App
-   ID, Cert ID and a sandbox test-seller account.
-2. **Create a sandbox RuName**, with its accepted URL pointing at your dev
-   deployment's `/api/ebay/callback`.
-3. In your dev Vercel project set `EBAY_ENV=sandbox` **and** put the *sandbox*
-   keyset in `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` / `EBAY_RU_NAME`.
-
-Sandbox credentials are not interchangeable with production ones. If you set
-`EBAY_ENV=sandbox` and leave the production keyset in place, the connect flow
-fails — and the "eBay is not configured" message says so explicitly rather than
-letting you hunt for it.
-
-### Design decisions worth knowing
-
-**Production is the default, deliberately.** A typo (`sandbx`, `SANDBOXES`,
-`true`) resolves to production. Failing the other way would point a *live*
-deployment at the sandbox, where listings appear to publish and then don't exist.
-
-**OAuth scope strings are never rewritten.** They look like URLs —
-`https://api.ebay.com/oauth/api_scope/sell.inventory` — but they are
-identifiers, and eBay expects the `api.ebay.com` spelling in **both**
-environments. Rewriting them gets the entire authorize request rejected with
-`invalid_scope`, a failure this codebase has already been bitten by once. There
-is a test asserting no scope ever contains the word "sandbox".
-
-**The banner is server-rendered, not fetched.** It reads the same config module
-the API routes use, so there is no window in which a sandbox deployment renders
-looking like production, and nothing to fail open if a probe fails. There is
-deliberately **no** `NEXT_PUBLIC_EBAY_ENV`: two variables can disagree, and the
-dangerous direction of that disagreement is a sandbox deployment with no banner.
-The value is stamped once onto `<html data-ebay-env>` for the few client
-components that need it.
-
-**"View listing" links follow the environment too.** A sandbox listing 404s on
-`www.ebay.com`, which reads as a failed publish when the publish actually
-worked.
-
-### What sandbox won't give you
-
-It's a test environment, not a mirror: it has no real market data, so the comps
-lookup returns little or nothing, and its inventory of test items is sparse and
-strange. Use sandbox to exercise the *flow* — connect, publish, revise, end,
-relist, offer, order, tracking — and production to judge prices.
-
----
-
 ## What you'll need (all free to start)
 
 1. **An Anthropic API key** — the AI that writes listings. Get one at
@@ -1334,14 +1274,13 @@ and redeploy with `vercel --prod`.
 | `EBAY_CLIENT_ID` | for posting | eBay App ID |
 | `EBAY_CLIENT_SECRET` | for posting | eBay Cert ID |
 | `EBAY_RU_NAME` | for posting | Your eBay RuName — the short `Name-XXXX-XXXX-XXXX` identifier, **not** the long "Sign In (OAuth)" URL |
-| `EBAY_ENV` | optional | `sandbox` points **every** eBay call at eBay's test environment and shows a permanent SANDBOX banner. Requires your *sandbox* keyset in the three variables above. Anything else, or unset, means production. See *A dev deployment that can't touch your real account*. |
 | `SESSION_SECRET` | for posting | Random string to encrypt your eBay token. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `APP_URL` | for posting | Your deployed URL, e.g. `https://your-app.vercel.app` |
 | `EBAY_LOCATION_POSTAL_CODE` | optional | Fallback ship-from ZIP. Prefer **⚙ Pricing → Ship-from ZIP** in the app, which overrides this and takes effect without a redeploy. |
 | `EBAY_DEFAULT_PACKAGE_WEIGHT_OZ` | optional | Default package weight in ounces (16 = 1 lb) sent to eBay so **calculated-shipping** policies can publish (avoids eBay error 25020). Used when neither the photos nor the seller supplied a weight; overrides the built-in per-item-class defaults (coats, shoes, media, etc.). A weight typed into a listing's shipping panel outranks this. Editable per listing on eBay. |
 | `EBAY_DEFAULT_PACKAGE_LENGTH_IN` / `_WIDTH_IN` / `_HEIGHT_IN` | optional | Default package dimensions in inches. Same precedence as the weight above: per-listing edits win, then these, then the per-item-class defaults. |
 | `EBAY_PHOTO_UPLOAD` | optional | `auto` (default), `media`, or `trading`. Which photo-upload path to use before eBay retires `UploadSiteHostedPictures` on 2026-09-30. |
-| `EBAY_MEDIA_BASE` | optional | Override the Media API host. Defaults to `https://apim.ebay.com/commerce/media/v1_beta` (or the sandbox equivalent when `EBAY_ENV=sandbox`). |
+| `EBAY_MEDIA_BASE` | optional | Override the Media API host. Defaults to `https://apim.ebay.com/commerce/media/v1_beta`. |
 | `EBAY_STRICT_QUALITY` | optional | Set to `1` to **stop** a publish when eBay's item-specifics schema can't be retrieved, instead of publishing with a warning. |
 | `PRICE_MARKUP_PERCENT` | optional | Storewide markup applied to every **auto-suggested** price (the AI estimate and the comps "use median" button) before you review it — for sellers who run a permanent store-level sale that discounts everything. `40` lists at 1.4×. The marked-up price is what you see on the card, and you can still edit it; manually typed prices are never touched. Note the math: +40% then a 40%-off sale nets 84% of the original — to land back on the suggested price after an X%-off sale, set `100·X/(100−X)` (≈`66.7` for 40% off). Unset = no markup. |
 | `EBAY_MARKETPLACE_ID` / `EBAY_CATEGORY_TREE_ID` / `EBAY_CURRENCY` | optional, experimental | Marketplace override, e.g. `EBAY_GB` / `3` / `GBP` for eBay UK — set all three together. Defaults: `EBAY_US` / `0` / `USD`. ⚠️ **The US site is the only tested marketplace.** Known gaps on other sites: photo uploads still use the US site ID, condition-tier and size-standardization handling were validated against eBay US, and the UI shows prices with a `$` symbol. After changing marketplace, regenerate the offline category map: `npx tsx scripts/refresh-category-map.ts`. |
