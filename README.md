@@ -12,6 +12,8 @@ own eBay developer keys, so you're in full control and there's no middleman.
 
 ## What it does
 
+- 🔦 **Scout before you buy** — point it at something in a shop and get the most
+  you should pay, from live comps minus eBay's fee and postage
 - 📸 Upload a whole batch of photos at once
 - 🏷️ **Split items by QR label** — shoot each item, then a QR code holding its
   inventory number, and the batch is cut at the labels with zero guessing
@@ -41,6 +43,92 @@ own eBay developer keys, so you're in full control and there's no middleman.
   without a trip to Seller Hub
 - 📋 Or export everything as CSV / JSON
 - 🔒 Your keys live in environment variables, never in the code
+
+---
+
+## Scout: should you buy it?
+
+Everything else in this app starts once the item is already yours. But the
+decision that decides whether a reselling month is profitable happens earlier and
+faster — standing in a thrift store with a $6 sticker in your hand and about
+fifteen seconds to make up your mind.
+
+**`/scout` runs the app's own maths backwards.** Instead of "what should I charge
+for this?", it answers "what can I pay?"
+
+Photograph the item (or just type what it is) and it comes back with:
+
+> **PAY UP TO $4.52**
+>
+> Based on 14 live listings ($30.00–$70.00 delivered). Planned on the cheap end,
+> since those are asking prices and the cheapest listings are the ones that
+> actually sell.
+
+Type the sticker price and the verdict resolves live:
+
+| Sticker | Verdict | Why |
+|---|---|---|
+| $4 | **BUY** | $12.52 profit · 313% return — clears both your rules |
+| $12 | **YOUR CALL** | $4.52 profit — under your $10 minimum and your 100% return rule |
+| $40 | **SKIP** | You'd lose $23.48. Worth it under $4.52 |
+
+The max-buy price is the useful one, and it's useful *before* you look at the
+sticker: it turns "is this worth $6?" into "check whether it's under $4.52."
+
+### It is allowed to say it doesn't know
+
+Under three comparable listings, **no verdict is offered at all** — not a
+cautious one, none:
+
+> **CAN'T TELL** · Only 2 comparable listings — too few to judge. Trust your own
+> knowledge here.
+
+This is the same rule the Sold screen follows, and it matters more here than
+anywhere else in the app: a confident wrong answer is spent on an item you cannot
+return. The screen also distinguishes "can't tell" from **ADD PRICE**, which
+looks similar and means the opposite — the app knows exactly what the item is
+worth and is waiting on you.
+
+### Asking prices are not sale prices
+
+eBay retired `findCompletedItems` in February 2025 and Marketplace Insights (real
+sold data) is a closed Limited Release, so **active listings are all this app can
+see** — and active listings skew high, because the ones priced right already sold
+and left. Scout corrects for that, but only **once**:
+
+- **Low end** (default) — plans on the 10th percentile of the asking band. The
+  cheapest active listings are the ones about to sell, so the correction is
+  already baked in.
+- **Middle** — plans on the median with a 12% discount applied.
+
+An early build did both, and planned on $26.40 against a band whose cheapest comp
+was $30 — below every listing in the set, turning a good $4 buy into "your call".
+Conservative is the point; impossible isn't.
+
+### Your rules, not mine
+
+Under **⚙ Rules**: minimum profit (default $10), minimum return (default 100% —
+doubling your money), and which end of the band to plan on. They're saved on the
+device. Which rule binds flips with price — on a cheap item the flat minimum is
+the ceiling, on an expensive one the ratio is — which is why there are two.
+
+### Built for an aisle, not a desk
+
+- Two taps to an answer, and the verdict is above the fold on a phone.
+- One round trip: identify, comps and postage come back together, because shop
+  wifi gives you one chance.
+- A **fast model and a narrow prompt** — this doesn't write a description or item
+  specifics, so it answers in seconds rather than the 20–40 the full listing pass
+  takes.
+- Wrong identification? Retype the title and re-check — same fix as the main flow.
+- **Postage is costed first**, before comps, because a cheap bulky item is a skip
+  regardless of what it's worth.
+- A running **trip list** of what you've checked, because sourcing is comparative:
+  the question is rarely "is this good?" and usually "is this better than the
+  other thing I'm holding?"
+
+⚠️ Scout does not create a listing. It's a decision tool — nothing it does
+touches eBay beyond a read-only comp search.
 
 ---
 

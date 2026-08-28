@@ -1076,6 +1076,9 @@ export default function Home() {
         <a className="btn-ghost nav-link" href="/settings">
           ⚙ Pricing
         </a>
+        <a className="btn-ghost nav-link" href="/scout">
+          🔦 Scout
+        </a>
         <a className="btn-ghost nav-link" href="/listings">
           🏷️ My listings
         </a>

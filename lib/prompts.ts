@@ -395,3 +395,54 @@ ${specifics || "  (none)"}
 
 Return the JSON now.`;
 }
+
+// ── Scout: identify fast, so a decision can be made in a shop ──────────────
+//
+// Deliberately NOT the analysis prompt. That one writes a full listing —
+// description, item specifics, condition notes, measurements — and takes 20-40
+// seconds on a good day. Standing in a thrift store, that is the difference
+// between a tool you use and one you don't.
+//
+// Scouting needs exactly three things: enough identification to search comps
+// with, a condition read (it moves the price band a lot), and a size/weight
+// guess (postage decides whether a cheap bulky item is worth carrying to the
+// till at all). Everything else is waste, and asking for it would slow the
+// answer down for no gain.
+
+export const SCOUT_PROMPT = `You are helping a reseller decide whether to BUY an item they are looking at
+in a shop. They have seconds, not minutes. Identify the item as precisely as
+the photos allow.
+
+Return ONLY a JSON object, no other text:
+
+{
+  "title": "specific searchable name, brand first — max 80 chars",
+  "brand": "brand, or \\"\\" if genuinely not visible",
+  "item_type": "what it is, 1-3 words (e.g. \\"mixing bowl\\", \\"leather jacket\\")",
+  "category": "one of: clothing, shoes, electronics, media, kitchenware, tools, toys, jewelry, collectibles, home, sporting, other",
+  "condition": "one of: new, like_new, good, fair, poor",
+  "condition_notes": "visible flaws in a short phrase, or \\"\\" if none seen",
+  "weight_oz": estimated item weight in ounces, a number,
+  "dims_in": { "l": number, "w": number, "h": number },
+  "identified": true or false,
+  "note": "if identified is false, say in one short sentence what you'd need to see"
+}
+
+RULES
+
+Be SPECIFIC in the title. "Pyrex Cinderella 441 Mixing Bowl" is useful;
+"vintage glass bowl" is not — it will match thousands of unrelated listings and
+produce a worthless price estimate. Include model numbers, pattern names and
+sizes when you can read them.
+
+Set "identified": false when you genuinely cannot tell what it is, or can only
+say something generic. A wrong confident answer is far more expensive here than
+an admission — the person may buy something on the strength of it. Do not
+guess a brand from a shape; only from a mark you can actually read.
+
+Judge CONDITION from the photos alone. Retail items in a thrift store are
+rarely "new" — reserve that for unopened packaging or attached tags.
+
+WEIGHT and DIMS are for estimating postage, so err on the generous side. A
+cheap item that ships in a large box is often not worth buying, and
+underestimating hides that.`;

@@ -2694,6 +2694,12 @@ textarea {
   margin-left: 0;
 }
 
+/* Only the FIRST link pushes the group right; the rest sit beside it. Leaving
+   auto on all of them spreads them across the row and forces the overflow. */
+.nav-link + .nav-link {
+  margin-left: 0;
+}
+
 .lm-intro {
   margin: 0 0 1rem;
   font-size: 0.85rem;
@@ -4433,4 +4439,325 @@ textarea {
   .sold-shiprow-do {
     width: 100%;
   }
+}
+
+/* ── Scout ─────────────────────────────────────────────────────────────────
+   Built for one hand in a shop aisle, which is a different problem from every
+   other screen here: bigger targets, a verdict readable at arm's length, and
+   the answer above the fold on a phone. */
+
+.scout-start {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+.scout-shoot {
+  font-size: 1.15rem;
+  padding: 1.1rem;
+}
+
+.scout-typed {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.scout-typed input {
+  flex: 1;
+  padding: 0.6rem 0.7rem;
+}
+
+.scout-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.9rem;
+}
+
+.scout-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  flex: none;
+}
+
+.scout-id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.scout-title {
+  width: 100%;
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.scout-meta {
+  font-size: 0.8rem;
+  color: var(--color-ink-faint);
+}
+
+.scout-recheck {
+  align-self: flex-start;
+  font-size: 0.8rem;
+}
+
+/* The verdict. A word and a colour first, a sentence second. */
+.scout-verdict {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  margin-bottom: 0.9rem;
+}
+
+.scout-verdict p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.scout-chip {
+  flex: none;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.scout-chip.small {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.66rem;
+}
+
+.scout-chip.v-buy {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
+}
+
+.scout-chip.v-marginal {
+  background: var(--color-gold-soft);
+  color: oklch(42% 0.12 75);
+}
+
+.scout-chip.v-skip {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* "Can't tell" is deliberately grey, not amber. It is not a warning about the
+   item — it's an absence of information, and dressing it as a caution would
+   push people away from things that may well be good buys. */
+.scout-chip.v-unknown {
+  background: var(--color-surface-sunk);
+  color: var(--color-ink-soft);
+}
+
+.scout-result.v-buy {
+  border-color: var(--color-accent);
+}
+
+.scout-result.v-skip {
+  border-color: var(--color-danger);
+}
+
+/* The one number worth reading across a room. */
+.scout-maxbuy {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  margin-bottom: 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunk);
+  border: 1px solid var(--color-border);
+}
+
+.scout-maxbuy .k {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-faint);
+}
+
+.scout-maxbuy strong {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  line-height: 1;
+  color: var(--color-accent-deep);
+}
+
+.scout-asking {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.9rem;
+}
+
+.scout-asking > span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+}
+
+.scout-asking-input {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.scout-asking-input span {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--color-accent-deep);
+}
+
+.scout-asking-input input {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-surface);
+}
+
+.scout-maths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 0.7rem;
+}
+
+.scout-basis {
+  margin: 0 0 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+.scout-basis .btn-ghost {
+  padding: 0 0.15rem;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.scout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.scout-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.scout-rules label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.scout-rules label > span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+}
+
+.scout-rules input,
+.scout-rules select {
+  padding: 0.45rem 0.5rem;
+  font-size: 0.95rem;
+}
+
+.scout-rules small {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-ink-faint);
+}
+
+.scout-triprow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.scout-triprow.v-buy {
+  border-left-color: var(--color-accent);
+}
+
+.scout-triprow.v-marginal {
+  border-left-color: var(--color-gold);
+}
+
+.scout-triprow.v-skip {
+  border-left-color: var(--color-danger);
+}
+
+.scout-triprow img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+.scout-row-what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scout-row-what strong {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .scout-maxbuy strong {
+    font-size: 1.8rem;
+  }
+  .scout-maths {
+    gap: 0.5rem 0.9rem;
+  }
+}
+
+/* A rule that isn't currently doing anything — dimmed rather than hidden, so
+   you can see it exists and why it's idle. */
+.scout-rules label.is-inactive {
+  opacity: 0.55;
+}
+
+/* Waiting on the sticker price — the app knows what the item is worth, it just
+   doesn't know what they want for it yet. Distinct from "can't tell", which
+   means the market data isn't there. */
+.scout-chip.v-waiting {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-deep);
 }
