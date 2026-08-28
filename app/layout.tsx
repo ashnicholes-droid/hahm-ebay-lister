@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { EbayEnvBanner } from "./EbayEnvBanner";
+import { EBAY_ENV } from "@/lib/ebay/config";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +23,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    // Stamped on <html> so client components can read the environment without a
+    // round trip — see app/useEbayEnv.ts. One server-rendered value, so nothing
+    // in the browser can hold a different opinion about which eBay this is.
+    <html lang="en" data-ebay-env={EBAY_ENV}>
+      <body>
+        <EbayEnvBanner />
+        {children}
+      </body>
     </html>
   );
 }

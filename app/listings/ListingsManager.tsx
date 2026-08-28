@@ -14,6 +14,8 @@ import {
   offeredPrice,
   validateOffer,
 } from "@/lib/ebay/negotiation";
+import { ebayItemUrl } from "@/lib/ebay/environment";
+import { useEbayEnv } from "@/app/useEbayEnv";
 
 // The seller view: your live eBay listings, with the one edit that Seller Hub
 // won't let you make on them.
@@ -838,6 +840,10 @@ function OfferBanner({
 }
 
 export function ListingsManager() {
+  // Relisting mints a new item id, and the link built from it has to point at
+  // the eBay this deployment publishes to — a sandbox listing 404s on the live
+  // site, which reads as a failed relist rather than a successful one.
+  const ebayEnv = useEbayEnv();
   const [data, setData] = useState<ListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -903,7 +909,7 @@ export function ListingsManager() {
                     ...l,
                     itemId: listingId,
                     price: price ?? l.price,
-                    viewUrl: `https://www.ebay.com/itm/${listingId}`,
+                    viewUrl: ebayItemUrl(listingId, ebayEnv),
                     startTime: new Date().toISOString(),
                     watchCount: 0,
                     views: 0,

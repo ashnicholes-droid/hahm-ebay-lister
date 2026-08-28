@@ -19,14 +19,13 @@
 // when this one doesn't produce a URL — so being wrong costs a wasted request
 // rather than a broken publish, right up until eBay switches the old one off.
 
-/**
- * Media API root. Sandbox swaps in apim.sandbox.ebay.com.
- *
- * Overridable so the host can be corrected without a code change if eBay's docs
- * turn out to disagree with eBay's servers.
- */
-export const EBAY_MEDIA_BASE =
-  process.env.EBAY_MEDIA_BASE || "https://apim.ebay.com/commerce/media/v1_beta";
+// Media API root. Lives in config.ts now, alongside every other eBay host, so
+// EBAY_ENV=sandbox moves this one too — it swaps in apim.sandbox.ebay.com.
+// Still separately overridable via EBAY_MEDIA_BASE, because this is the one
+// endpoint whose exact path eBay's docs and eBay's servers might disagree on.
+import { EBAY_MEDIA_BASE } from "./config";
+
+export { EBAY_MEDIA_BASE };
 
 /** The day UploadSiteHostedPictures stops working. */
 export const TRADING_UPLOAD_SUNSET = "2026-09-30";

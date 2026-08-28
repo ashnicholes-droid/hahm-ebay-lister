@@ -19,11 +19,11 @@
 // postage is calculated at checkout (so unknowable from here) are kept for
 // display but excluded from the band rather than silently counted as free.
 
-import { EBAY_CURRENCY, EBAY_MARKETPLACE_ID } from "./config";
+import { EBAY_CURRENCY, EBAY_MARKETPLACE_ID, EBAY_BROWSE_SEARCH as BROWSE_SEARCH } from "./config";
 import type { ShippingArrangement } from "@/lib/fees";
 import type { Comp, CompsSummary, ListingResult } from "@/lib/types";
 
-const EBAY_BROWSE_SEARCH = "https://api.ebay.com/buy/browse/v1/item_summary/search";
+const EBAY_BROWSE_SEARCH = BROWSE_SEARCH;
 
 export type { Comp, CompsSummary };
 

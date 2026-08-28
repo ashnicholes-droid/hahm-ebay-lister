@@ -4434,3 +4434,44 @@ textarea {
     width: 100%;
   }
 }
+
+/* ── Sandbox banner ────────────────────────────────────────────────────────
+   Shown only when EBAY_ENV=sandbox. Purple because nothing else in this app
+   is purple — the point is to be recognisable in peripheral vision, before
+   you've read a word of it, since the mistake it prevents is acting on the
+   wrong eBay account. Sticky and undismissable: a warning you can scroll past
+   or close is one that's gone on the day it matters. */
+
+.env-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 1rem;
+  background: oklch(45% 0.16 300);
+  color: oklch(98% 0.01 300);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  box-shadow: 0 1px 0 oklch(38% 0.16 300);
+}
+
+.env-banner strong {
+  flex: none;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: oklch(98% 0.01 300);
+  color: oklch(38% 0.16 300);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+
+@media (max-width: 620px) {
+  .env-banner {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.8rem;
+  }
+}

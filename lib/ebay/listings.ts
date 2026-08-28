@@ -12,7 +12,7 @@
 // in a single paged call. Offer ids are then resolved lazily, only for the item
 // actually being edited (see revise.ts).
 
-import { EBAY_TRADING } from "./config";
+import { EBAY_TRADING, EBAY_ITEM_PREFIX } from "./config";
 import type { ShippingArrangement } from "@/lib/fees";
 import { parseNote } from "@/lib/costBasis";
 import { tradingAck, xmlBlocks, xmlNumber, xmlText } from "./xml";
@@ -158,7 +158,7 @@ function parseListing(block: string): SellerListing | null {
     quantitySold: xmlNumber(selling, "QuantitySold"),
     watchCount: xmlNumber(block, "WatchCount"),
     imageUrl: xmlText(block, "GalleryURL") || xmlText(block, "PictureURL"),
-    viewUrl: xmlText(details, "ViewItemURL") || `https://www.ebay.com/itm/${itemId}`,
+    viewUrl: xmlText(details, "ViewItemURL") || `${EBAY_ITEM_PREFIX}${itemId}`,
     startTime: xmlText(details, "StartTime"),
     bestOfferEnabled: xmlText(block, "BestOfferEnabled").toLowerCase() === "true",
     format: xmlText(details, "ListingType") || "FixedPriceItem",
