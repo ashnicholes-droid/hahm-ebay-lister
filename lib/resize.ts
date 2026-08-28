@@ -19,6 +19,7 @@
 // eBay's zoom, so the same capture is encoded twice at different sizes.
 
 import { scanQrSku } from "@/lib/qrScan";
+import { photoIsZoomCapable } from "@/lib/cameraQuality";
 
 const FULL_DIM = 1024;
 const FULL_QUALITY = 0.82;
@@ -40,6 +41,15 @@ export interface ResizedImage {
    * bytes without adding detail.
    */
   full?: string;
+  /**
+   * Whether the SOURCE had enough pixels to earn eBay's buyer zoom.
+   *
+   * Recorded at import because this is the only moment the original is in hand.
+   * False is a real and common answer — an iPhone's in-app camera is capped at
+   * 720p by Safari — and it is the difference between a listing buyers can
+   * magnify and one they can't.
+   */
+  zoomCapable?: boolean;
   // Inventory number decoded from a QR label in this photo, when there is one.
   // Set during import because that's the one moment the full-resolution bitmap
   // is already in hand — re-decoding a thumbnail later loses QR modules.
@@ -61,6 +71,10 @@ export async function resizeImage(
     "height" in bitmap ? bitmap.height : 0
   );
   const ebay = longest > FULL_DIM ? drawToJpeg(bitmap, EBAY_DIM, EBAY_QUALITY) : null;
+  const zoomCapable = photoIsZoomCapable(
+    "width" in bitmap ? bitmap.width : 0,
+    "height" in bitmap ? bitmap.height : 0
+  );
   // Scan before releasing the bitmap. A failed scan is never fatal — the photo
   // is simply treated as an ordinary item photo.
   let sku = "";
@@ -77,6 +91,7 @@ export async function resizeImage(
     data: full.split(",")[1],
     previewUrl: thumb,
     ...(ebay ? { full: ebay.split(",")[1] } : {}),
+    zoomCapable,
     ...(sku ? { sku } : {}),
   };
 }

@@ -4761,3 +4761,63 @@ textarea {
   background: var(--color-accent-soft);
   color: var(--color-accent-deep);
 }
+
+/* ── Photo resolution honesty ──────────────────────────────────────────────
+   eBay turns on buyer zoom at 1600px, and an iPhone's in-app camera is capped
+   at 720p by Safari — so the app can ship a 1600px encoder and still hand eBay
+   a soft photo. These say so at the three moments it matters: while aiming,
+   on the thumbnail, and across the batch. */
+
+.camera-quality {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.7rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--color-gold-soft);
+  color: oklch(35% 0.1 70);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.camera-quality .btn-ghost {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.capture-sharp {
+  margin-top: 0.5rem;
+}
+
+/* A soft photo is dimmed, not flagged red. It's usable — it just won't zoom —
+   and treating it as an error would be a lie in the other direction. */
+.thumb.is-soft img {
+  opacity: 0.82;
+}
+
+.thumb-soft {
+  position: absolute;
+  left: 0.25rem;
+  bottom: 0.25rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: oklch(35% 0.1 70 / 0.88);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.photos-soft {
+  margin: 0.75rem 0;
+}
+
+.photos-soft .btn-ghost {
+  padding: 0 0.25rem;
+  font-size: inherit;
+  text-decoration: underline;
+}

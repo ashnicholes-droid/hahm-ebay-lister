@@ -178,6 +178,11 @@ export default function Home() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const restoredRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // A SECOND file input, carrying capture="environment" so it opens the phone's
+  // own camera rather than the photo library. Separate from inputRef because
+  // that one must keep offering the library — this is the sharp path, not a
+  // replacement for choosing existing photos.
+  const sharpRef = useRef<HTMLInputElement>(null);
 
   // How many of the loaded photos carry a QR inventory label.
   const labelCount = useMemo(() => photos.filter((p) => p.sku).length, [photos]);
@@ -350,6 +355,9 @@ export default function Home() {
       setImporting(null);
     }
   }, []);
+
+  // Photos whose source was too small to earn eBay's buyer zoom.
+  const softCount = photos.filter((p) => p.zoomCapable === false).length;
 
   const removePhoto = (id: string) =>
     setPhotos((prev) => prev.filter((p) => p.id !== id));
@@ -1261,6 +1269,36 @@ export default function Home() {
                 Keeps the camera open so you can tap the shutter over and over,
                 instead of confirming every single photo.
               </span>
+              {/* The sharp path. On an iPhone the in-app camera above is capped
+                  at 720p by Safari — below eBay's 1600px zoom threshold — and
+                  nothing in the constraints changes that. The phone's own
+                  Camera app has no such cap, so this is the button that
+                  actually gets zoomable photos. Slower per shot; worth it for
+                  the hero image of anything whose detail matters. */}
+              <button
+                type="button"
+                className="btn-ghost capture-sharp"
+                onClick={() => sharpRef.current?.click()}
+              >
+                ✨ Sharp shot — use the phone camera
+              </button>
+              <span className="capture-hint">
+                One at a time, at full sensor resolution. The in-app camera is
+                faster; this one is the only way to earn eBay&rsquo;s buyer zoom on a
+                phone.
+              </span>
+              <input
+                ref={sharpRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                hidden
+                onChange={(e) => {
+                  void addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
             </div>
 
             {importing && (
@@ -1270,10 +1308,32 @@ export default function Home() {
               </div>
             )}
 
+            {/* The batch-level answer. A per-photo badge tells you about one
+                photo; someone about to post forty items needs to know how many
+                are a problem without opening each one. */}
+            {softCount > 0 && (
+              <p className="note note-warn photos-soft">
+                <strong>
+                  {softCount} of {photos.length}
+                </strong>{" "}
+                {softCount === 1 ? "photo is" : "photos are"} under 1600px, so buyers won&rsquo;t be
+                able to zoom {softCount === 1 ? "it" : "them"}. Re-shoot with{" "}
+                <button type="button" className="btn-ghost" onClick={() => sharpRef.current?.click()}>
+                  ✨ Sharp shot
+                </button>{" "}
+                if the detail matters.
+              </p>
+            )}
+
             {photos.length > 0 && (
               <div className="thumbs" aria-label="Selected photos">
                 {photos.map((p) => (
-                  <div className={`thumb${p.sku ? " is-marker" : ""}`} key={p.id}>
+                  <div
+                    className={`thumb${p.sku ? " is-marker" : ""}${
+                      p.zoomCapable === false ? " is-soft" : ""
+                    }`}
+                    key={p.id}
+                  >
                     {/* The thumbnail is a square crop, so a portrait photo's
                         top and bottom aren't visible here. Clicking opens the
                         real frame. */}
@@ -1290,6 +1350,14 @@ export default function Home() {
                     {p.sku && (
                       <span className="thumb-sku" title={`Inventory label: ${p.sku}`}>
                         {p.sku}
+                      </span>
+                    )}
+                    {p.zoomCapable === false && (
+                      <span
+                        className="thumb-soft"
+                        title="Under 1600px — buyers won't be able to zoom this one"
+                      >
+                        no zoom
                       </span>
                     )}
                     <button
@@ -1390,6 +1458,13 @@ export default function Home() {
 
       {cameraOpen && (
         <CameraCapture
+          onUseSystemCamera={() => {
+            setCameraOpen(false);
+            // Let the sheet unmount and release the camera before the OS picker
+            // opens — competing for the camera mid-teardown fails silently on
+            // some phones and just does nothing.
+            setTimeout(() => sharpRef.current?.click(), 250);
+          }}
           onCapture={(shots) =>
             setPhotos((prev) =>
               [...prev, ...shots.map((s) => ({ id: newId(), ...s }))].slice(0, MAX_PHOTOS)

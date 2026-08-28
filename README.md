@@ -1218,6 +1218,42 @@ Three consequences worth knowing:
   1600px copies rather than losing the batch — and says so. You keep the hour of
   photographing; photos restored from that save publish at the smaller size.
 
+### ⚠️ On an iPhone, the in-app camera can't reach 1600px
+
+Encoding never invents detail. The 1600px copy is only 1600px if the *source* had
+the pixels — and on an iPhone the in-app shutter doesn't.
+
+**Safari hands `getUserMedia` a 720p track no matter what you ask for.** The
+camera sheet requests 1920×1080 and receives 1280×720. So every photo taken with
+the in-app shutter on an iPhone tops out at 1280px, below eBay's threshold, and
+the zoom fix above is silently defeated on the device you're most likely to be
+holding.
+
+**The phone's own Camera app has no such cap.** A file input hands back the
+full-resolution JPEG — several thousand pixels on the long side. The capability
+was always there; what was missing was any way to know which button gets it.
+
+So the app now measures the stream it actually opened — not the user agent, which
+would be wrong the day Safari lifts the cap — and tells you at the three moments
+it matters:
+
+| Where | What it says |
+| --- | --- |
+| While aiming | `1280px — under the 1600px eBay needs for buyer zoom` · **Use the camera app instead →** |
+| On the thumbnail | a `no zoom` badge, dimmed rather than flagged red — the photo is usable, it just won't magnify |
+| Across the batch | `3 of 12 photos are under 1600px` with a one-tap re-shoot |
+
+**✨ Sharp shot** on the capture screen opens the phone's camera directly, at full
+sensor resolution. It's one photo at a time, so the in-app shutter is still the
+right tool for working through a bin of forty items — but the sharp path is the
+only way to earn buyer zoom from a phone, and it's worth it on the hero image of
+anything whose detail sells it.
+
+**Framing costs resolution too**, which is easy to miss: a square crop of a
+1280×720 stream is 720×720, so Square costs another 44% of the long side. The
+warning is computed from the crop, not the stream, and says "Full frame would
+give more" when that's the fix.
+
 ---
 
 ## Seeing the listing before it goes live
