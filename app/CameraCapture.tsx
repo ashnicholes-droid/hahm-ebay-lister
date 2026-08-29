@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cropRect, type FramingMode } from "@/lib/cameraFraming";
+import { captureQuality } from "@/lib/cameraQuality";
 import { scanQrSku } from "@/lib/qrScan";
 import { EBAY_DIM, EBAY_QUALITY, type ResizedImage } from "@/lib/resize";
 
@@ -32,6 +33,15 @@ const LIVE_SCAN_MS = 700;
 interface CameraCaptureProps {
   onCapture: (shots: ResizedImage[]) => void;
   onClose: () => void;
+  /**
+   * Switch to the phone's own camera app instead.
+   *
+   * Not a preference — an escape hatch. Safari caps this live stream at 720p on
+   * an iPhone, which is below eBay's zoom threshold, and the Camera app has no
+   * such cap. When the stream turns out to be capped, the sheet has to be able
+   * to hand the seller a way out rather than just apologising.
+   */
+  onUseSystemCamera?: () => void;
 }
 
 function drawToJpeg(
@@ -51,7 +61,7 @@ function drawToJpeg(
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
+export function CameraCapture({ onCapture, onClose, onUseSystemCamera }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [shots, setShots] = useState<ResizedImage[]>([]);
@@ -69,6 +79,10 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   // that doesn't match the one taken — the mask has to sit on the letterboxed
   // video rectangle, not the black box around it.
   const [aspect, setAspect] = useState<number | null>(null);
+  // The stream's ACTUAL pixel size. Measured rather than assumed: the sheet
+  // asks for 1920x1080 and Safari hands back 1280x720 on an iPhone regardless,
+  // so the request tells you nothing about what you'll get.
+  const [streamSize, setStreamSize] = useState<{ w: number; h: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageBox, setStageBox] = useState<{ w: number; h: number } | null>(null);
 
@@ -216,6 +230,9 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
         data: full.split(",")[1],
         previewUrl: thumb,
         ...(ebay ? { full: ebay.split(",")[1] } : {}),
+        // Judged from the CROP, not the stream: a square crop of a 1280x720
+        // feed is 720x720, which is further short than the stream suggests.
+        zoomCapable: Math.max(crop.sw, crop.sh) >= EBAY_DIM,
         ...(sku ? { sku } : {}),
       },
     ]);
@@ -229,6 +246,9 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   };
 
   const labelCount = shots.filter((s) => s.sku).length;
+  const quality = streamSize
+    ? captureQuality(streamSize.w, streamSize.h, framing)
+    : null;
 
   return (
     <div className="camera-backdrop" role="dialog" aria-modal="true" aria-label="Camera">
@@ -281,6 +301,7 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
                 const v = e.currentTarget;
                 if (v.videoWidth > 0 && v.videoHeight > 0) {
                   setAspect(v.videoWidth / v.videoHeight);
+                  setStreamSize({ w: v.videoWidth, h: v.videoHeight });
                 }
               }}
             />
@@ -319,6 +340,24 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
                 {s.sku && <span>{s.sku}</span>}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Said here, not in a settings page: this is the moment the shot is
+            about to be taken, and on an iPhone the answer is "not sharp enough
+            for zoom" no matter what the constraints asked for. */}
+        {quality && !quality.zoomCapable && !error && (
+          <div className="camera-quality" role="status">
+            <span>
+              <strong>{quality.longestSide}px</strong> — under the 1600px eBay needs for buyer
+              zoom.
+              {framing === "square" && " Full frame would give more."}
+            </span>
+            {onUseSystemCamera && (
+              <button type="button" className="btn-ghost" onClick={onUseSystemCamera}>
+                Use the camera app instead →
+              </button>
+            )}
           </div>
         )}
 

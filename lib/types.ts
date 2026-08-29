@@ -106,6 +106,8 @@ export interface Photo {
    * file cannot serve both.
    */
   full?: string;
+  /** Whether the source had the pixels to earn eBay's buyer zoom. */
+  zoomCapable?: boolean;
   // Inventory number read from a QR label in this photo during import. Its
   // presence is what makes the photo an item delimiter (see lib/qrGrouping.ts).
   sku?: string;
