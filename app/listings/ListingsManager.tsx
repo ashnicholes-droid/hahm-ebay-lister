@@ -5,6 +5,14 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { netAtPrice, type ShippingArrangement } from "@/lib/fees";
 import { breakEvenPrice, profitAtPrice } from "@/lib/costBasis";
 import { relistAdvice } from "@/lib/relistAdvice";
+import {
+  changesArrangement,
+  describeArrangement,
+  groupPolicies,
+  netUnder,
+  type ShippingPolicyOption,
+} from "@/lib/ebay/shippingPolicy";
+import { finalValueFee } from "@/lib/fees";
 import { ContentEditor, ContentFields, useContent, type Content } from "./ContentEditor";
 import { triageListing, triageSummary, type Triage } from "@/lib/triage";
 import {
@@ -519,6 +527,185 @@ function PriceEditor({
  * It also argues with the seller when it should: a listing with watchers is the
  * wrong thing to relist, and the panel says so rather than quietly obeying.
  */
+/**
+ * The seller's shipping policies, fetched once and shared.
+ *
+ * Module-level rather than per-panel: opening three relist panels should cost
+ * one request, not three, and the answer is identical for all of them.
+ */
+let policyCache: ShippingPolicyOption[] | null = null;
+let policyInFlight: Promise<ShippingPolicyOption[]> | null = null;
+
+function useShippingPolicies(enabled: boolean) {
+  const [policies, setPolicies] = useState<ShippingPolicyOption[] | null>(policyCache);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || policies !== null) return;
+    let live = true;
+    if (!policyInFlight) {
+      policyInFlight = apiGet("/api/ebay/shipping-policies")
+        .then((r) => r.json())
+        .then((d: { ok?: boolean; policies?: ShippingPolicyOption[] }) => {
+          policyCache = d.ok && Array.isArray(d.policies) ? d.policies : [];
+          return policyCache;
+        })
+        .catch(() => {
+          // Cleared so a later panel can retry — a transient failure shouldn't
+          // disable the feature for the rest of the session.
+          policyInFlight = null;
+          return [];
+        });
+    }
+    void policyInFlight.then((p) => {
+      if (!live) return;
+      setPolicies(p);
+      setFailed(p.length === 0);
+    });
+    return () => {
+      live = false;
+    };
+  }, [enabled, policies]);
+
+  return { policies, failed };
+}
+
+/**
+ * Pick which business policy the relisted offer uses for postage.
+ *
+ * Real policies by name, not a free/paid toggle. eBay stores shipping as a
+ * policy the offer points at, so a toggle would be a lie for a seller with
+ * three paid policies at different rates and would fail outright for one with
+ * no free policy at all — this app cannot create a policy on their behalf.
+ *
+ * The net-proceeds line is the reason anyone opens this. Free postage lowers
+ * eBay's fee, because the fee is charged on a smaller order total — but you pay
+ * the label, which almost always costs more than the fee saved. Two numbers
+ * side by side turn that from a hunch into arithmetic.
+ */
+function ShippingChoiceFields({
+  listing,
+  policies,
+  failed,
+  policyId,
+  onChange,
+  price,
+}: {
+  listing: SellerListing;
+  policies: ShippingPolicyOption[] | null;
+  failed: boolean;
+  policyId: string;
+  onChange: (id: string) => void;
+  price: number | null;
+}) {
+  if (policies === null && !failed) {
+    return (
+      <p className="ce-hint">
+        <span className="spinner" aria-hidden="true" /> Reading your shipping policies…
+      </p>
+    );
+  }
+  if (failed || (policies && policies.length === 0)) {
+    return (
+      <p className="lm-relist-warn" role="note">
+        No shipping business policies came back from eBay, so postage can&rsquo;t be changed here.
+        Set them up in eBay → Account → Business policies, or relist without changing shipping.
+      </p>
+    );
+  }
+
+  const list = policies ?? [];
+  const groups = groupPolicies(list);
+  const picked = list.find((p) => p.id === policyId) ?? null;
+  const current = listing.shipping;
+  // Postage the seller would pay. Only known for a flat-rate listing, where
+  // eBay told us the figure; a calculated or free listing doesn't expose it.
+  const postage = listing.shippingCost;
+
+  const noChange =
+    picked !== null && !changesArrangement(current, { kind: "policy", id: picked.id }, list);
+
+  const before =
+    price === null || !Number.isFinite(price)
+      ? null
+      : netUnder(price, current === "free", postage, finalValueFee);
+  const after =
+    picked === null || price === null || !Number.isFinite(price)
+      ? null
+      : netUnder(price, picked.free, postage, finalValueFee);
+
+  return (
+    <div className="lm-shipping">
+      <p className="ce-hint">
+        Now: <strong>{describeArrangement(current, postage, listing.shippingService)}</strong>
+      </p>
+
+      <label className="lm-shipping-pick">
+        Relist under
+        <select value={policyId} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Keep the current policy</option>
+          {groups.free.length > 0 && (
+            <optgroup label="Free to the buyer — you pay postage">
+              {groups.free.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {groups.buyerPays.length > 0 && (
+            <optgroup label="Buyer pays postage">
+              {groups.buyerPays.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </label>
+
+      {/* Ending a listing costs its watchers and its search age. Doing that to
+          land on the postage it already had is a bad trade worth reconsidering. */}
+      {noChange && (
+        <p className="lm-relist-warn" role="note">
+          That policy charges the buyer the same as the current one, so the relist wouldn&rsquo;t
+          change anything about postage.
+        </p>
+      )}
+
+      {after && before && (
+        <div className="lm-shipping-net">
+          <span className="sold-fig">
+            <em>Net now</em>
+            {before.net === null ? <span className="sold-unknown">—</span> : `$${before.net.toFixed(2)}`}
+          </span>
+          <span className="sold-fig">
+            <em>Net after</em>
+            {after.net === null ? <span className="sold-unknown">—</span> : `$${after.net.toFixed(2)}`}
+          </span>
+          {before.net !== null && after.net !== null && (
+            <span
+              className={`sold-fig profit${after.net < before.net ? " loss" : ""}`}
+            >
+              <em>Difference</em>
+              {after.net - before.net < 0 ? "−" : "+"}$
+              {Math.abs(after.net - before.net).toFixed(2)}
+            </span>
+          )}
+        </div>
+      )}
+      {after && <p className="ce-hint">{after.note}</p>}
+      {picked?.free && postage === null && (
+        <p className="ce-hint">
+          This listing has no flat postage figure on eBay, so the cost of the label you&rsquo;d be
+          absorbing can&rsquo;t be estimated here.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function EndRelistPanel({
   listing,
   onEnded,
@@ -526,11 +713,22 @@ function EndRelistPanel({
 }: {
   listing: SellerListing;
   onEnded: (itemId: string) => void;
-  onRelisted: (itemId: string, listingId: string, price: number | null) => void;
+  onRelisted: (
+    itemId: string,
+    listingId: string,
+    price: number | null,
+    /** The arrangement the relist moved to, so the row stops showing the old one. */
+    shipping?: { shipping: ShippingArrangement; shippingCost: number | null }
+  ) => void;
 }) {
   const [mode, setMode] = useState<"relist" | "end">("relist");
   const [price, setPrice] = useState("");
   const [editContent, setEditContent] = useState(false);
+  // "" means keep the offer's current policy — the default, because a relist is
+  // destructive enough without a shipping change nobody asked for.
+  const [policyId, setPolicyId] = useState("");
+  const [editShipping, setEditShipping] = useState(false);
+  const { policies, failed: policiesFailed } = useShippingPolicies(editShipping);
   const { content, loading: contentLoading } = useContent(listing.sku, editContent);
   const [draft, setDraft] = useState<Content | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -568,6 +766,7 @@ function EndRelistPanel({
         action: mode,
         confirm: true,
         ...(mode === "relist" && price.trim() !== "" ? { price: price.trim() } : {}),
+        ...(mode === "relist" && editShipping && policyId ? { fulfillmentPolicyId: policyId } : {}),
         ...edited,
       });
       const data = (await res.json()) as {
@@ -590,7 +789,25 @@ function EndRelistPanel({
       setDone({ listingId: data.listingId, price: data.price });
       setState("done");
       if (mode === "relist" && data.listingId) {
-        onRelisted(listing.itemId, data.listingId, data.price ?? null);
+        // The row's shipping chip is stale the moment a policy changed, and a
+        // confirmation sitting above "Buyer pays $8.10" reads as if the switch
+        // to free postage didn't take. Only sent when a policy was actually
+        // applied and we know what it does.
+        const movedTo =
+          editShipping && policyId && policies
+            ? policies.find((p) => p.id === policyId)
+            : undefined;
+        onRelisted(
+          listing.itemId,
+          data.listingId,
+          data.price ?? null,
+          movedTo
+            ? {
+                shipping: movedTo.free ? "free" : "flat",
+                shippingCost: movedTo.free ? 0 : listing.shippingCost,
+              }
+            : undefined
+        );
       } else {
         onEnded(listing.itemId);
       }
@@ -672,6 +889,29 @@ function EndRelistPanel({
               />
               <small>Leave blank to relist at the same price.</small>
             </label>
+
+            <label className="lm-relist-confirm">
+              <input
+                type="checkbox"
+                checked={editShipping}
+                onChange={(e) => {
+                  setEditShipping(e.target.checked);
+                  if (!e.target.checked) setPolicyId("");
+                }}
+              />
+              Also change how postage is arranged
+            </label>
+
+            {editShipping && (
+              <ShippingChoiceFields
+                listing={listing}
+                policies={policies}
+                failed={policiesFailed}
+                policyId={policyId}
+                onChange={setPolicyId}
+                price={price.trim() !== "" ? Number(price) : listing.price}
+              />
+            )}
 
             <label className="lm-relist-confirm">
               <input
@@ -892,7 +1132,12 @@ export function ListingsManager() {
   // zero. Re-pointing the row rather than mutating it in place keeps the view
   // honest: showing the old watcher and view counts against a listing that just
   // started would misreport it as instantly popular.
-  const applyRelisted = (itemId: string, listingId: string, price: number | null) => {
+  const applyRelisted = (
+    itemId: string,
+    listingId: string,
+    price: number | null,
+    shipping?: { shipping: ShippingArrangement; shippingCost: number | null }
+  ) => {
     setData((d) =>
       d?.listings
         ? {
@@ -910,6 +1155,7 @@ export function ListingsManager() {
                     impressions: 0,
                     quantitySold: 0,
                     offerEligible: false,
+                    ...(shipping ?? {}),
                   }
                 : l
             ),

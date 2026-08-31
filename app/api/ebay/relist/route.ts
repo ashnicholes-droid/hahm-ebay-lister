@@ -16,6 +16,14 @@ interface RelistBody {
   title?: string;
   description?: string;
   /**
+   * Optional new shipping business policy, relist only.
+   *
+   * Shipping on eBay's Inventory API is a policy the offer points at, so
+   * "switch this to free postage" is exactly this one id. Absent means leave
+   * the offer's policy alone.
+   */
+  fulfillmentPolicyId?: string;
+  /**
    * Must be exactly true. Ending a listing can't be undone, so the intent is
    * carried explicitly rather than inferred from the request existing.
    */
@@ -59,6 +67,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Validated for SHAPE only — whether the seller actually owns this policy is
+  // decided by eBay, which rejects an unknown id. Guarding the shape here stops
+  // a malformed value reaching a call made while the listing is already down.
+  const policyId = String(body.fulfillmentPolicyId ?? "").trim();
+  if (policyId && !/^[A-Za-z0-9_:.-]{1,64}$/.test(policyId)) {
+    return NextResponse.json(
+      { ok: false, error: "That shipping policy id doesn't look right." },
+      { status: 400 }
+    );
+  }
+
   let price: number | undefined;
   if (action === "relist" && body.price !== undefined && body.price !== "") {
     const checked = validateRelistPrice(body.price);
@@ -84,10 +103,16 @@ export async function POST(req: NextRequest) {
   try {
     const result =
       action === "relist"
-        ? await relistListing(accessToken, sku, price, {
-            ...(body.title !== undefined ? { title: body.title } : {}),
-            ...(body.description !== undefined ? { description: body.description } : {}),
-          })
+        ? await relistListing(
+            accessToken,
+            sku,
+            price,
+            {
+              ...(body.title !== undefined ? { title: body.title } : {}),
+              ...(body.description !== undefined ? { description: body.description } : {}),
+            },
+            policyId || undefined
+          )
         : await endListing(accessToken, sku);
 
     // A stranded offer means the listing is DOWN and nothing replaced it. Log

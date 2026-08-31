@@ -239,3 +239,111 @@ describe("whether to relist at all", () => {
     expect(relistAdvice({ watchCount: null, quantitySold: null }).discourage).toBe(false);
   });
 });
+
+describe("changing how postage is arranged on the relist", () => {
+  // Shipping on eBay's Inventory API is a business policy the offer points at,
+  // so this is one field on the offer — and the failure mode to guard against
+  // is a change that silently doesn't reach eBay while the UI says it did.
+  const offerRead = () =>
+    json({
+      offerId: "OFF-1",
+      sku: "K75-A",
+      marketplaceId: "EBAY_US",
+      format: "FIXED_PRICE",
+      listingDescription: "Old words",
+      pricingSummary: { price: { value: "45.50", currency: "USD" } },
+      listingPolicies: {
+        fulfillmentPolicyId: "p-flat",
+        paymentPolicyId: "pay-1",
+        returnPolicyId: "ret-1",
+      },
+    });
+
+  it("puts the new policy on the offer before republishing", async () => {
+    const calls = scriptFetch([
+      () => offerLookup(),
+      () => json({ listingId: "110000000001" }), // withdraw
+      () => offerRead(),
+      () => json({}), // PUT offer
+      () => json({ listingId: "220000000002" }), // publish
+    ]);
+    const { relistListing } = await load();
+    const r = await relistListing("token", "K75-A", undefined, {}, "p-free");
+
+    expect(r.ok).toBe(true);
+    expect(r.listingId).toBe("220000000002");
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put?.body.listingPolicies.fulfillmentPolicyId).toBe("p-free");
+  });
+
+  it("keeps the payment and return policies, which share that object", async () => {
+    // Rebuilding listingPolicies instead of spreading it would drop these and
+    // eBay would reject the publish — after the listing is already down.
+    const calls = scriptFetch([
+      () => offerLookup(),
+      () => json({ listingId: "110000000001" }),
+      () => offerRead(),
+      () => json({}),
+      () => json({ listingId: "220000000002" }),
+    ]);
+    const { relistListing } = await load();
+    await relistListing("token", "K75-A", undefined, {}, "p-free");
+
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put?.body.listingPolicies.paymentPolicyId).toBe("pay-1");
+    expect(put?.body.listingPolicies.returnPolicyId).toBe("ret-1");
+  });
+
+  it("changes price and postage in ONE write, so they can't half-apply", async () => {
+    const calls = scriptFetch([
+      () => offerLookup(),
+      () => json({ listingId: "110000000001" }),
+      () => offerRead(),
+      () => json({}),
+      () => json({ listingId: "220000000002" }),
+    ]);
+    const { relistListing } = await load();
+    await relistListing("token", "K75-A", 39.99, {}, "p-free");
+
+    const puts = calls.filter((c) => c.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0].body.pricingSummary.price.value).toBe("39.99");
+    expect(puts[0].body.listingPolicies.fulfillmentPolicyId).toBe("p-free");
+  });
+
+  it("touches the offer at all only when something was actually asked for", async () => {
+    // A relist with no changes should withdraw and republish, nothing else —
+    // every extra write while the listing is down is another way to strand it.
+    const calls = scriptFetch([
+      () => offerLookup(),
+      () => json({ listingId: "110000000001" }),
+      () => json({ listingId: "220000000002" }),
+    ]);
+    const { relistListing } = await load();
+    const r = await relistListing("token", "K75-A");
+
+    expect(r.ok).toBe(true);
+    expect(calls.filter((c) => c.method === "PUT")).toHaveLength(0);
+  });
+
+  it("republishes on the OLD policy rather than leaving the item off the market", async () => {
+    // The listing is already down by the time the policy write is attempted.
+    // A rejected policy must not cost the seller the listing.
+    const calls = scriptFetch([
+      () => offerLookup(),
+      () => json({ listingId: "110000000001" }),
+      () => offerRead(),
+      () => json({ errors: [{ errorId: 25709, message: "Invalid policy." }] }, 400),
+      () => json({ listingId: "220000000002" }),
+    ]);
+    const { relistListing } = await load();
+    const r = await relistListing("token", "K75-A", undefined, {}, "p-bogus");
+
+    expect(r.ok).toBe(true);
+    expect(r.listingId).toBe("220000000002");
+    expect(r.strandedOffer).toBeUndefined();
+    // And it says shipping specifically, so nobody believes the switch took.
+    expect(r.error).toMatch(/previous price, wording and shipping/i);
+    expect(calls.length).toBe(5);
+  });
+});

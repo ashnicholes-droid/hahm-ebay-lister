@@ -150,9 +150,24 @@ export async function writeOfferContent(
   accessToken: string,
   offer: OfferRef,
   content: Partial<ListingContent>,
-  price?: number
+  price?: number,
+  /**
+   * Swap which business policy decides postage.
+   *
+   * Folded into this same read-modify-write rather than given its own PUT: two
+   * writes could half-apply, leaving a listing repriced but still on the old
+   * shipping — and this runs while the listing is ENDED, which is the worst
+   * moment to have to reason about partial state.
+   */
+  fulfillmentPolicyId?: string
 ): Promise<{ ok: boolean; error?: string }> {
-  if (content.description === undefined && price === undefined) return { ok: true };
+  if (
+    content.description === undefined &&
+    price === undefined &&
+    fulfillmentPolicyId === undefined
+  ) {
+    return { ok: true };
+  }
 
   const current = await inventoryRequest(
     accessToken,
@@ -175,6 +190,14 @@ export async function writeOfferContent(
     body.pricingSummary = {
       ...(body.pricingSummary ?? {}),
       price: { value: price.toFixed(2), currency: offer.currency },
+    };
+  }
+  if (fulfillmentPolicyId !== undefined) {
+    // Only this one field is replaced. listingPolicies also carries the payment
+    // and return policies, and rebuilding the object would drop them.
+    body.listingPolicies = {
+      ...(body.listingPolicies ?? {}),
+      fulfillmentPolicyId,
     };
   }
 
