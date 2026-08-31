@@ -552,6 +552,51 @@ item number being ended, the button only arms once you tick a confirmation, and
 the API route refuses any request that doesn't carry that confirmation
 explicitly — so a stray retry or double-click can't end a listing.
 
+#### Changing how postage is arranged
+
+A relist is the natural moment to reconsider free versus buyer-paid postage, so
+**Also change how postage is arranged** sits in the panel next to the price.
+
+On eBay's Inventory API shipping is not a field on a listing — it is a **business
+policy** the offer points at. So this offers your *real* policies, by name,
+grouped by what they cost the buyer:
+
+> Now: **Buyer pays $8.10 (USPS Ground Advantage)**
+>
+> Relist under: `Free shipping` ▾
+>
+> | Net now | Net after | Difference |
+> |---|---|---|
+> | $38.00 | $30.97 | **−$7.03** |
+
+A free/paid toggle would have been a lie for a seller with three paid policies at
+different rates, and would simply fail for one with no free policy at all — this
+app can't create a policy on your behalf. If eBay returns no policies, the panel
+says so and points you at Account → Business policies rather than silently
+offering nothing.
+
+**The net comparison is the point.** Free postage lowers eBay's fee, because the
+fee is charged on a smaller order total — but you pay the label, which almost
+always costs more than the fee saved. Two numbers side by side turn "should I
+offer free shipping?" from a hunch into arithmetic. Where the postage figure
+isn't known (a calculated listing doesn't expose one), it says so rather than
+reporting the fee saving as though it were profit.
+
+Three details that matter:
+
+- **Keeping the current policy is the default.** A relist is destructive enough
+  without a shipping change riding along unasked, and "keep" writes nothing at
+  all — one fewer way for a relist to fail while the listing is down.
+- **It warns when the change is no change.** Moving from one buyer-pays policy to
+  another buyer-pays policy costs you the listing's watchers and search age to
+  arrive at the postage it already had.
+- **Price and postage go in one write.** Two PUTs could half-apply, leaving a
+  listing repriced but still on the old shipping — and this runs while the
+  listing is *ended*, the worst possible moment to reason about partial state. If
+  eBay rejects the policy, the item is republished on the old one rather than
+  left off the market, and the message names shipping specifically so nobody
+  believes the switch took.
+
 **The failure that matters** is ending a listing and then failing to republish
 it, which leaves the item for sale nowhere. That case is never folded into a
 generic error: the row says the listing is down in plain words, gives you the

@@ -110,15 +110,20 @@ async function applyChanges(
   offer: OfferRef,
   sku: string,
   price: number | undefined,
-  content: Partial<ListingContent>
+  content: Partial<ListingContent>,
+  fulfillmentPolicyId?: string
 ): Promise<{ ok: boolean; error?: string }> {
   // Title lives only on the inventory item, so it needs its own write.
   if (content.title !== undefined || content.description !== undefined) {
     const item = await writeInventoryContent(accessToken, sku, content);
     if (!item.ok) return item;
   }
-  if (content.description !== undefined || price !== undefined) {
-    return await writeOfferContent(accessToken, offer, content, price);
+  if (
+    content.description !== undefined ||
+    price !== undefined ||
+    fulfillmentPolicyId !== undefined
+  ) {
+    return await writeOfferContent(accessToken, offer, content, price, fulfillmentPolicyId);
   }
   return { ok: true };
 }
@@ -139,7 +144,17 @@ export async function relistListing(
   accessToken: string,
   sku: string,
   newPrice?: number,
-  content: Partial<ListingContent> = {}
+  content: Partial<ListingContent> = {},
+  /**
+   * Swap the business policy that decides postage.
+   *
+   * Shipping is not a listing field on eBay's Inventory API — it is a policy
+   * the offer points at — so changing free-vs-buyer-paid is exactly this one
+   * id. Undefined leaves the offer's policy untouched, which is the default:
+   * a relist is destructive enough without a shipping change riding along
+   * unasked.
+   */
+  fulfillmentPolicyId?: string
 ): Promise<RelistResult> {
   // Reject a bad title before anything is ended. Discovering an over-long
   // title after the listing is down is the worst possible moment for it.
@@ -164,9 +179,20 @@ export async function relistListing(
   }
   const endedListingId = String(ended.json?.listingId ?? offer.listingId ?? "");
 
-  const hasChanges = newPrice !== undefined || content.title !== undefined || content.description !== undefined;
+  const hasChanges =
+    newPrice !== undefined ||
+    content.title !== undefined ||
+    content.description !== undefined ||
+    fulfillmentPolicyId !== undefined;
   if (hasChanges) {
-    const priced = await applyChanges(accessToken, offer, sku, newPrice, content);
+    const priced = await applyChanges(
+      accessToken,
+      offer,
+      sku,
+      newPrice,
+      content,
+      fulfillmentPolicyId
+    );
     if (!priced.ok) {
       // The old listing is already down. Publishing with the OLD content is far
       // better than leaving the item off the market over a rejected edit, so
@@ -179,7 +205,14 @@ export async function relistListing(
             endedListingId,
             listingId: republished.listingId,
             price: offer.price,
-            error: `${priced.error} It was relisted with the previous price and wording instead.`,
+            // Name shipping explicitly when it was part of what was asked for.
+            // "Relisted with the previous settings" would leave a seller who
+            // switched to free postage believing it took.
+            error: `${priced.error} It was relisted with the previous ${
+              fulfillmentPolicyId !== undefined
+                ? "price, wording and shipping"
+                : "price and wording"
+            } instead.`,
           }
         : {
             ok: false,
