@@ -575,6 +575,48 @@ app can't create a policy on your behalf. If eBay returns no policies, the panel
 says so and points you at Account → Business policies rather than silently
 offering nothing.
 
+#### One flat-rate policy, any price
+
+You do **not** need a business policy per shipping price. eBay's offers accept
+`shippingCostOverrides`, which changes the cost of a service in the policy **for
+that listing only** and leaves the policy itself alone. So the setup is one
+flat-rate policy, and a dollar amount per listing:
+
+> Relist under: `Standard Flat — flat $6.50` ▾
+>
+> Charge the buyer **$ 12.50**
+> *For this listing only — your "Standard Flat" policy is untouched. Leave blank
+> to use its own rate of $6.50.*
+>
+> | Net now | Net after | Difference |
+> |---|---|---|
+> | $121.04 | $119.39 | **−$1.65** |
+
+That $1.65 is eBay's fee on the $12.50 postage — the real cost of the change,
+which is the sort of thing that's invisible until something shows it to you.
+
+The same figure is now sent when you **publish** a new listing. The shipping
+panel has always had a "fixed shipping cost" field, but until now it was
+**display-only** — it fed the margin arithmetic on screen and never reached eBay,
+so it looked like it set the buyer's shipping price and didn't.
+
+Two things it can't do, both reported rather than silently ignored:
+
+- **It can't make a calculated policy flat.** The override changes an *amount*,
+  not how the amount is arrived at. On a calculated policy eBay quotes from the
+  buyer's address and the figure is ignored — so the field is hidden, with the
+  reason given, rather than accepted and dropped.
+- **It can't charge for free shipping.** Overriding a free service with a charge
+  contradicts the arrangement you picked.
+
+Policies are also now labelled by **what they do**, not just what you named them:
+`Standard Flat — flat $6.50`, `1 Day Handling — calculated at checkout`. Sellers
+name policies after handling time far more often than after cost, which made the
+old list of bare names unusable for choosing between fixed and calculated
+postage. They're grouped three ways now — free, flat, calculated — and the
+"wouldn't change anything" warning compares all three, where it used to compare
+only free-vs-paid and so called a calculated→flat switch "no change".
+
 **The net comparison is the point.** Free postage lowers eBay's fee, because the
 fee is charged on a smaller order total — but you pay the label, which almost
 always costs more than the fee saved. Two numbers side by side turn "should I

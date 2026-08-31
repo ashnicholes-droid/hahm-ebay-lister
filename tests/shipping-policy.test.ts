@@ -19,22 +19,24 @@ import { finalValueFee } from "@/lib/fees";
 // outright for one with no free policy at all.
 
 const POLICIES: ShippingPolicyOption[] = [
-  { id: "p-free", name: "Free shipping", free: true },
-  { id: "p-flat", name: "Flat $6.50", free: false },
-  { id: "p-calc", name: "Calculated", free: false },
+  { id: "p-free", name: "Free shipping", free: true, costType: "flat", flatCost: 0, domesticPriority: 1 },
+  { id: "p-flat", name: "Flat $6.50", free: false, costType: "flat", flatCost: 6.5, domesticPriority: 1 },
+  { id: "p-calc", name: "Calculated", free: false, costType: "calculated", flatCost: null, domesticPriority: 1 },
 ];
 
 describe("presenting the seller's policies", () => {
-  it("splits them the way a seller thinks about them", () => {
+  it("splits them three ways, which is what a seller is choosing between", () => {
     const g = groupPolicies(POLICIES);
     expect(g.free.map((p) => p.id)).toEqual(["p-free"]);
-    expect(g.buyerPays.map((p) => p.id)).toEqual(["p-flat", "p-calc"]);
+    expect(g.flat.map((p) => p.id)).toEqual(["p-flat"]);
+    expect(g.calculated.map((p) => p.id)).toEqual(["p-calc"]);
   });
 
   it("copes with an account that has only one kind", () => {
     const g = groupPolicies([POLICIES[1]]);
     expect(g.free).toEqual([]);
-    expect(g.buyerPays).toHaveLength(1);
+    expect(g.flat).toHaveLength(1);
+    expect(g.calculated).toEqual([]);
   });
 });
 
@@ -72,8 +74,15 @@ describe("whether the change is worth ending a listing for", () => {
     expect(changesArrangement("flat", { kind: "policy", id: "p-free" }, POLICIES)).toBe(true);
   });
 
-  it("treats flat and calculated as the same for the buyer-pays question", () => {
-    expect(changesArrangement("flat", { kind: "policy", id: "p-calc" }, POLICIES)).toBe(false);
+  it("spots a calculated listing moving to a flat rate — the whole point", () => {
+    // The earlier version compared free-vs-paid only and called this "no
+    // change", which is the single most common reason to open this panel.
+    expect(changesArrangement("calculated", { kind: "policy", id: "p-flat" }, POLICIES)).toBe(true);
+    expect(changesArrangement("flat", { kind: "policy", id: "p-calc" }, POLICIES)).toBe(true);
+  });
+
+  it("still says nothing changes between two policies of the same kind", () => {
+    expect(changesArrangement("flat", { kind: "policy", id: "p-flat" }, POLICIES)).toBe(false);
   });
 
   it("assumes a change when the current arrangement is unknown", () => {

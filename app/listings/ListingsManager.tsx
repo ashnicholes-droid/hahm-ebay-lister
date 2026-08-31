@@ -10,6 +10,8 @@ import {
   describeArrangement,
   groupPolicies,
   netUnder,
+  policyLabel,
+  policyKind,
   type ShippingPolicyOption,
 } from "@/lib/ebay/shippingPolicy";
 import { finalValueFee } from "@/lib/fees";
@@ -589,6 +591,8 @@ function ShippingChoiceFields({
   failed,
   policyId,
   onChange,
+  fixedPostage,
+  onFixedPostage,
   price,
 }: {
   listing: SellerListing;
@@ -596,6 +600,8 @@ function ShippingChoiceFields({
   failed: boolean;
   policyId: string;
   onChange: (id: string) => void;
+  fixedPostage: string;
+  onFixedPostage: (v: string) => void;
   price: number | null;
 }) {
   if (policies === null && !failed) {
@@ -618,26 +624,36 @@ function ShippingChoiceFields({
   const groups = groupPolicies(list);
   const picked = list.find((p) => p.id === policyId) ?? null;
   const current = listing.shipping;
-  // Postage the seller would pay. Only known for a flat-rate listing, where
-  // eBay told us the figure; a calculated or free listing doesn't expose it.
-  const postage = listing.shippingCost;
+  // Two DIFFERENT postage figures, and conflating them makes the comparison
+  // meaningless: "now" is what the listing charges today, "after" is what the
+  // seller just typed. Using the typed figure on both sides reported a $12.50
+  // postage change as "Difference +$0.00" — the change looked free when it
+  // actually costs the eBay fee on that postage.
+  const typed = fixedPostage.trim() === "" ? null : Number(fixedPostage);
+  const typedOk = typed !== null && Number.isFinite(typed) && typed >= 0;
+  const postageNow = listing.shippingCost;
+  const postageAfter = typedOk ? typed : listing.shippingCost;
 
+  // Setting a different amount IS a change, even on the same kind of policy —
+  // so the "nothing would change" warning has to stand down when one is typed.
   const noChange =
-    picked !== null && !changesArrangement(current, { kind: "policy", id: picked.id }, list);
+    picked !== null &&
+    fixedPostage.trim() === "" &&
+    !changesArrangement(current, { kind: "policy", id: picked.id }, list);
 
   const before =
     price === null || !Number.isFinite(price)
       ? null
-      : netUnder(price, current === "free", postage, finalValueFee);
+      : netUnder(price, current === "free", postageNow, finalValueFee);
   const after =
     picked === null || price === null || !Number.isFinite(price)
       ? null
-      : netUnder(price, picked.free, postage, finalValueFee);
+      : netUnder(price, picked.free, postageAfter, finalValueFee);
 
   return (
     <div className="lm-shipping">
       <p className="ce-hint">
-        Now: <strong>{describeArrangement(current, postage, listing.shippingService)}</strong>
+        Now: <strong>{describeArrangement(current, postageNow, listing.shippingService)}</strong>
       </p>
 
       <label className="lm-shipping-pick">
@@ -648,22 +664,66 @@ function ShippingChoiceFields({
             <optgroup label="Free to the buyer — you pay postage">
               {groups.free.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {policyLabel(p)}
                 </option>
               ))}
             </optgroup>
           )}
-          {groups.buyerPays.length > 0 && (
-            <optgroup label="Buyer pays postage">
-              {groups.buyerPays.map((p) => (
+          {groups.flat.length > 0 && (
+            <optgroup label="Buyer pays a fixed amount">
+              {groups.flat.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {policyLabel(p)}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {groups.calculated.length > 0 && (
+            <optgroup label="Buyer pays a calculated rate">
+              {groups.calculated.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {policyLabel(p)}
                 </option>
               ))}
             </optgroup>
           )}
         </select>
       </label>
+
+      {/* The field that means one flat-rate policy covers every price point.
+          eBay has no per-listing shipping price of its own — this is sent as a
+          shippingCostOverrides on the offer, which changes the policy's amount
+          for THIS listing only and leaves the policy alone. */}
+      {picked !== null && !picked.free && picked.costType === "flat" && (
+        <label className="lm-shipping-pick">
+          Charge the buyer
+          <span className="lm-shipping-amount">
+            <span aria-hidden="true">$</span>
+            <input
+              type="number"
+              min="0"
+              max="1000"
+              step="0.01"
+              inputMode="decimal"
+              placeholder={picked.flatCost === null ? "" : picked.flatCost.toFixed(2)}
+              value={fixedPostage}
+              onChange={(e) => onFixedPostage(e.target.value)}
+            />
+          </span>
+          <small>
+            For this listing only — your &ldquo;{picked.name}&rdquo; policy is untouched. Leave
+            blank to use its own rate
+            {picked.flatCost === null ? "" : ` of $${picked.flatCost.toFixed(2)}`}.
+          </small>
+        </label>
+      )}
+
+      {picked !== null && picked.costType === "calculated" && fixedPostage.trim() !== "" && (
+        <p className="lm-relist-warn" role="note">
+          A fixed amount can&rsquo;t be applied to a calculated policy — eBay quotes that from the
+          buyer&rsquo;s address. Pick a flat-rate policy to set your own figure.
+        </p>
+      )}
 
       {/* Ending a listing costs its watchers and its search age. Doing that to
           land on the postage it already had is a bad trade worth reconsidering. */}
@@ -696,7 +756,7 @@ function ShippingChoiceFields({
         </div>
       )}
       {after && <p className="ce-hint">{after.note}</p>}
-      {picked?.free && postage === null && (
+      {picked?.free && postageAfter === null && (
         <p className="ce-hint">
           This listing has no flat postage figure on eBay, so the cost of the label you&rsquo;d be
           absorbing can&rsquo;t be estimated here.
@@ -727,6 +787,9 @@ function EndRelistPanel({
   // "" means keep the offer's current policy — the default, because a relist is
   // destructive enough without a shipping change nobody asked for.
   const [policyId, setPolicyId] = useState("");
+  // The dollar amount the buyer is charged for this one listing. Blank means
+  // "use the policy's own rate".
+  const [fixedPostage, setFixedPostage] = useState("");
   const [editShipping, setEditShipping] = useState(false);
   const { policies, failed: policiesFailed } = useShippingPolicies(editShipping);
   const { content, loading: contentLoading } = useContent(listing.sku, editContent);
@@ -767,6 +830,9 @@ function EndRelistPanel({
         confirm: true,
         ...(mode === "relist" && price.trim() !== "" ? { price: price.trim() } : {}),
         ...(mode === "relist" && editShipping && policyId ? { fulfillmentPolicyId: policyId } : {}),
+        ...(mode === "relist" && editShipping && fixedPostage.trim() !== ""
+          ? { fixedPostage: fixedPostage.trim() }
+          : {}),
         ...edited,
       });
       const data = (await res.json()) as {
@@ -896,7 +962,10 @@ function EndRelistPanel({
                 checked={editShipping}
                 onChange={(e) => {
                   setEditShipping(e.target.checked);
-                  if (!e.target.checked) setPolicyId("");
+                  if (!e.target.checked) {
+                    setPolicyId("");
+                    setFixedPostage("");
+                  }
                 }}
               />
               Also change how postage is arranged
@@ -909,6 +978,8 @@ function EndRelistPanel({
                 failed={policiesFailed}
                 policyId={policyId}
                 onChange={setPolicyId}
+                fixedPostage={fixedPostage}
+                onFixedPostage={setFixedPostage}
                 price={price.trim() !== "" ? Number(price) : listing.price}
               />
             )}

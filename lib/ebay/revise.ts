@@ -31,6 +31,8 @@ export interface OfferRef {
   bestOfferEnabled: boolean;
   autoAcceptPrice: number | null;
   autoDeclinePrice: number | null;
+  /** Which business policy currently decides this listing's postage. */
+  fulfillmentPolicyId: string;
 }
 
 export interface ReviseResult {
@@ -104,6 +106,7 @@ export function toOfferRef(o: any): OfferRef {
     bestOfferEnabled: terms?.bestOfferEnabled === true,
     autoAcceptPrice: num(terms?.autoAcceptPrice?.value),
     autoDeclinePrice: num(terms?.autoDeclinePrice?.value),
+    fulfillmentPolicyId: String(o?.listingPolicies?.fulfillmentPolicyId ?? ""),
   };
 }
 

@@ -24,6 +24,14 @@ interface RelistBody {
    */
   fulfillmentPolicyId?: string;
   /**
+   * Fixed postage for this listing, in dollars, relist only.
+   *
+   * Sent to eBay as a per-offer shippingCostOverrides, which is what lets one
+   * flat-rate policy serve every price point. "" clears it back to the policy's
+   * own rate; absent leaves whatever the offer had.
+   */
+  fixedPostage?: number | string;
+  /**
    * Must be exactly true. Ending a listing can't be undone, so the intent is
    * carried explicitly rather than inferred from the request existing.
    */
@@ -78,6 +86,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let fixedPostage: number | null | undefined;
+  if (action === "relist" && body.fixedPostage !== undefined) {
+    if (body.fixedPostage === "") {
+      fixedPostage = null; // back to the policy's own rate
+    } else {
+      const n = typeof body.fixedPostage === "number" ? body.fixedPostage : parseFloat(String(body.fixedPostage));
+      if (!Number.isFinite(n) || n < 0 || n > 1000) {
+        return NextResponse.json(
+          { ok: false, error: "That postage amount doesn't look right." },
+          { status: 400 }
+        );
+      }
+      fixedPostage = Math.round(n * 100) / 100;
+    }
+  }
+
   let price: number | undefined;
   if (action === "relist" && body.price !== undefined && body.price !== "") {
     const checked = validateRelistPrice(body.price);
@@ -111,7 +135,8 @@ export async function POST(req: NextRequest) {
               ...(body.title !== undefined ? { title: body.title } : {}),
               ...(body.description !== undefined ? { description: body.description } : {}),
             },
-            policyId || undefined
+            policyId || undefined,
+            fixedPostage
           )
         : await endListing(accessToken, sku);
 

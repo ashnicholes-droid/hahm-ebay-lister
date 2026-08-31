@@ -13,7 +13,11 @@ import {
   ebayPackageFromEstimate,
   estimateShipping,
 } from "@/lib/shipping/estimate";
-import { isFreeShippingPolicy, selectFulfillmentPolicy } from "@/lib/ebay/publish";
+import { isFreeShippingPolicy, selectFulfillmentPolicy,
+  buildShippingOverride,
+  describePolicyCost,
+  positiveMoney,
+} from "@/lib/ebay/publish";
 import { defaultPackageWeightAndSize } from "@/lib/ebay/publish";
 import type { AccountSetup } from "@/lib/ebay/publish";
 import type { ListingResult } from "@/lib/types";
@@ -303,9 +307,17 @@ describe("classifying a fulfillment policy as free", () => {
 });
 
 describe("selecting the policy a listing asked for", () => {
+  // Only id/name/free matter to policy SELECTION; the cost fields exist for
+  // labelling and for aiming a per-listing override, so they're filled in here
+  // rather than made part of every case.
   const setup = (policies: { id: string; name: string; free: boolean }[]): AccountSetup => ({
     fulfillmentPolicyId: policies[0]?.id ?? "",
-    fulfillmentPolicies: policies,
+    fulfillmentPolicies: policies.map((p) => ({
+      ...p,
+      costType: "unknown" as const,
+      flatCost: null,
+      domesticPriority: null,
+    })),
     paymentPolicyId: "pay",
     returnPolicyId: "ret",
     locationKey: "loc",
@@ -931,5 +943,143 @@ describe("weight bands — why a size change can move no money", () => {
     const e = estimateShipping({ itemOz: 40, itemDims: { l: 8, w: 5, h: 1 }, category: "hard_goods" });
     const flat = e.options.find((o) => o.flatRate);
     if (flat) expect(flat.band).toBeNull();
+  });
+});
+
+describe("reading what a policy actually does", () => {
+  // The field that answers "flat or calculated" was being thrown away, leaving
+  // a dropdown of names like "1 Day Handling" with no way to tell which one
+  // charges a fixed amount. That was the whole complaint.
+  const policyWith = (over: Record<string, unknown>) => ({
+    shippingOptions: [
+      {
+        optionType: "DOMESTIC",
+        costType: "FLAT_RATE",
+        shippingServices: [{ sortOrderId: 1, shippingCost: { value: "6.50", currency: "USD" } }],
+        ...over,
+      },
+    ],
+  });
+
+  it("reads a flat-rate policy's amount and its service priority", () => {
+    const d = describePolicyCost(policyWith({}));
+    expect(d).toEqual({ costType: "flat", flatCost: 6.5, domesticPriority: 1 });
+  });
+
+  it("reports a calculated policy without inventing a price", () => {
+    // A calculated policy quotes at checkout. Reporting its placeholder as the
+    // buyer's cost would be a lie the seller would price against.
+    const d = describePolicyCost(policyWith({ costType: "CALCULATED" }));
+    expect(d.costType).toBe("calculated");
+    expect(d.flatCost).toBeNull();
+  });
+
+  it("assumes priority 1 when eBay omits the sort order", () => {
+    const d = describePolicyCost(policyWith({ shippingServices: [{ shippingCost: { value: "5" } }] }));
+    expect(d.domesticPriority).toBe(1);
+  });
+
+  it("ignores the international option and reads the domestic one", () => {
+    const d = describePolicyCost({
+      shippingOptions: [
+        { optionType: "INTERNATIONAL", costType: "CALCULATED", shippingServices: [] },
+        {
+          optionType: "DOMESTIC",
+          costType: "FLAT_RATE",
+          shippingServices: [{ sortOrderId: 2, shippingCost: { value: "9.99" } }],
+        },
+      ],
+    });
+    expect(d).toEqual({ costType: "flat", flatCost: 9.99, domesticPriority: 2 });
+  });
+
+  it("says unknown rather than guessing on a policy with no options", () => {
+    expect(describePolicyCost({}).costType).toBe("unknown");
+  });
+});
+
+describe("fixing the postage a buyer is charged, per listing", () => {
+  // eBay has no per-listing shipping price. shippingCostOverrides changes the
+  // cost of a service in the policy FOR THIS OFFER ONLY, which is what makes
+  // one flat-rate policy enough for every price point instead of one per price.
+  const flat = {
+    id: "p-flat",
+    name: "Flat rate",
+    free: false,
+    costType: "flat" as const,
+    flatCost: 6.5,
+    domesticPriority: 1,
+  };
+
+  it("builds the override eBay expects", () => {
+    const r = buildShippingOverride(flat, 12.5, "USD");
+    expect(r.overrides).toEqual([
+      {
+        shippingServiceType: "DOMESTIC",
+        priority: 1,
+        shippingCost: { value: "12.50", currency: "USD" },
+      },
+    ]);
+    expect(r.warning).toBeUndefined();
+  });
+
+  it("sends nothing when no figure was set", () => {
+    expect(buildShippingOverride(flat, null, "USD").overrides).toBeNull();
+  });
+
+  it("accepts zero, which is a real choice", () => {
+    expect(buildShippingOverride(flat, 0, "USD").overrides?.[0].shippingCost.value).toBe("0.00");
+  });
+
+  it("refuses a calculated policy, and says why", () => {
+    // The override changes an AMOUNT; it can't change how the amount is arrived
+    // at. Sending it anyway would leave a seller believing they'd fixed the
+    // postage while eBay quotes from the buyer's address.
+    const calc = { ...flat, costType: "calculated" as const, flatCost: null };
+    const r = buildShippingOverride(calc, 12.5, "USD");
+    expect(r.overrides).toBeNull();
+    expect(r.warning).toMatch(/calculated rate/i);
+    expect(r.warning).toMatch(/FLAT-RATE/);
+  });
+
+  it("refuses a free policy rather than contradicting it", () => {
+    const r = buildShippingOverride({ ...flat, free: true }, 12.5, "USD");
+    expect(r.overrides).toBeNull();
+    expect(r.warning).toMatch(/free-shipping policy/i);
+  });
+
+  it("refuses when there is no domestic service to attach to", () => {
+    const r = buildShippingOverride({ ...flat, domesticPriority: null }, 12.5, "USD");
+    expect(r.overrides).toBeNull();
+    expect(r.warning).toMatch(/no domestic shipping service/i);
+  });
+
+  it("says something when the policy couldn't be read at all", () => {
+    // Silence here would look exactly like success.
+    const r = buildShippingOverride(undefined, 12.5, "USD");
+    expect(r.overrides).toBeNull();
+    expect(r.warning).toMatch(/couldn't be read/i);
+  });
+
+  it("ignores a nonsense figure instead of sending it", () => {
+    for (const bad of [-1, NaN, Infinity]) {
+      expect(buildShippingOverride(flat, bad, "USD").overrides).toBeNull();
+    }
+  });
+});
+
+describe("reading a typed money value", () => {
+  it("accepts what a number input actually gives you", () => {
+    expect(positiveMoney("12.50")).toBe(12.5);
+    expect(positiveMoney(12.499)).toBe(12.5);
+    expect(positiveMoney(0)).toBe(0);
+  });
+
+  it("treats blank and junk as 'not set', not as zero", () => {
+    // Zero is a real postage choice; blank is the absence of one, and folding
+    // them together would silently charge buyers nothing.
+    for (const v of ["", null, undefined, "abc", -5]) {
+      expect(positiveMoney(v)).toBeNull();
+    }
   });
 });

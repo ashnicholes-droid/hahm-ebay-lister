@@ -4863,3 +4863,35 @@ textarea {
   padding-top: 0.5rem;
   border-top: 1px solid var(--color-border);
 }
+
+/* The per-listing postage amount. eBay has no per-listing shipping price of its
+   own, so this is sent as an override on the offer — which is what lets one
+   flat-rate policy serve every price point. */
+.lm-shipping-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.lm-shipping-amount span {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--color-accent-deep);
+}
+
+.lm-shipping-amount input {
+  width: 7rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: 0.3rem 0.45rem;
+  background: var(--color-surface);
+}
+
+.lm-shipping-pick small {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-ink-faint);
+}
