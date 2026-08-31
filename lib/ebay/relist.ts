@@ -42,6 +42,8 @@ import {
   writeOfferContent,
   type ListingContent,
 } from "./content";
+import { buildShippingOverride, fetchAccountSetup } from "./publish";
+import { EBAY_CURRENCY } from "./config";
 
 const NOT_MANAGED =
   "This listing isn't managed by the Inventory API, so it can't be ended here. " +
@@ -111,7 +113,8 @@ async function applyChanges(
   sku: string,
   price: number | undefined,
   content: Partial<ListingContent>,
-  fulfillmentPolicyId?: string
+  fulfillmentPolicyId?: string,
+  shippingCostOverrides?: unknown[] | null
 ): Promise<{ ok: boolean; error?: string }> {
   // Title lives only on the inventory item, so it needs its own write.
   if (content.title !== undefined || content.description !== undefined) {
@@ -121,9 +124,17 @@ async function applyChanges(
   if (
     content.description !== undefined ||
     price !== undefined ||
-    fulfillmentPolicyId !== undefined
+    fulfillmentPolicyId !== undefined ||
+    shippingCostOverrides !== undefined
   ) {
-    return await writeOfferContent(accessToken, offer, content, price, fulfillmentPolicyId);
+    return await writeOfferContent(
+      accessToken,
+      offer,
+      content,
+      price,
+      fulfillmentPolicyId,
+      shippingCostOverrides
+    );
   }
   return { ok: true };
 }
@@ -154,7 +165,14 @@ export async function relistListing(
    * a relist is destructive enough without a shipping change riding along
    * unasked.
    */
-  fulfillmentPolicyId?: string
+  fulfillmentPolicyId?: string,
+  /**
+   * Fixed postage for this listing, in dollars.
+   *
+   * null clears any existing override — going back to the policy's own rate —
+   * and undefined leaves whatever the offer already had.
+   */
+  fixedPostage?: number | null
 ): Promise<RelistResult> {
   // Reject a bad title before anything is ended. Discovering an over-long
   // title after the listing is down is the worst possible moment for it.
@@ -183,7 +201,35 @@ export async function relistListing(
     newPrice !== undefined ||
     content.title !== undefined ||
     content.description !== undefined ||
-    fulfillmentPolicyId !== undefined;
+    fulfillmentPolicyId !== undefined ||
+    fixedPostage !== undefined;
+  // Resolve the fixed-postage figure into eBay's shape. Done AFTER the withdraw
+  // and never fatal: the listing is already down, so a policy lookup that fails
+  // must cost the seller the override, not the listing.
+  let overrides: unknown[] | null | undefined;
+  let overrideWarning: string | undefined;
+  if (fixedPostage !== undefined) {
+    if (fixedPostage === null) {
+      // Explicitly back to the policy's own rate.
+      overrides = null;
+    } else {
+      try {
+        const setup = await fetchAccountSetup(accessToken);
+        const targetId = fulfillmentPolicyId ?? offer.fulfillmentPolicyId;
+        const built = buildShippingOverride(
+          (setup.fulfillmentPolicies ?? []).find((p) => p.id === targetId),
+          fixedPostage,
+          EBAY_CURRENCY
+        );
+        overrides = built.overrides ?? undefined;
+        overrideWarning = built.warning;
+      } catch {
+        overrideWarning =
+          "Couldn't read your shipping policies, so the fixed postage figure wasn't applied.";
+      }
+    }
+  }
+
   if (hasChanges) {
     const priced = await applyChanges(
       accessToken,
@@ -191,7 +237,8 @@ export async function relistListing(
       sku,
       newPrice,
       content,
-      fulfillmentPolicyId
+      fulfillmentPolicyId,
+      overrides
     );
     if (!priced.ok) {
       // The old listing is already down. Publishing with the OLD content is far
@@ -248,6 +295,10 @@ export async function relistListing(
     endedListingId,
     listingId: republished.listingId,
     price: after.ok ? toOfferRef(after.json).price : (newPrice ?? offer.price),
+    // A postage figure that couldn't be applied is a success with a caveat, not
+    // a failure — the listing is live. Saying nothing would leave the seller
+    // believing they'd fixed the shipping price when they hadn't.
+    ...(overrideWarning ? { error: overrideWarning } : {}),
   };
 }
 

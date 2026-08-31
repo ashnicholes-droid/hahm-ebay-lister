@@ -22,6 +22,39 @@ export interface ShippingPolicyOption {
   name: string;
   /** True when the buyer pays nothing for domestic postage. */
   free: boolean;
+  /** How the buyer is charged: a fixed amount, or a rate from their address. */
+  costType: "flat" | "calculated" | "unknown";
+  /** The fixed amount, when there is one. */
+  flatCost: number | null;
+  /** Which service an override attaches to. Null means none can. */
+  domesticPriority: number | null;
+}
+
+/**
+ * What a policy actually does, for the dropdown label.
+ *
+ * The names sellers give policies describe handling time ("1 Day Handling") far
+ * more often than they describe cost, so a list of names alone is unusable for
+ * choosing between fixed and calculated postage — which was exactly the
+ * complaint that produced this function.
+ */
+export function policyLabel(p: ShippingPolicyOption): string {
+  if (p.free) return `${p.name} — free to the buyer`;
+  if (p.costType === "flat") {
+    return p.flatCost === null
+      ? `${p.name} — flat rate`
+      : `${p.name} — flat $${p.flatCost.toFixed(2)}`;
+  }
+  if (p.costType === "calculated") return `${p.name} — calculated at checkout`;
+  return p.name;
+}
+
+/** The three kinds a seller is actually choosing between. */
+export type PolicyKind = "free" | "flat" | "calculated";
+
+export function policyKind(p: ShippingPolicyOption): PolicyKind {
+  if (p.free) return "free";
+  return p.costType === "flat" ? "flat" : "calculated";
 }
 
 /**
@@ -47,11 +80,13 @@ export type CurrentArrangement = "free" | "flat" | "calculated" | "unknown";
  */
 export function groupPolicies(policies: ShippingPolicyOption[]): {
   free: ShippingPolicyOption[];
-  buyerPays: ShippingPolicyOption[];
+  flat: ShippingPolicyOption[];
+  calculated: ShippingPolicyOption[];
 } {
   return {
-    free: policies.filter((p) => p.free),
-    buyerPays: policies.filter((p) => !p.free),
+    free: policies.filter((p) => policyKind(p) === "free"),
+    flat: policies.filter((p) => policyKind(p) === "flat"),
+    calculated: policies.filter((p) => policyKind(p) === "calculated"),
   };
 }
 
@@ -91,9 +126,14 @@ export function changesArrangement(
   if (choice.kind === "keep") return false;
   const picked = policies.find((p) => p.id === choice.id);
   if (!picked) return true; // unknown policy — assume it differs rather than reassure
-  const currentlyFree = current === "free";
   if (current === "unknown") return true;
-  return picked.free !== currentlyFree;
+  // Compare all THREE kinds, not just free-vs-paid. The earlier version folded
+  // flat and calculated together, so moving a calculated listing onto a
+  // flat-rate policy — the single most common reason to open this panel — was
+  // reported as "wouldn't change anything about postage". It changes plenty.
+  const currentKind: PolicyKind =
+    current === "free" ? "free" : current === "flat" ? "flat" : "calculated";
+  return policyKind(picked) !== currentKind;
 }
 
 export interface ShippingChoiceCheck {

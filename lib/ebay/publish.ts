@@ -1100,6 +1100,24 @@ export interface FulfillmentPolicySummary {
   name: string;
   /** True when the buyer pays nothing for domestic shipping. */
   free: boolean;
+  /**
+   * How the policy prices domestic postage.
+   *
+   * The distinction a seller actually shops for, and one the app used to hide:
+   * a name like "1 Day Handling" says nothing about whether the buyer is quoted
+   * a fixed amount or a rate computed from their address.
+   */
+  costType: "flat" | "calculated" | "unknown";
+  /** The flat amount the buyer is charged, when there is one. */
+  flatCost: number | null;
+  /**
+   * sortOrderId of the first domestic service.
+   *
+   * Needed to aim a per-listing shipping cost override: eBay matches an
+   * override to a service by shippingServiceType + priority, and priority is
+   * this number. Without it an override has nothing to attach to.
+   */
+  domesticPriority: number | null;
 }
 
 export interface AccountSetup {
@@ -1139,6 +1157,56 @@ export function isFreeShippingPolicy(policy: Record<string, any>): boolean {
   });
 }
 
+/**
+ * The domestic shipping option, which is the one a US seller is choosing among.
+ *
+ * eBay puts domestic and international services in separate entries, and a
+ * policy with no explicit optionType is domestic by convention.
+ */
+function domesticOption(policy: Record<string, any>): Record<string, any> | null {
+  const options = policy?.shippingOptions ?? [];
+  return (
+    options.find(
+      (o: any) => String(o?.optionType ?? "DOMESTIC").toUpperCase() === "DOMESTIC"
+    ) ?? null
+  );
+}
+
+/**
+ * Read what a policy actually does to a buyer, not just what it's called.
+ *
+ * costType is the field that answers "flat or calculated", and it was being
+ * thrown away — leaving a dropdown of names like "1 Day Handling" with no way
+ * to tell which one charges a fixed amount. The sortOrderId comes along because
+ * a per-listing cost override has to name the service it overrides.
+ */
+export function describePolicyCost(policy: Record<string, any>): {
+  costType: FulfillmentPolicySummary["costType"];
+  flatCost: number | null;
+  domesticPriority: number | null;
+} {
+  const option = domesticOption(policy);
+  if (!option) return { costType: "unknown", flatCost: null, domesticPriority: null };
+
+  const raw = String(option.costType ?? "").toUpperCase();
+  const costType =
+    raw === "FLAT_RATE" ? "flat" : raw === "CALCULATED" ? "calculated" : "unknown";
+
+  const services = option.shippingServices ?? [];
+  const first = services[0] ?? null;
+  const cost = Number(first?.shippingCost?.value);
+
+  return {
+    costType,
+    // Only meaningful for a flat policy: a calculated one quotes at checkout,
+    // and reporting its placeholder as a price would be a lie.
+    flatCost: costType === "flat" && Number.isFinite(cost) ? cost : null,
+    // sortOrderId is 1-based in eBay's model and may be absent on a
+    // single-service policy, where 1 is the correct assumption.
+    domesticPriority: first ? Number(first.sortOrderId) || 1 : null,
+  };
+}
+
 function summarizePolicies(r: EbayResp): FulfillmentPolicySummary[] {
   if (!r.ok) return [];
   return (r.json?.fulfillmentPolicies ?? [])
@@ -1146,8 +1214,87 @@ function summarizePolicies(r: EbayResp): FulfillmentPolicySummary[] {
       id: String(p?.fulfillmentPolicyId ?? ""),
       name: String(p?.name ?? "Unnamed policy"),
       free: isFreeShippingPolicy(p),
+      ...describePolicyCost(p),
     }))
     .filter((p: FulfillmentPolicySummary) => p.id);
+}
+
+/** A money value the seller typed, or null. Zero is a legitimate figure. */
+export function positiveMoney(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
+
+export interface ShippingOverrideResult {
+  /** Ready to drop into listingPolicies, or null when nothing should be sent. */
+  overrides: { shippingServiceType: string; priority: number; shippingCost: { value: string; currency: string } }[] | null;
+  /** Why nothing was sent, when a figure WAS asked for. */
+  warning?: string;
+}
+
+/**
+ * Turn "charge the buyer exactly $6.50 for this item" into eBay's shape.
+ *
+ * eBay has no per-listing shipping price — postage lives in a business policy.
+ * What it does have is shippingCostOverrides, which changes the cost of a
+ * service in that policy FOR THIS OFFER ONLY, leaving the policy alone. That is
+ * what makes one flat-rate policy enough for every price point, instead of a
+ * policy per price.
+ *
+ * Two things it cannot do, both reported rather than silently ignored:
+ *
+ *  • It cannot turn a CALCULATED service into a flat one. The override changes
+ *    an amount; it doesn't change how the amount is arrived at. On a calculated
+ *    policy eBay quotes from the buyer's address and this figure is ignored, so
+ *    sending it would leave a seller believing they'd fixed the postage.
+ *  • It cannot attach to a policy with no domestic service to aim at.
+ *
+ * Free-shipping policies are also skipped: overriding a free service with a
+ * charge contradicts the arrangement the seller picked.
+ */
+export function buildShippingOverride(
+  policy: FulfillmentPolicySummary | undefined,
+  fixedCost: number | null,
+  currency: string
+): ShippingOverrideResult {
+  if (fixedCost === null || !Number.isFinite(fixedCost) || fixedCost < 0) {
+    return { overrides: null };
+  }
+  if (!policy) {
+    return {
+      overrides: null,
+      warning: `A fixed postage cost of $${fixedCost.toFixed(2)} was set, but the shipping policy couldn't be read, so eBay is using the policy's own rate.`,
+    };
+  }
+  if (policy.free) {
+    return {
+      overrides: null,
+      warning: `A fixed postage cost of $${fixedCost.toFixed(2)} was set, but "${policy.name}" is a free-shipping policy — the buyer is charged nothing, so the figure was not applied.`,
+    };
+  }
+  if (policy.costType !== "flat") {
+    return {
+      overrides: null,
+      warning: `A fixed postage cost of $${fixedCost.toFixed(2)} was set, but "${policy.name}" quotes a calculated rate from the buyer's address. eBay only accepts a fixed amount on a FLAT-RATE policy, so the figure was not applied.`,
+    };
+  }
+  if (policy.domesticPriority === null) {
+    return {
+      overrides: null,
+      warning: `A fixed postage cost of $${fixedCost.toFixed(2)} was set, but "${policy.name}" has no domestic shipping service to apply it to.`,
+    };
+  }
+
+  return {
+    overrides: [
+      {
+        shippingServiceType: "DOMESTIC",
+        priority: policy.domesticPriority,
+        shippingCost: { value: fixedCost.toFixed(2), currency },
+      },
+    ],
+  };
 }
 
 /**
@@ -1209,8 +1356,11 @@ async function fetchAccountSetupUncached(
   shipFromZip: string | null = null
 ): Promise<AccountSetup> {
   const mp = `marketplace_id=${EBAY_MARKETPLACE_ID}`;
+  // eBay pages this at 20 by default; a seller with more policies than that
+  // would silently never see the rest of them in the relist dropdown.
+  const mpAll = `${mp}&limit=100`;
   const [ful, pay, ret] = await Promise.all([
-    ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/fulfillment_policy?${mp}`),
+    ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/fulfillment_policy?${mpAll}`),
     ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/payment_policy?${mp}`),
     ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/return_policy?${mp}`),
   ]);
@@ -1643,6 +1793,20 @@ export async function publishListing(
     console.warn(`[ebay/publish] sku=${sku} ${chosenFulfillment.warning}`);
     warnings.push(chosenFulfillment.warning);
   }
+  // A fixed postage figure the seller typed. Until now this only ever fed the
+  // margin arithmetic on screen — it never reached eBay, so it looked like it
+  // set the buyer's shipping price and didn't.
+  const fixedPostage = positiveMoney(listing.shipping_cost_override);
+  const override = buildShippingOverride(
+    (setup.fulfillmentPolicies ?? []).find((p) => p.id === chosenFulfillment.policyId),
+    fixedPostage,
+    EBAY_CURRENCY
+  );
+  if (override.warning) {
+    console.warn(`[ebay/publish] sku=${sku} ${override.warning}`);
+    warnings.push(override.warning);
+  }
+
   const offerBody: any = {
     sku,
     marketplaceId: EBAY_MARKETPLACE_ID,
@@ -1658,6 +1822,9 @@ export async function publishListing(
       fulfillmentPolicyId: chosenFulfillment.policyId,
       paymentPolicyId: setup.paymentPolicyId,
       returnPolicyId: setup.returnPolicyId,
+      // Overrides the policy's amount for THIS offer only, which is what lets
+      // one flat-rate policy serve every price point.
+      ...(override.overrides ? { shippingCostOverrides: override.overrides } : {}),
     },
     // Catalog matching helps commodity items (books, media, boxed products)
     // inherit eBay's established product data — but only when a strong,

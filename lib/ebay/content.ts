@@ -159,12 +159,21 @@ export async function writeOfferContent(
    * shipping — and this runs while the listing is ENDED, which is the worst
    * moment to have to reason about partial state.
    */
-  fulfillmentPolicyId?: string
+  fulfillmentPolicyId?: string,
+  /**
+   * Per-offer postage amount, already shaped for eBay.
+   *
+   * Null clears any override the offer carries, which is how a seller goes
+   * back to the policy's own rate — omitting the key would silently keep the
+   * old amount on a listing they just repriced.
+   */
+  shippingCostOverrides?: unknown[] | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (
     content.description === undefined &&
     price === undefined &&
-    fulfillmentPolicyId === undefined
+    fulfillmentPolicyId === undefined &&
+    shippingCostOverrides === undefined
   ) {
     return { ok: true };
   }
@@ -192,13 +201,17 @@ export async function writeOfferContent(
       price: { value: price.toFixed(2), currency: offer.currency },
     };
   }
-  if (fulfillmentPolicyId !== undefined) {
-    // Only this one field is replaced. listingPolicies also carries the payment
-    // and return policies, and rebuilding the object would drop them.
-    body.listingPolicies = {
-      ...(body.listingPolicies ?? {}),
-      fulfillmentPolicyId,
-    };
+  if (fulfillmentPolicyId !== undefined || shippingCostOverrides !== undefined) {
+    // Only the named fields are replaced. listingPolicies also carries the
+    // payment and return policies, and rebuilding the object would drop them.
+    body.listingPolicies = { ...(body.listingPolicies ?? {}) };
+    if (fulfillmentPolicyId !== undefined) {
+      body.listingPolicies.fulfillmentPolicyId = fulfillmentPolicyId;
+    }
+    if (shippingCostOverrides !== undefined) {
+      if (shippingCostOverrides === null) delete body.listingPolicies.shippingCostOverrides;
+      else body.listingPolicies.shippingCostOverrides = shippingCostOverrides;
+    }
   }
 
   const upd = await inventoryRequest(
