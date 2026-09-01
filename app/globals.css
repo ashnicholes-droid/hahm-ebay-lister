@@ -77,17 +77,29 @@ body {
   flex-wrap: wrap;
 }
 
+/* The mark carries its own colour and punches its own hole, so it sits
+   directly on the page — no tinted tile behind it. A tile would fill the hole
+   back in and flatten the tag into its own background. */
 .logo-mark {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+/* The padlock on the sign-in panel. It keeps the old tinted tile: it is an
+   emoji, not the mark, and the login screen deliberately shows no branding. */
+.login-lock {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
+  margin: 0 auto;
   border-radius: 12px;
   background: linear-gradient(145deg, var(--color-accent), var(--color-accent-deep));
   color: white;
-  font-size: 1.4rem;
+  font-size: 2rem;
   box-shadow: var(--shadow-sm);
-  flex-shrink: 0;
 }
 
 .masthead h1 {
@@ -595,6 +607,40 @@ textarea {
   color: var(--color-ink-faint);
   font-size: 0.8rem;
   margin-top: 3rem;
+}
+
+/* ── Site footer ───────────────────────────────────────── */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+}
+
+.site-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.site-footer a:hover {
+  color: var(--color-accent-deep);
+}
+
+.site-footer-sep {
+  opacity: 0.5;
+}
+
+/* Tabular figures so the build number doesn't shuffle width as it climbs. */
+.site-footer-version {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 .section-label {
@@ -1618,8 +1664,8 @@ textarea {
   margin: 0.75rem 0 0.5rem;
 }
 
-.login-panel .logo-mark {
-  font-size: 2rem;
+.footnote + .site-footer {
+  margin-top: 1.75rem;
 }
 
 .login-sub {

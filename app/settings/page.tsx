@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PricingSettings } from "./PricingSettings";
 import { ShipFromSettings } from "./ShipFromSettings";
+import { Logo } from "../Logo";
 
 export const metadata = {
   title: "Settings",
@@ -13,11 +14,9 @@ export default function SettingsPage() {
   return (
     <main className="wrap">
       <header className="masthead">
-        <span className="logo-mark" aria-hidden="true">
-          🏷️
-        </span>
+        <Logo className="logo-mark" size={44} title="" />
         <div>
-          <h1>Listing Writer</h1>
+          <h1>Flipwright</h1>
           <p>Settings</p>
         </div>
         <Link className="btn-ghost nav-link" href="/">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ListingsManager } from "./ListingsManager";
+import { Logo } from "../Logo";
 
 export const metadata = {
   title: "Your eBay listings",
@@ -14,11 +15,9 @@ export default function ListingsPage() {
   return (
     <main className="wrap">
       <header className="masthead">
-        <span className="logo-mark" aria-hidden="true">
-          🏷️
-        </span>
+        <Logo className="logo-mark" size={44} title="" />
         <div>
-          <h1>Listing Writer</h1>
+          <h1>Flipwright</h1>
           <p>Seller view — live listings and prices</p>
         </div>
         <Link className="btn-ghost nav-link" href="/sold">

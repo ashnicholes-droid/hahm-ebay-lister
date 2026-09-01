@@ -42,6 +42,8 @@ import type {
   PublishDebug,
   SortResponse,
 } from "@/lib/types";
+import { Logo } from "./Logo";
+import { SiteFooter } from "./SiteFooter";
 
 type Step = "upload" | "review" | "listings";
 // How photos get split into items.
@@ -1072,11 +1074,9 @@ export default function Home() {
   return (
     <main className="wrap">
       <header className="masthead">
-        <span className="logo-mark" aria-hidden="true">
-          🪄
-        </span>
+        <Logo className="logo-mark" size={44} title="" />
         <div>
-          <h1>Listing Writer</h1>
+          <h1>Flipwright</h1>
           <p>Upload a pile of photos · auto-sort into items · write every listing.</p>
         </div>
         {/* The seller view is a route, not a tab: this page holds photos in
@@ -1540,6 +1540,8 @@ export default function Home() {
         This batch is saved <strong>in this browser</strong> so closing the tab doesn&rsquo;t lose
         it — clear it above when you&rsquo;re done.
       </p>
+
+      <SiteFooter />
     </main>
   );
 }

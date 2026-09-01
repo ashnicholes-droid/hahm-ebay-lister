@@ -18,7 +18,7 @@ export default async function LoginPage({
   return (
     <main className="wrap login-wrap">
       <section className="panel login-panel">
-        <span className="logo-mark" aria-hidden="true">
+        <span className="login-lock" aria-hidden="true">
           🔒
         </span>
         <h1>Enter your access code</h1>

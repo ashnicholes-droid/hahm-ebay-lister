@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SoldManager } from "./SoldManager";
+import { Logo } from "../Logo";
 
 export const metadata = {
   title: "What sold",
@@ -12,11 +13,9 @@ export default function SoldPage() {
   return (
     <main className="wrap">
       <header className="masthead">
-        <span className="logo-mark" aria-hidden="true">
-          💵
-        </span>
+        <Logo className="logo-mark" size={44} title="" />
         <div>
-          <h1>Listing Writer</h1>
+          <h1>Flipwright</h1>
           <p>What sold — real fees, real profit</p>
         </div>
         <Link className="btn-ghost nav-link" href="/listings">

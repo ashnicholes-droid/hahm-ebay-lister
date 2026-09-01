@@ -1,8 +1,8 @@
 {
-  "name": "ebay-lister-web",
+  "name": "flipwright",
   "version": "1.0.0",
   "private": true,
-  "description": "Friendly web app that turns item photos into ready-to-post eBay listings using Claude.",
+  "description": "Flipwright — photos in, listings out, profit counted. Turns item photos into ready-to-post eBay listings using Claude.",
   "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "next dev",
