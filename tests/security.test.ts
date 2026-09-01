@@ -216,6 +216,18 @@ describe("public paths", () => {
     expect(isPublicPath("/login")).toBe(true);
     expect(isPublicPath("/api/login")).toBe(true);
     expect(isPublicPath("/api/logout")).toBe(true);
+    // The sign-in page links these in its own <head>. Gated, the browser
+    // follows the redirect and renders the login HTML as the tab icon.
+    expect(isPublicPath("/icon.svg")).toBe(true);
+    expect(isPublicPath("/apple-icon.png")).toBe(true);
+  });
+
+  it("keeps the icons public with Next's cache-busting query attached", () => {
+    // Next serves them as /icon.svg?<hash>; the gate sees pathname only, but
+    // this pins the behaviour the <link> in every page head depends on.
+    expect(isPublicPath(new URL("https://x/icon.svg?abc123").pathname)).toBe(
+      true
+    );
   });
 
   it("gates everything else, including every route that spends money", () => {

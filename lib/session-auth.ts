@@ -103,6 +103,13 @@ export async function accessCodeMatches(
  *                        for your RuName. Gating it breaks keyset compliance.
  *   /login, /api/login — the gate itself; gating it is an infinite redirect.
  *   /api/logout        — must work even from a session that's already expired.
+ *   /icon.svg,
+ *   /apple-icon.png    — the tab and home-screen icons, which the sign-in page
+ *                        itself links to. Gated, the browser follows the 307,
+ *                        gets the login HTML back as its image, and the tab
+ *                        shows a broken icon to anyone not yet signed in. They
+ *                        are two flat shapes and leak nothing the login page
+ *                        does not already show.
  */
 const PUBLIC_PATHS = [
   "/api/ebay/callback",
@@ -110,6 +117,8 @@ const PUBLIC_PATHS = [
   "/login",
   "/api/login",
   "/api/logout",
+  "/icon.svg",
+  "/apple-icon.png",
 ];
 
 export function isPublicPath(pathname: string): boolean {
