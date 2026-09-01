@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ScoutManager } from "./ScoutManager";
+import { Logo } from "../Logo";
 
 export const metadata = {
   title: "Scout — should you buy it?",
@@ -12,9 +13,7 @@ export default function ScoutPage() {
   return (
     <main className="wrap">
       <header className="masthead">
-        <span className="logo-mark" aria-hidden="true">
-          🔦
-        </span>
+        <Logo className="logo-mark" size={44} title="" />
         <div>
           <h1>Scout</h1>
           <p>Should you buy it?</p>

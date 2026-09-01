@@ -1,4 +1,6 @@
-# Listing Writer 🪄
+# Flipwright
+
+**Photos in, listings out, profit counted.**
 
 A free, open-source web app for resellers. **Dump in a pile of item photos →
 it sorts them into separate items → writes a full eBay listing for each →

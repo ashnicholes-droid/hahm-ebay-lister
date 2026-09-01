@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The Flipwright mark, as the browser-tab icon. Next.js picks this file up
+       by name and emits the <link rel="icon"> for every route.
+
+       Two flat colours and no gradient so it survives being drawn at 16px, and
+       the hole is a real mask so it reads on a light or a dark tab strip
+       without a second file. -->
+  <defs>
+    <mask id="hole">
+      <rect width="64" height="64" fill="#fff"/>
+      <circle cx="20" cy="32" r="4.4" fill="#000"/>
+    </mask>
+    <clipPath id="clip">
+      <path d="M24 8 H56 A6 6 0 0 1 62 14 V50 A6 6 0 0 1 56 56 H24 L5.4 37.4 A7.6 7.6 0 0 1 5.4 26.6 Z"/>
+    </clipPath>
+  </defs>
+  <g mask="url(#hole)">
+    <path d="M24 8 H56 A6 6 0 0 1 62 14 V50 A6 6 0 0 1 56 56 H24 L5.4 37.4 A7.6 7.6 0 0 1 5.4 26.6 Z" fill="#0A6154"/>
+    <g clip-path="url(#clip)"><path d="M62 14 L62 56 L20 56 Z" fill="#DAA23F"/></g>
+  </g>
+</svg>
