@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { loadDraft, saveDraft } from "@/lib/draft-store";
 import { processFiles } from "@/lib/intake";
 import { draftIssues } from "@/lib/client-review";
@@ -164,8 +171,10 @@ export default function Home() {
       release();
     };
   }, []);
-  useEffect(() => {
+  // Mark changed work unsaved before paint; older save completions cannot clear it.
+  useLayoutEffect(() => {
     if (!restored || readOnly) return;
+    let current = true;
     setSaveStatus("Saving…");
     const timer = setTimeout(() => {
       void saveDraft({
@@ -178,14 +187,20 @@ export default function Home() {
         step,
         updatedAt: Date.now(),
       })
-        .then(() => setSaveStatus("Saved on this device"))
-        .catch(() =>
-          setSaveStatus(
-            "Could not save — device storage may be full. Keep this tab open and export drafts.",
-          ),
-        );
+        .then(() => {
+          if (current) setSaveStatus("Saved on this device");
+        })
+        .catch(() => {
+          if (current)
+            setSaveStatus(
+              "Could not save — device storage may be full. Keep this tab open and export drafts.",
+            );
+        });
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
   }, [
     restored,
     readOnly,
