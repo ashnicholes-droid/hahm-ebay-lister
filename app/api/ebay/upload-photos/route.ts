@@ -1,3 +1,4 @@
+import { withDeadline } from "@/lib/network";
 import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
 import { guardApiRequest } from "@/lib/api-guard";
@@ -25,7 +26,7 @@ interface UploadBody {
   startIndex?: number;
 }
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
   const denied = guardApiRequest(req);
   if (denied) return denied;
@@ -34,37 +35,56 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as UploadBody;
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid request." },
+      { status: 400 },
+    );
   }
 
   const sku = String(body.sku || "").trim();
   const images = (Array.isArray(body.images) ? body.images : []).filter(
     (i): i is { mediaType: string; data: string } =>
-      Boolean(i && typeof i.mediaType === "string" && typeof i.data === "string" && i.data)
+      Boolean(
+        i &&
+        typeof i.mediaType === "string" &&
+        typeof i.data === "string" &&
+        i.data,
+      ),
   );
   if (!sku || images.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Missing SKU or photos." },
-      { status: 400 }
+      { status: 400 },
     );
   }
   if (images.length > MAX_PHOTOS_PER_REQUEST) {
     return NextResponse.json(
-      { ok: false, error: `Too many photos in one batch (max ${MAX_PHOTOS_PER_REQUEST}).` },
-      { status: 400 }
+      {
+        ok: false,
+        error: `Too many photos in one batch (max ${MAX_PHOTOS_PER_REQUEST}).`,
+      },
+      { status: 400 },
     );
   }
 
   let accessToken: string | null;
   try {
-    accessToken = await accessTokenFromCookie(req.cookies.get(EBAY_COOKIE)?.value);
+    accessToken = await accessTokenFromCookie(
+      req.cookies.get(EBAY_COOKIE)?.value,
+    );
   } catch (e) {
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: (e as Error).message },
+      { status: 500 },
+    );
   }
   if (!accessToken) {
     return NextResponse.json(
-      { ok: false, error: "eBay isn't connected. Connect your account and try again." },
-      { status: 401 }
+      {
+        ok: false,
+        error: "eBay isn't connected. Connect your account and try again.",
+      },
+      { status: 401 },
     );
   }
 
@@ -75,11 +95,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const urls = await uploadPhotos(accessToken, images, sku, startIndex);
-    // Partial success is reported, not hidden — the client warns the seller
-    // when a listing goes up with fewer photos than were selected.
-    return NextResponse.json({ ok: true, urls, failed: images.length - urls.length });
+    // Report partial results so the client blocks publication until all photos upload.
+    return NextResponse.json({
+      ok: true,
+      urls,
+      failed: images.length - urls.length,
+    });
   } catch (e) {
     console.error(`[ebay/upload-photos] unhandled error sku=${sku}:`, e);
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: (e as Error).message },
+      { status: 500 },
+    );
   }
+}
+
+export async function POST(req: NextRequest) {
+  return withDeadline(100000, () => handle(req));
 }

@@ -8,19 +8,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test": "vitest run"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.69.0",
-    "next": "^15.5.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@anthropic-ai/sdk": "^0.124.0",
+    "next": "^15.5.25",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.0",
     "vitest": "^4.1.10"
   },

@@ -49,12 +49,19 @@ describe("prioritizeAspects", () => {
       "OPTIONAL",
     ]);
     // Stable within a tier.
-    expect(sorted.map((a) => a.name)).toEqual(["Req1", "Rec1", "Rec2", "Opt1", "Opt2"]);
+    expect(sorted.map((a) => a.name)).toEqual([
+      "Req1",
+      "Rec1",
+      "Rec2",
+      "Opt1",
+      "Opt2",
+    ]);
   });
 });
 
 describe("sanitizeEbayImageUrls", () => {
-  const eps = (n: number) => `https://i.ebayimg.com/00/s/MTYwMFgxMjAw/z/pic${n}.jpg`;
+  const eps = (n: number) =>
+    `https://i.ebayimg.com/00/s/MTYwMFgxMjAw/z/pic${n}.jpg`;
 
   test("accepts https eBay Picture Services URLs, preserving order", () => {
     const urls = [eps(1), eps(2), eps(3)];
@@ -71,14 +78,17 @@ describe("sanitizeEbayImageUrls", () => {
         "not a url",
         42,
         null,
-      ])
+      ]),
     ).toEqual([]);
   });
 
-  test("dedupes and caps at eBay's 12-photo limit", () => {
-    const urls = Array.from({ length: 15 }, (_, i) => eps(i));
-    expect(sanitizeEbayImageUrls(urls)).toHaveLength(12);
-    expect(sanitizeEbayImageUrls([eps(1), eps(1), eps(2)])).toEqual([eps(1), eps(2)]);
+  test("dedupes and caps at eBay's 24-photo limit", () => {
+    const urls = Array.from({ length: 30 }, (_, i) => eps(i));
+    expect(sanitizeEbayImageUrls(urls)).toHaveLength(24);
+    expect(sanitizeEbayImageUrls([eps(1), eps(1), eps(2)])).toEqual([
+      eps(1),
+      eps(2),
+    ]);
   });
 
   test("non-array input yields no URLs", () => {

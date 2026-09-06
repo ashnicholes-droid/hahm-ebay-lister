@@ -26,3 +26,6 @@ public/test-photos.json
 # vercel local project link
 .vercel
 .env*
+
+/playwright-report/
+/test-results/

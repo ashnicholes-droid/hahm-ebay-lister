@@ -22,7 +22,7 @@ export const MAX_BATCH_PHOTOS = 4;
 export function chunkImagesForUpload<T extends UploadImage>(
   images: T[],
   maxChars: number = MAX_BATCH_BASE64_CHARS,
-  maxPhotos: number = MAX_BATCH_PHOTOS
+  maxPhotos: number = MAX_BATCH_PHOTOS,
 ): T[][] {
   const batches: T[][] = [];
   let current: T[] = [];
@@ -30,6 +30,10 @@ export function chunkImagesForUpload<T extends UploadImage>(
 
   for (const img of images) {
     const size = img.data.length;
+    if (size > maxChars)
+      throw new Error(
+        "A photo exceeds the upload size limit. Resize it before uploading.",
+      );
     const wouldOverflow =
       current.length > 0 &&
       (current.length >= maxPhotos || currentChars + size > maxChars);

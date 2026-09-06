@@ -1,6 +1,20 @@
+import { acceptedPhotoFact } from "@/lib/photo-facts";
+import { AI_LISTING_SCHEMA } from "@/lib/ai-schema";
+import {
+  parseListing,
+  imagesSchema,
+  validationMessage,
+} from "@/lib/validation";
+import { collectUsage, currentUsage } from "@/lib/ai-usage";
+import { measuredMessage } from "@/lib/ai-usage";
 import { NextRequest, NextResponse } from "next/server";
 import type Anthropic from "@anthropic-ai/sdk";
-import { getClient, parseModelJson, AnthropicAuthError, anthropicAuthError } from "@/lib/anthropic";
+import {
+  getClient,
+  parseModelJson,
+  AnthropicAuthError,
+  anthropicAuthError,
+} from "@/lib/anthropic";
 import { guardApiRequest, safeErrorResponse } from "@/lib/api-guard";
 import {
   PROFILE_ROUTER_PROMPT,
@@ -21,7 +35,7 @@ export const maxDuration = 300;
 
 const ANALYSIS_MODEL = "claude-opus-4-8";
 const ROUTER_MODEL = "claude-sonnet-4-6";
-const MAX_IMAGES = 12;
+const MAX_IMAGES = 24;
 
 // Stop starting work once the budget is spent — headroom under maxDuration.
 const ANALYZE_TIME_BUDGET_MS = 250_000;
@@ -50,7 +64,7 @@ async function routeProfile(
   imageBlocks: ImageBlock[],
   requested: string,
   routerModel: string,
-  deadline: number
+  deadline: number,
 ): Promise<string> {
   const forced = normalizeItemProfile(requested);
   if (forced !== "auto") return forced;
@@ -59,7 +73,9 @@ async function routeProfile(
   if (remaining < MIN_CALL_MS) return "hard_goods";
 
   try {
-    const resp = await client.messages.create(
+    const resp = await measuredMessage(
+      "routing",
+      client,
       {
         model: routerModel,
         max_tokens: 300,
@@ -73,7 +89,7 @@ async function routeProfile(
           },
         ],
       },
-      { timeout: Math.min(ROUTER_TIMEOUT_MS, remaining), maxRetries: 0 }
+      { timeout: Math.min(ROUTER_TIMEOUT_MS, remaining), maxRetries: 0 },
     );
     const text = firstText(resp);
     const data = parseModelJson<{ profile?: string }>(text);
@@ -92,17 +108,18 @@ function firstText(resp: Anthropic.Message): string {
   return block && block.type === "text" ? block.text.trim() : "";
 }
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest) {
   const denied = guardApiRequest(req);
   if (denied) return denied;
 
   let body: AnalyzeRequestBody;
   try {
     body = (await req.json()) as AnalyzeRequestBody;
+    imagesSchema.parse(body.images);
   } catch {
     return NextResponse.json(
       { ok: false, error: "Invalid request body." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -115,7 +132,7 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Please add at least one photo." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -123,7 +140,7 @@ export async function POST(req: NextRequest) {
   if (imageBlocks.length === 0) {
     return NextResponse.json(
       { ok: false, error: "No readable photos found. Use JPG, PNG, or WebP." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -133,13 +150,19 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: (e as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   try {
     const deadline = Date.now() + ANALYZE_TIME_BUDGET_MS;
-    const profile = await routeProfile(client, imageBlocks, body.profile, routerModel, deadline);
+    const profile = await routeProfile(
+      client,
+      imageBlocks,
+      body.profile,
+      routerModel,
+      deadline,
+    );
     const systemPrompt = buildProfiledAnalysisPrompt(profile);
 
     // Retry up to 3 times, mirroring the Python analyze_photos() loop — but
@@ -148,14 +171,21 @@ export async function POST(req: NextRequest) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const remaining = deadline - Date.now();
       if (remaining < MIN_CALL_MS) {
-        lastErr = lastErr ?? new Error("Analysis ran out of time — the API is slow right now.");
+        lastErr =
+          lastErr ??
+          new Error("Analysis ran out of time — the API is slow right now.");
         break;
       }
       try {
-        const resp = await client.messages.create(
+        const resp = await measuredMessage(
+          "analysis",
+          client,
           {
             model: analysisModel,
-            max_tokens: 3000,
+            max_tokens: 5000,
+            output_config: {
+              format: { type: "json_schema", schema: AI_LISTING_SCHEMA },
+            },
             // System prompt is large and identical across requests for the same
             // profile — cache it to cut cost and latency.
             system: [
@@ -178,10 +208,26 @@ export async function POST(req: NextRequest) {
               },
             ],
           },
-          { timeout: Math.min(ANALYSIS_CALL_TIMEOUT_MS, remaining), maxRetries: 0 }
+          {
+            timeout: Math.min(ANALYSIS_CALL_TIMEOUT_MS, remaining),
+            maxRetries: 0,
+          },
         );
-        const listing = parseModelJson<ListingResult>(firstText(resp));
+        const raw = parseModelJson<Record<string, unknown>>(firstText(resp));
+        const specifics = Array.isArray(raw.specifics) ? raw.specifics : [];
+        const supported = specifics.filter((s) =>
+          acceptedPhotoFact(s, imageBlocks.length),
+        );
+        const listing = parseListing({
+          ...raw,
+          item_specifics: Object.fromEntries(
+            supported.map((s: any) => [s.name, s.value]),
+          ),
+        });
         listing.item_profile = profile;
+        listing.evidence = Object.fromEntries(
+          supported.map((s: any) => [s.name, s.photoIndices]),
+        );
         // Deterministic title cleanup happens HERE, before the seller reviews —
         // the title on the card is exactly the title that publishes.
         listing.title = optimizeTitle(listing);
@@ -189,9 +235,9 @@ export async function POST(req: NextRequest) {
         // so the price on the card is exactly the price that publishes.
         listing.suggested_price = applyPriceMarkup(
           listing.suggested_price,
-          priceMarkupPercent()
+          priceMarkupPercent(),
         );
-        return NextResponse.json({ ok: true, listing });
+        return NextResponse.json({ ok: true, listing, usage: currentUsage() });
       } catch (err) {
         const fatal = anthropicAuthError(err);
         if (fatal) throw fatal; // auth/billing won't fix itself on retry
@@ -205,8 +251,19 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     if (e instanceof AnthropicAuthError) {
       console.error("[analyze] auth/billing failure:", e.message);
-      return NextResponse.json({ ok: false, error: e.message }, { status: e.status });
+      return NextResponse.json(
+        { ok: false, error: e.message },
+        { status: e.status },
+      );
     }
-    return safeErrorResponse("analyze", e, "Something went wrong analyzing photos — please try again.");
+    return safeErrorResponse(
+      "analyze",
+      e,
+      "Something went wrong analyzing photos — please try again.",
+    );
   }
+}
+
+export async function POST(req: NextRequest) {
+  return (await collectUsage(() => handle(req))).result;
 }

@@ -15,7 +15,13 @@ function rawBase64(data: string): string {
 }
 
 export function toImageBlock(img: WireImage | undefined): ImageBlock | null {
-  if (!img?.data || !ALLOWED_MEDIA.has(img.mediaType)) return null;
+  if (
+    !img ||
+    typeof img.data !== "string" ||
+    !img.data ||
+    !ALLOWED_MEDIA.has(img.mediaType)
+  )
+    return null;
   const data = rawBase64(img.data);
   if (data.length * 0.75 > MAX_IMAGE_BYTES) return null;
   return {
@@ -36,7 +42,7 @@ export function urlImageBlock(url: string): ImageBlock | null {
 // _images_to_content() in the Python script.
 export function labeledContent(
   images: WireImage[],
-  labelStart = 1
+  labelStart = 1,
 ): Anthropic.ContentBlockParam[] {
   const content: Anthropic.ContentBlockParam[] = [];
   images.forEach((img, i) => {

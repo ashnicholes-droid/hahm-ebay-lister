@@ -43,11 +43,14 @@ export function suffixToIndex(suffix: string): number {
 // Given SKUs that already exist on eBay, find where lettering for this bin
 // should continue — so a second batch from bin K31 starts at the letter after
 // the last one used (K31-N…) instead of colliding with K31-A again.
-export function nextIndexFromSkus(existingSkus: string[], prefix: string): number {
+export function nextIndexFromSkus(
+  existingSkus: string[],
+  prefix: string,
+): number {
   const clean = sanitizeSku(prefix);
   if (!clean) return 0;
   const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`^${escaped}-([A-Za-z]+)$`, "i");
+  const re = new RegExp(`^${escaped}-([A-Za-z]+)(?:-[a-f0-9]{12})?$`, "i");
   let max = -1;
   for (const sku of existingSkus) {
     const m = re.exec(String(sku || "").trim());

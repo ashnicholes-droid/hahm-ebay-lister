@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardApiRequest } from "@/lib/api-guard";
-import { isEbayConfigured } from "@/lib/ebay/config";
+import { isEbayAppConfigured } from "@/lib/ebay/config";
 import { appToken } from "@/lib/ebay/taxonomy";
 import { searchComps } from "@/lib/ebay/comps";
 import { applyPriceMarkup, priceMarkupPercent } from "@/lib/pricing";
@@ -15,18 +15,27 @@ export async function POST(req: NextRequest) {
   const denied = guardApiRequest(req);
   if (denied) return denied;
 
-  if (!isEbayConfigured()) {
-    return NextResponse.json({ ok: false, error: "eBay isn't configured." }, { status: 200 });
+  if (!isEbayAppConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: "eBay isn't configured." },
+      { status: 200 },
+    );
   }
 
   let body: { listing?: ListingResult };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid request." },
+      { status: 400 },
+    );
   }
   if (!body.listing?.title) {
-    return NextResponse.json({ ok: false, error: "Missing listing." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing listing." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -45,6 +54,9 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     // Comps are advisory — never let a market-check failure look like an outage.
     console.warn(`[ebay/comps] lookup failed: ${(e as Error).message}`);
-    return NextResponse.json({ ok: false, error: "Market check unavailable." }, { status: 200 });
+    return NextResponse.json(
+      { ok: false, error: "Market check unavailable." },
+      { status: 200 },
+    );
   }
 }

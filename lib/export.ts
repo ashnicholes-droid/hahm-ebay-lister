@@ -6,7 +6,8 @@ function priceNumber(value: ListingResult["suggested_price"]): string {
 }
 
 function csvCell(value: unknown): string {
-  const s = value == null ? "" : String(value);
+  const raw = value == null ? "" : String(value);
+  const s = /^[\s]*[=+@-]/.test(raw) ? "'" + raw : raw;
   // Always quote and escape embedded quotes so commas/newlines stay safe.
   return `"${s.replace(/"/g, '""')}"`;
 }
@@ -19,7 +20,7 @@ const CSV_COLUMNS: { header: string; get: (l: ListingResult) => string }[] = [
   { header: "Item Type", get: (l) => l.item_type ?? "" },
   {
     header: "Color",
-    get: (l) => (Array.isArray(l.color) ? l.color.join(", ") : l.color ?? ""),
+    get: (l) => (Array.isArray(l.color) ? l.color.join(", ") : (l.color ?? "")),
   },
   { header: "Size", get: (l) => l.size ?? "" },
   { header: "Material", get: (l) => l.material ?? "" },
