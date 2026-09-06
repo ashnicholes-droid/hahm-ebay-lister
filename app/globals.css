@@ -1151,7 +1151,137 @@ textarea {
   color: #173e35;
   background: #fff;
 }
-.text-entry-dialog::backdrop { background: rgb(0 0 0 / 45%); }
-.text-entry-dialog label { display: grid; gap: 14px; line-height: 1.5; }
-.text-entry-dialog input { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; }
-.text-entry-dialog form > div { display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; }
+.text-entry-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.text-entry-dialog label {
+  display: grid;
+  gap: 14px;
+  line-height: 1.5;
+}
+.text-entry-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font-size: 16px;
+}
+.text-entry-dialog form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+.batch-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.batch-toolbar select {
+  max-width: 22rem;
+  width: 100%;
+}
+.batch-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: #eef5f1;
+  border-radius: 12px;
+}
+.batch-progress small {
+  flex-basis: 100%;
+}
+.batch-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.batch-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1060px;
+  font-size: 0.9rem;
+}
+.batch-table th,
+.batch-table td {
+  padding: 0.65rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #cbd8d0;
+}
+.batch-table th {
+  background: #eef5f1;
+}
+.batch-table td small {
+  display: block;
+  margin-top: 0.35rem;
+}
+.batch-table td:first-child {
+  width: 90px;
+}
+.batch-table td:nth-child(2) {
+  min-width: 250px;
+}
+.batch-table td:nth-child(3),
+.batch-table td:nth-child(5) {
+  width: 90px;
+}
+.batch-table td:nth-child(4),
+.batch-table td:nth-child(6) {
+  max-width: 190px;
+}
+.batch-table input:not([type="checkbox"]),
+.batch-table select,
+.batch-table textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+}
+.batch-table textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.batch-table img {
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-top: 0.4rem;
+}
+.batch-table button {
+  margin-top: 0.5rem;
+}
+.batch-toolbar button,
+.batch-progress button,
+.batch-table button {
+  border: 1px solid #b8cec2;
+  background: #eef5f1;
+  color: #174c38;
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+}
+.batch-toolbar button:disabled,
+.batch-progress button:disabled,
+.batch-table button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.batch-toolbar button:focus-visible,
+.batch-table button:focus-visible {
+  outline: 2px solid #007f67;
+  outline-offset: 2px;
+}
+.batch-table-scroll {
+  scroll-padding-inline: 1rem;
+}
