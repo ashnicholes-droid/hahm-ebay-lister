@@ -20,7 +20,7 @@ This branch repairs the existing app. It does not switch AI providers. It is a r
 
 Run `npm ci`, `npm test`, `npm run build`, `npm run typecheck`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The 176 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
+The 179 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
 
 ## Live release gate
 
@@ -75,3 +75,10 @@ The final construction filter additionally requires the clothing item type and i
 The seller uses two flat buyer-charge USPS Ground Advantage policies, both with two-business-day handling: $7.95 for lighter items (usual choice) and $9.95 for heavier items such as sweaters/jackets/jeans. The draft review shows these preferences and an editable-policy suggestion. It does not create or modify the eBay policies or infer packed measurements. An authenticated account read must verify the actual policy IDs/settings.
 
 Only return policies with `returnsAccepted: true` are offered for selection. Publication re-fetches policies and rejects a no-returns, missing or unverified return policy before listing writes. The existing return period and return-postage terms are preserved. A regression test verifies no-returns publication fails without writes.
+
+
+## Optional parcel information and seller defaults
+
+Seller requested removal of mandatory weight/dimensions for the flat-fee workflow. All four parcel fields are optional; blank parcel data is omitted from the inventory request, never fabricated. If dimensions are supplied, all three must be valid. Existing eBay policy/service requirements can still be returned by eBay.
+
+Drafts automatically load account options and fill missing selections with the seller-requested $7.95 Ground Advantage/two-day-handling profile, Managed Payments, the specified returns-accepted policy and named shipping origin. IDs are resolved from authenticated account results, never invented. Missing/ambiguous names remain unselected. Manual per-item overrides are preserved when reloading policies; heavier items do not automatically override the seller's usual $7.95 choice. Nine browser workflow checks pass, including posting eligibility with no parcel fields and override preservation.

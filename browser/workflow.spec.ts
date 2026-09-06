@@ -101,6 +101,9 @@ async function shipping(page: Page) {
   await page
     .getByLabel("Shipping origin", { exact: true })
     .selectOption("home");
+  await page
+    .getByText("Package weight and dimensions (optional)", { exact: true })
+    .click();
   for (const [label, value] of [
     ["Packed weight (oz)", "24"],
     ["Length (in)", "10"],
@@ -312,4 +315,55 @@ test("cancelling access entry closes the form and allows another attempt", async
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("defaults the seller policies and allows review without package measurements", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/ebay/options", (r) =>
+    r.fulfill({
+      json: {
+        ok: true,
+        options: {
+          fulfillment: [
+            {
+              id: "usual",
+              name: "USPS Ground Advantage ($7.95), 2 day handling",
+            },
+            { id: "heavy", name: "$9.95" },
+          ],
+          payment: [{ id: "pay", name: "Managed Payments" }],
+          returns: [
+            { id: "ret", name: "Returns Accepted,Seller,30 Days,Money Back#1" },
+          ],
+          locations: [
+            { id: "home", name: "Hustle at Home Mom HQ · 84095 · US" },
+          ],
+        },
+      },
+    }),
+  );
+  await draft(page);
+  await expect(page.getByLabel("Shipping policy", { exact: true })).toHaveValue(
+    "usual",
+  );
+  await expect(page.getByLabel("Shipping origin", { exact: true })).toHaveValue(
+    "home",
+  );
+  await page
+    .getByLabel("eBay condition", { exact: true })
+    .selectOption("USED_EXCELLENT");
+  await expect(
+    page.getByRole("button", { name: "Post this to eBay" }),
+  ).toBeEnabled();
+  await page
+    .getByLabel("Shipping policy", { exact: true })
+    .selectOption("heavy");
+  await page
+    .getByRole("button", { name: "Load my eBay policies and locations" })
+    .click();
+  await expect(page.getByLabel("Shipping policy", { exact: true })).toHaveValue(
+    "heavy",
+  );
 });

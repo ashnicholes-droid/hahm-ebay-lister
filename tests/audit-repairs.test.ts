@@ -390,3 +390,17 @@ it("blocks a no-returns policy before any eBay listing writes", async () => {
   );
   expect(api.writes).toEqual([]);
 });
+
+it("publishes without invented package data when optional measurements are blank", async () => {
+  const api = fakeEbay();
+  vi.stubGlobal("fetch", api.fetch);
+  const i = input();
+  delete i.shipping!.weightOz;
+  delete i.shipping!.lengthIn;
+  delete i.shipping!.widthIn;
+  delete i.shipping!.heightIn;
+  await publishListing("token", i);
+  const inventory = api.writes.find((w) => w.url.includes("/inventory_item/"));
+  expect(inventory).toBeDefined();
+  expect(inventory!.body).not.toHaveProperty("packageWeightAndSize");
+});

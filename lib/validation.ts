@@ -80,16 +80,23 @@ export const skuSchema = z
     /^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/,
     "SKU must be 1–50 letters, numbers, dots, underscores or hyphens.",
   );
-export const shippingSchema = z.object({
-  fulfillmentPolicyId: z.string().min(1).max(100),
-  paymentPolicyId: z.string().min(1).max(100),
-  returnPolicyId: z.string().min(1).max(100),
-  locationKey: z.string().min(1).max(100),
-  weightOz: z.number().finite().positive().max(2400),
-  lengthIn: z.number().finite().positive().max(200),
-  widthIn: z.number().finite().positive().max(200),
-  heightIn: z.number().finite().positive().max(200),
-});
+export const shippingSchema = z
+  .object({
+    fulfillmentPolicyId: z.string().min(1).max(100),
+    paymentPolicyId: z.string().min(1).max(100),
+    returnPolicyId: z.string().min(1).max(100),
+    locationKey: z.string().min(1).max(100),
+    weightOz: z.number().finite().positive().max(2400).optional(),
+    lengthIn: z.number().finite().positive().max(200).optional(),
+    widthIn: z.number().finite().positive().max(200).optional(),
+    heightIn: z.number().finite().positive().max(200).optional(),
+  })
+  .refine((s) => {
+    const count = [s.lengthIn, s.widthIn, s.heightIn].filter(
+      (x) => x !== undefined,
+    ).length;
+    return count === 0 || count === 3;
+  }, "Enter all three dimensions or leave them all blank.");
 export type ShippingSelection = z.infer<typeof shippingSchema>;
 export function parseListing(raw: unknown): ListingResult {
   return listingSchema.parse(raw);

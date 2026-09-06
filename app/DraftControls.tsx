@@ -1,7 +1,8 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ItemGroup, Photo } from "@/lib/types";
 import type { AccountOptions } from "@/lib/ebay/publish";
+import { applyShippingDefaults } from "@/lib/shipping-defaults";
 import { requestText } from "@/lib/text-dialog";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
@@ -16,6 +17,13 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
   const [error, setError] = useState("");
   const latest = useRef(g);
   latest.current = g;
+  const defaultsRequested = useRef(false);
+  useEffect(() => {
+    if (g.listing && !defaultsRequested.current) {
+      defaultsRequested.current = true;
+      void loadOptions();
+    }
+  }, [Boolean(g.listing)]);
   if (!g.listing) return null;
   const l = g.listing;
   const edit = (patch: Partial<typeof l>) => {
@@ -87,6 +95,10 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       const d = await r.json();
       if (!d.ok) throw new Error(d.error);
       setOptions(d.options);
+      const current = latest.current;
+      const shipping = applyShippingDefaults(current.shipping ?? {}, d.options);
+      if (JSON.stringify(shipping) !== JSON.stringify(current.shipping ?? {}))
+        onGroupEdit(g.id, { shipping });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -337,14 +349,9 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
           item.
         </p>
         <p className="note">
-          Suggested profile for this draft:{" "}
-          {/sweater|sweatshirt|cardigan|jacket|jeans|coat/i.test(
-            [l.item_type, l.category, l.title].filter(Boolean).join(" "),
-          )
-            ? "$9.95"
-            : "$7.95"}
-          . You can choose either profile. Returns must be accepted; your
-          existing return window and return-postage terms apply.
+          Your usual $7.95 shipping, Managed Payments, returns-accepted policy
+          and shipping origin are selected automatically when available. Change
+          any selection for this item.
         </p>
         {options && options.returns.length === 0 && (
           <p className="note-error">
@@ -388,36 +395,43 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
             </select>
           </label>
         ))}
-        {(
-          [
-            ["weightOz", "Packed weight (oz)"],
-            ["lengthIn", "Length (in)"],
-            ["widthIn", "Width (in)"],
-            ["heightIn", "Height (in)"],
-          ] as const
-        ).map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input
-              aria-label={label}
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={g.shipping?.[key] ?? ""}
-              onChange={(e) =>
-                onGroupEdit(g.id, {
-                  shipping: {
-                    ...g.shipping,
-                    [key]:
-                      e.target.value === ""
-                        ? undefined
-                        : Number(e.target.value),
-                  },
-                })
-              }
-            />
-          </label>
-        ))}
+        <details>
+          <summary>Package weight and dimensions (optional)</summary>
+          <p className="note">
+            Leave blank for your flat-fee shipping. No package measurements will
+            be sent unless you enter them.
+          </p>
+          {(
+            [
+              ["weightOz", "Packed weight (oz)"],
+              ["lengthIn", "Length (in)"],
+              ["widthIn", "Width (in)"],
+              ["heightIn", "Height (in)"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key}>
+              {label}
+              <input
+                aria-label={label}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={g.shipping?.[key] ?? ""}
+                onChange={(e) =>
+                  onGroupEdit(g.id, {
+                    shipping: {
+                      ...g.shipping,
+                      [key]:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+        </details>
         {!options?.locations.length && options && (
           <p>
             Create an inventory location with your real address in eBay before

@@ -1155,16 +1155,26 @@ export async function publishListing(
     condition,
     conditionDescription: listing.condition_notes || "",
     availability: { shipToLocationAvailability: { quantity: 1 } },
-    packageWeightAndSize: {
-      weight: { value: shipping.weightOz, unit: "OUNCE" },
-      dimensions: {
-        length: shipping.lengthIn,
-        width: shipping.widthIn,
-        height: shipping.heightIn,
-        unit: "INCH",
-      },
-      packageType: SAFE_PACKAGE_TYPE,
-    },
+    ...(shipping.weightOz !== undefined || shipping.lengthIn !== undefined
+      ? {
+          packageWeightAndSize: {
+            ...(shipping.weightOz !== undefined
+              ? { weight: { value: shipping.weightOz, unit: "OUNCE" } }
+              : {}),
+            ...(shipping.lengthIn !== undefined
+              ? {
+                  dimensions: {
+                    length: shipping.lengthIn,
+                    width: shipping.widthIn,
+                    height: shipping.heightIn,
+                    unit: "INCH",
+                  },
+                }
+              : {}),
+            packageType: SAFE_PACKAGE_TYPE,
+          },
+        }
+      : {}),
   };
   const offerBody = {
     sku,

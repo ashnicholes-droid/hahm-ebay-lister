@@ -36,7 +36,7 @@ export function draftIssues(g: ItemGroup): string[] {
   }
   if (!shippingSchema.safeParse(g.shipping).success)
     issues.push(
-      "Choose policies and shipping origin, and enter packed weight and dimensions.",
+      "Choose policies and shipping origin. Package measurements are optional; if supplied, enter valid values and all three dimensions.",
     );
   if (!g.photoIds.length || g.photoIds.length > 24)
     issues.push("Select 1–24 photos for this item.");
