@@ -1,3 +1,4 @@
+import { applyListingDefaults } from "@/lib/listing-defaults";
 import { categoryMatches, expectedDepartment } from "@/lib/category-selection";
 import { NextRequest, NextResponse } from "next/server";
 import { guardApiRequest } from "@/lib/api-guard";
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
             throw new Error(
               `This category does not accept Department ${expected}. Choose the correct category.`,
             );
+          applyListingDefaults(listing, meta, ids);
           const aspects = buildAspects(listing, listing.category || "");
           reconcileAspects(aspects, meta, listing, listing.category || "");
           if (body.enrich === true)
@@ -86,7 +88,10 @@ export async function POST(req: NextRequest) {
             .filter((id) => CONDITION_ID_ENUM[id])
             .map((id) => ({
               value: CONDITION_ID_ENUM[id],
-              label: `${CONDITION_ID_ENUM[id].replace(/_/g, " ")} (${id})`,
+              label:
+                id === 2990
+                  ? "Pre-owned Excellent (2990)"
+                  : `${CONDITION_ID_ENUM[id].replace(/_/g, " ")} (${id})`,
             }));
           if (ids.has(2990) || ids.has(3010)) {
             const c = conditions.find(
@@ -98,7 +103,7 @@ export async function POST(req: NextRequest) {
           listing.item_specifics = Object.fromEntries(
             Object.entries(aspects).map(([k, v]) => [k, v.join(" | ")]),
           );
-          // Cosmetic AI grades cannot establish the seller's sale condition.
+          // Preserve supported seller choices/defaults; never substitute another grade.
           if (!conditions.some((c) => c.value === listing.ebay_condition))
             listing.ebay_condition = "";
           const expiresAt = Date.now() + 23 * 3600_000;

@@ -20,7 +20,7 @@ This branch repairs the existing app. It does not switch AI providers. It is a r
 
 Run `npm ci`, `npm test`, `npm run build`, `npm run typecheck`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The 179 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
+The 182 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
 
 ## Live release gate
 
@@ -82,3 +82,10 @@ Only return policies with `returnsAccepted: true` are offered for selection. Pub
 Seller requested removal of mandatory weight/dimensions for the flat-fee workflow. All four parcel fields are optional; blank parcel data is omitted from the inventory request, never fabricated. If dimensions are supplied, all three must be valid. Existing eBay policy/service requirements can still be returned by eBay.
 
 Drafts automatically load account options and fill missing selections with the seller-requested $7.95 Ground Advantage/two-day-handling profile, Managed Payments, the specified returns-accepted policy and named shipping origin. IDs are resolved from authenticated account results, never invented. Missing/ambiguous names remain unselected. Manual per-item overrides are preserved when reloading policies; heavier items do not automatically override the seller's usual $7.95 choice. Nine browser workflow checks pass, including posting eligibility with no parcel fields and override preservation.
+
+
+## Seller-confirmed publication and listing defaults
+
+The seller reported that the intended item listed correctly on eBay after using the authenticated test app. This is seller-reported live publication success; no duplicate listing was created by the agent to repeat that test.
+
+At the seller's explicit request, category preparation now fills missing Size Type with Regular when supported, and missing condition with PRE_OWNED_EXCELLENT (2990) when supported. These are editable seller preferences, not AI-inferred facts. Existing values—including New or a specialized size type—are preserved during preparation; publishing never applies these defaults. Category 3000 (Pre-owned Good in these clothing categories) is not substituted for Excellent. Defaults do not retroactively modify posted listings.
