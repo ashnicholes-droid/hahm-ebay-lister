@@ -29,3 +29,5 @@ public/test-photos.json
 
 /playwright-report/
 /test-results/
+
+/supabase/.temp/

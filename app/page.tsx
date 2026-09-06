@@ -26,6 +26,7 @@ import { chunkImagesForUpload } from "@/lib/uploadBatches";
 import { EbayConnect } from "./EbayConnect";
 import { ModelSelector } from "./ModelSelector";
 import { ReviewBoard } from "./ReviewBoard";
+import { CloudBatch } from "./CloudBatch";
 import { ListingsView } from "./ListingsView";
 import type {
   AnalyzeResponse,
@@ -518,7 +519,7 @@ export default function Home() {
     async (groupId: string) => {
       // Snapshot this group's photos from the latest state (no stale closure).
       const group = groupsRef.current.find((g) => g.id === groupId);
-      if (!group || inFlight.current.has(groupId)) return;
+      if (!group || group.cloudBatchId || inFlight.current.has(groupId)) return;
       inFlight.current.add(groupId);
       const imgs = (group.analysisPhotoIds ?? group.photoIds)
         .map((id) => photoMap.get(id))
@@ -655,7 +656,12 @@ export default function Home() {
     // (issue #30) — groups whose photos changed are reset to "idle" by
     // movePhoto, so they (and only they) get rewritten here.
     const usable = groups
-      .filter((g) => g.photoIds.length > 0 && g.status !== "done")
+      .filter(
+        (g) =>
+          g.photoIds.length > 0 &&
+          !g.cloudBatchId &&
+          (g.status === "idle" || g.status === "error"),
+      )
       .map((g) => g.id);
     setStep("listings");
     if (usable.length === 0) return;
@@ -1088,6 +1094,14 @@ export default function Home() {
         </>
       )}
 
+      {(step === "review" || step === "listings") && (
+        <CloudBatch
+          groups={usableGroups}
+          photos={photos}
+          onResult={editGroup}
+          onOpen={() => setStep("listings")}
+        />
+      )}
       {step === "review" && (
         <ReviewBoard
           groups={groups}

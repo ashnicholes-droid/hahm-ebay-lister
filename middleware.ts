@@ -20,7 +20,7 @@ export function middleware(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     // blob:/data: for in-browser photo resizing previews
     "img-src 'self' data: blob: https://i.ebayimg.com",
-    "connect-src 'self'",
+    `connect-src 'self'${process.env.SUPABASE_URL ? " " + new URL(process.env.SUPABASE_URL).origin : ""}`,
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",

@@ -112,7 +112,7 @@ export function ListingsView(props: ListingsViewProps) {
   const active =
     Boolean(queue?.running) || groups.some((g) => g.postStatus === "posting");
   const remaining = groups.filter(
-    (g) => g.status === "idle" || g.status === "error",
+    (g) => !g.cloudBatchId && (g.status === "idle" || g.status === "error"),
   ).length;
   const visible = groups.filter(
     (g) =>

@@ -59,3 +59,20 @@ The seller created the Free Supabase project `hahm-ebay-lister` and authenticate
 - Live REST check: server key HTTP 200, publishable key HTTP 401. Catalog checks verified RLS and revoked browser privileges on all four tables. Rolled-back SQL test verified that publish jobs require an approved snapshot.
 
 These are infrastructure foundations only: the UI does not yet read/write cloud batches and no background worker is connected. Inngest account setup, application integration, ownership enforcement, authenticated upload grants, retention cleanup and close-browser recovery tests remain outstanding. No paid subscription has been activated. The schema expiry field does not itself delete data; implement retention before uploading real batches.
+
+## Background workflow implementation
+
+Implemented on the batch review branch behind `CLOUD_BATCH_ENABLED=true` in branch-scoped Preview:
+
+- Official Supabase and Inngest SDKs; shared analysis, preparation and research services used by existing routes and the background worker.
+- Atomic batch creation; signed HTTP-only workspace ownership cookie; service-only database access; private, scoped photo upload grants with server confirmation before queued work.
+- Three worker steps persist analysis, category preparation and price research independently, followed by job completion. Persisted stages are reused on redelivery. A provider response lost before its database save can still incur a repeated model call; there is no claim of exactly-once AI billing.
+- Encrypted eBay connection retained with the expiring batch for background preparation. Credentials and photo bytes do not appear in Inngest event data or step return values.
+- Bounded worker concurrency, per-job serialization, explicit retry, stable event IDs and a five-minute queued-job dispatcher for interrupted event submission. The dispatcher itself consumes free-tier executions.
+- Browser upload progress, same-browser recovery, preservation of reviewed drafts and suppression of duplicate local generation. Only new completed results are fetched, up to five detailed drafts per response.
+- A daily cleanup removes expired photo objects before deleting batch rows. Local originals remain on the device. There is no cross-device draft browser in this increment.
+- Publication remains the separate existing seller action in the browser, not an automatic Inngest job.
+
+Validation: 196 automated checks; 16 browser checks including simulated close/reopen recovery and preservation of an edited title. Build/typecheck passed. Live protected Preview registered successfully with Inngest; anonymous cloud access returned 401. A synthetic 16-pixel JPEG uploaded privately, and a live Inngest job with pre-saved synthetic analysis/preparation/research completed successfully. This verifies queue delivery, storage, and reuse of completed stages; it is not a live AI generation or real-photo accuracy benchmark.
+
+Automatic approval review rejected the proposed real Faherty-photo cloud/AI test, requiring explicit consent for those uploads. Permission was requested; no real sample photo was uploaded by these live checks. Production has not been merged or changed by this increment.
