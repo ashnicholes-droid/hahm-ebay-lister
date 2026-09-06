@@ -20,7 +20,7 @@ This branch repairs the existing app. It does not switch AI providers. It is a r
 
 Run `npm ci`, `npm test`, `npm run build`, `npm run typecheck`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The 174 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
+The 175 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
 
 ## Live release gate
 
@@ -65,3 +65,6 @@ Seller correction: Chubbies is new, with attached tags visible; the other five i
 
 
 Final price-filter correction: source inspection showed that collaboration-only matches still admitted crochet tops for the rainbow camp shirt. Keyword comparisons now require all retained identifying phrases (word order may differ), in addition to apparel size. This intentionally favors no result over a different style. Earlier prices in this document describe intermediate runs; the final run is reported separately in the local evaluation report. No asking-price median is a confirmed resale value.
+
+
+The final construction filter additionally requires the clothing item type and its supplied Style phrase, preventing a cashmere pullover from entering cardigan research. Numeric MPNs are excluded from redundant keyword phrases when the named style is available; identifiers remain available for identifier/GTIN retrieval. Strict title matching may miss valid sellers who omit these details; absence of results is not evidence that the item has no resale value.

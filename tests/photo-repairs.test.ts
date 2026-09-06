@@ -282,3 +282,20 @@ it("excludes a wrong-style collaboration while allowing reordered identifying wo
     vi.unstubAllGlobals();
   }
 });
+
+it("retains garment construction and avoids requiring an MPN inside a named-style title", async () => {
+  const { comparisonTerms } = await import("@/lib/ebay/comps");
+  const terms = comparisonTerms({
+    title: "Cardigan",
+    description: "",
+    item_type: "Cardigan",
+    material: "100% Cashmere",
+    item_specifics: {
+      Style: "Open Front Waterfall Cardigan",
+      MPN: "777243-026",
+    },
+    search_terms: ["777243-026"],
+  });
+  expect(terms).toContain("Open Front Waterfall Cardigan");
+  expect(terms).not.toContain("777243-026");
+});

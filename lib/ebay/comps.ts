@@ -34,6 +34,7 @@ export function comparisonTerms(listing: ListingResult): string[] {
   const critical = [
     specifics.Collaboration,
     listing.material || specifics.Material,
+    specifics.Style,
   ].filter((v): v is string => Boolean(v?.trim()));
   const normalize = (v: string) =>
     v
@@ -61,6 +62,7 @@ export function comparisonTerms(listing: ListingResult): string[] {
         n !== "brand" &&
         !/^made in /i.test(t) &&
         (!copyright || n !== copyright) &&
+        !compIdentifiers(listing).some((id) => normalize(id) === n) &&
         !critical.some((c) => normalize(c) === n)
       );
     });
@@ -127,7 +129,7 @@ export function buildCompQuery(listing: ListingResult): string {
     String(listing.size || ""),
     String(listing.item_specifics?.Edition || ""),
   ].filter(Boolean);
-  if (parts.length) return parts.join(" ").slice(0, 100);
+  if (parts.length) return [...new Set(parts)].join(" ").slice(0, 100);
   // No brand/type — fall back to the first few title words.
   return String(listing.title || "")
     .split(/\s+/)
@@ -308,6 +310,15 @@ export async function searchComps(
         .replace(/[^a-z0-9]+/g, " ")
         .trim() +
       " ";
+    if (
+      /^(mens|womens)_/.test(listing.category || "") &&
+      listing.item_type &&
+      !norm(listing.item_type)
+        .trim()
+        .split(/\s+/)
+        .every((word) => norm(title).includes(" " + word + " "))
+    )
+      return false;
     // GTIN retrieval matches the product identifier even when sellers omit it
     // from their titles. Descriptive searches must retain distinguishing phrases.
     if (gtinMatched) return true;
