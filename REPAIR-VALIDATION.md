@@ -20,7 +20,7 @@ This branch repairs the existing app. It does not switch AI providers. It is a r
 
 Run `npm ci`, `npm test`, `npm run build`, `npm run typecheck`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The 172 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
+The 174 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
 
 ## Live release gate
 
@@ -62,3 +62,6 @@ Residual draft-language errors remain: the targeted Sailor Moon description used
 
 
 Seller correction: Chubbies is new, with attached tags visible; the other five items are pre-owned. A new-condition query found the named XXL/30-inch product at $47.24 plus $7.95 shipping. The search also returned Large/XL sources, prompting an additional size filter: known apparel sizes require matching title evidence, with longer size phrases distinguished from plain Large/Small and possessives excluded. This is a heuristic filter and deliberately excludes ambiguous multi-size titles. The final source-filter run is recorded in the local evaluation report.
+
+
+Final price-filter correction: source inspection showed that collaboration-only matches still admitted crochet tops for the rainbow camp shirt. Keyword comparisons now require all retained identifying phrases (word order may differ), in addition to apparel size. This intentionally favors no result over a different style. Earlier prices in this document describe intermediate runs; the final run is reported separately in the local evaluation report. No asking-price median is a confirmed resale value.

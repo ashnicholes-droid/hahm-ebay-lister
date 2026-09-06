@@ -64,12 +64,9 @@ export function comparisonTerms(listing: ListingResult): string[] {
         !critical.some((c) => normalize(c) === n)
       );
     });
-  // Avoid requiring every slogan, distributor and copyright owner in a seller title.
-  const graphic = /graphic/i.test(listing.item_type || "");
-  return [
-    ...critical,
-    ...other.slice(0, critical.length && !graphic ? 0 : 1),
-  ].slice(0, 3);
+  // Preserve all supplied identifying phrases: matching only a collaboration
+  // or fiber can still admit a different garment style. Sparse results are honest.
+  return [...new Set([...critical, ...other])].slice(0, 6);
 }
 
 // Search may relax size terms. Require a matching tagged apparel size in
@@ -316,7 +313,12 @@ export async function searchComps(
     if (gtinMatched) return true;
     const terms = comparisonTerms(listing);
     if (terms.length)
-      return terms.every((term) => norm(title).includes(norm(term)));
+      return terms.every((term) =>
+        norm(term)
+          .trim()
+          .split(/\s+/)
+          .every((word) => norm(title).includes(" " + word + " ")),
+      );
     const nonGtin = identifiers.filter((id) => !/^\d{8,14}$/.test(id));
     return (
       nonGtin.every((id) => norm(title).includes(norm(id))) &&

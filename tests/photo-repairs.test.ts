@@ -219,3 +219,66 @@ it("rejects relaxed-search apparel sizes and possessive false matches", async ()
     false,
   );
 });
+
+it("retains secondary style phrases rather than accepting any collaboration item", async () => {
+  const { comparisonTerms } = await import("@/lib/ebay/comps");
+  const l = {
+    title: "Shirt",
+    description: "",
+    brand: "Example",
+    search_terms: [
+      "Example for The Trevor Project",
+      "rainbow wave embroidery",
+      "camp collar shirt",
+    ],
+  };
+  expect(comparisonTerms(l)).toContain("rainbow wave embroidery");
+  expect(comparisonTerms(l)).toContain("camp collar shirt");
+});
+it("excludes a wrong-style collaboration while allowing reordered identifying words", async () => {
+  const { vi } = await import("vitest");
+  const { searchComps } = await import("@/lib/ebay/comps");
+  const item = (id: string, title: string) => ({
+    itemId: id,
+    title,
+    itemWebUrl: "https://www.ebay.com/itm/" + id,
+    conditionId: "3000",
+    price: { value: "30", currency: "USD" },
+    shippingOptions: [{ shippingCost: { value: "5", currency: "USD" } }],
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            itemSummaries: [
+              item("9871", "Example The Trevor Project Crochet Top XL"),
+              item(
+                "9872",
+                "Example The Trevor Project Rainbow Wave Camp Collar Embroidery Shirt XL",
+              ),
+            ],
+          }),
+        ),
+    ),
+  );
+  try {
+    const r = await searchComps("token", {
+      title: "Collaboration shirt",
+      description: "",
+      brand: "Example",
+      size: "XL",
+      category: "mens_top",
+      search_terms: [
+        "The Trevor Project",
+        "rainbow wave embroidery",
+        "camp collar shirt",
+      ],
+    });
+    expect(r.sources?.map((s) => s.id)).toEqual(["9872"]);
+    expect(r.median).toBe(35);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
