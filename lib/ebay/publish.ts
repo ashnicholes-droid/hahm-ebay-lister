@@ -924,7 +924,12 @@ export async function fetchAccountOptions(
   return {
     fulfillment: rows(results[0], "fulfillmentPolicies", "fulfillmentPolicyId"),
     payment: rows(results[1], "paymentPolicies", "paymentPolicyId"),
-    returns: rows(results[2], "returnPolicies", "returnPolicyId"),
+    returns: (results[2].json?.returnPolicies ?? [])
+      .filter((policy: any) => policy.returnsAccepted === true)
+      .map((policy: any) => ({
+        id: String(policy.returnPolicyId),
+        name: String(policy.name || policy.returnPolicyId),
+      })),
     locations: (results[3].json?.locations ?? [])
       .filter((x: any) => x.merchantLocationStatus === "ENABLED")
       .map((x: any) => ({
@@ -1105,11 +1110,14 @@ export async function publishListing(
   if (
     !check(options.fulfillment, shipping.fulfillmentPolicyId) ||
     !check(options.payment, shipping.paymentPolicyId) ||
-    !check(options.returns, shipping.returnPolicyId) ||
     !check(options.locations, shipping.locationKey)
   )
     throw new Error(
       "A selected shipping policy or location no longer exists. Select it again.",
+    );
+  if (!check(options.returns, shipping.returnPolicyId))
+    throw new Error(
+      "Choose an existing eBay return policy that accepts returns. Reload policies and select it again.",
     );
   const condition = listing.ebay_condition || "";
   if (![...accepted].some((id) => CONDITION_ID_ENUM[id] === condition))

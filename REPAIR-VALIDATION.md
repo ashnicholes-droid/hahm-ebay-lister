@@ -20,7 +20,7 @@ This branch repairs the existing app. It does not switch AI providers. It is a r
 
 Run `npm ci`, `npm test`, `npm run build`, `npm run typecheck`, `npx playwright install chromium`, and `npm run test:browser`.
 
-The 175 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
+The 176 unit/integration checks cover publication payload fidelity, missing required facts/photos, condition preservation, conflicting/live SKUs, unknown remote state, lost publish responses, intake, persistence and comparable filtering. Browser checks use mocked external services and verify reloads, edits, upload failure/retry, concurrent tabs, late responses and phone layout. They do not prove current Anthropic model access or eBay account compatibility.
 
 ## Live release gate
 
@@ -68,3 +68,10 @@ Final price-filter correction: source inspection showed that collaboration-only 
 
 
 The final construction filter additionally requires the clothing item type and its supplied Style phrase, preventing a cashmere pullover from entering cardigan research. Numeric MPNs are excluded from redundant keyword phrases when the named style is available; identifiers remain available for identifier/GTIN retrieval. Strict title matching may miss valid sellers who omit these details; absence of results is not evidence that the item has no resale value.
+
+
+## Seller shipping clarification
+
+The seller uses two flat buyer-charge USPS Ground Advantage policies, both with two-business-day handling: $7.95 for lighter items (usual choice) and $9.95 for heavier items such as sweaters/jackets/jeans. The draft review shows these preferences and an editable-policy suggestion. It does not create or modify the eBay policies or infer packed measurements. An authenticated account read must verify the actual policy IDs/settings.
+
+Only return policies with `returnsAccepted: true` are offered for selection. Publication re-fetches policies and rejects a no-returns, missing or unverified return policy before listing writes. The existing return period and return-postage terms are preserved. A regression test verifies no-returns publication fails without writes.

@@ -327,7 +327,30 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
         })}
       </details>
       <details open>
-        <summary>Shipping — actual packed measurements</summary>
+        <summary>Shipping and returns</summary>
+        <p className="note">
+          USPS Ground Advantage · flat buyer charge · 2 business days handling.
+          Usually $7.95 for tees, shirts, blouses, lightweight pants, sandals
+          and light shoes without boxes; $9.95 for heavier shoes, sweaters,
+          jackets and jeans. Select the existing eBay policy you want for this
+          item.
+        </p>
+        <p className="note">
+          Suggested profile for this draft:{" "}
+          {/sweater|sweatshirt|cardigan|jacket|jeans|coat/i.test(
+            [l.item_type, l.category, l.title].filter(Boolean).join(" "),
+          )
+            ? "$9.95"
+            : "$7.95"}
+          . You can choose either profile. Returns must be accepted; your
+          existing return window and return-postage terms apply.
+        </p>
+        {options && options.returns.length === 0 && (
+          <p className="note-error">
+            No returns-accepted policy was found. Check your eBay return policy,
+            then reload policies here.
+          </p>
+        )}
         <button type="button" onClick={loadOptions}>
           Load my eBay policies and locations
         </button>

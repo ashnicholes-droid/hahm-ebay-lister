@@ -178,6 +178,7 @@ function fakeEbay(
     publishError?: boolean;
     timeoutAfterPublish?: boolean;
     conflict?: boolean;
+    returnsAccepted?: boolean;
   } = {},
 ) {
   const writes: { url: string; body: any; method: string }[] = [];
@@ -202,7 +203,14 @@ function fakeEbay(
     if (u.includes("/payment_policy"))
       return reply({ paymentPolicies: [{ paymentPolicyId: "pay" }] });
     if (u.includes("/return_policy"))
-      return reply({ returnPolicies: [{ returnPolicyId: "ret" }] });
+      return reply({
+        returnPolicies: [
+          {
+            returnPolicyId: "ret",
+            returnsAccepted: opts.returnsAccepted ?? true,
+          },
+        ],
+      });
     if (u.includes("/location"))
       return reply({
         locations: [
@@ -372,4 +380,13 @@ it("excludes near-identical models and includes known shipping in the comp media
   expect(r.median).toBe(110);
   expect(r.sources).toHaveLength(1);
   expect(r.sources?.[0].id).toBe("r5");
+});
+
+it("blocks a no-returns policy before any eBay listing writes", async () => {
+  const api = fakeEbay({ returnsAccepted: false });
+  vi.stubGlobal("fetch", api.fetch);
+  await expect(publishListing("token", input())).rejects.toThrow(
+    "accepts returns",
+  );
+  expect(api.writes).toEqual([]);
 });
