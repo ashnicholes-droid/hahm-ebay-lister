@@ -39,3 +39,5 @@ The 159 unit/integration checks cover publication payload fidelity, missing requ
 - Photo evidence references require seller verification. Aspect enrichment is not proof of a fact. The app cannot establish functionality, authenticity or hidden defects from photos alone.
 - Better category-aware title identifier prioritization, representative-photo routing, broader nonadjacent grouping and calibrated cost/quality benchmarks remain follow-on enhancements. Current titles are validated before publication and not silently truncated at that stage.
 - The GPT 5.6 comparison app is deliberately not started until this original reaches the release gate. It should share validation rules and use the same evaluation photos, while preventing accidental duplicate listings.
+
+Cost estimates use standard global rates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), checked September 5, 2026. Discounts, special service tiers and incomplete locally recorded attempts can change the billed total.

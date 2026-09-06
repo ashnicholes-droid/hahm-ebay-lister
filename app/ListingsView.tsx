@@ -48,7 +48,7 @@ export function ListingsView({
       <div className="result-head">
         <h3 id="listings-heading">Your listings</h3>
         <span className="badge">
-          {done}/{groups.length} ready
+          {done}/{groups.length} drafts written
           {writing > 0 ? ` · ${writing} writing` : ""}
           {failed > 0 ? ` · ${failed} failed` : ""}
           {posted > 0 ? ` · ${posted} posted` : ""}
