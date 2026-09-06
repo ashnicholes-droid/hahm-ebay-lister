@@ -1,4 +1,14 @@
 "use client";
+import { requestText } from "./text-dialog";
+
+let pendingCode: Promise<string | null> | null = null;
+function askForCode(message: string): Promise<string | null> {
+  if (!pendingCode)
+    pendingCode = requestText(message, true).finally(() => {
+      pendingCode = null;
+    });
+  return pendingCode;
+}
 
 /**
  * Client-side fetch wrapper for the AI API routes.
@@ -66,7 +76,7 @@ export async function apiPost(path: string, body: unknown): Promise<Response> {
 
   // Up to two prompt attempts: covers both "no code yet" and "wrong code".
   for (let attempt = 0; attempt < 2 && (await accessRequired(res)); attempt++) {
-    const entered = window.prompt(
+    const entered = await askForCode(
       attempt === 0
         ? "Enter your access code. This is the APP_SECRET you set in Vercel (Settings → Environment Variables) — not your Anthropic API key."
         : "That didn't match the APP_SECRET set in Vercel — try again:",

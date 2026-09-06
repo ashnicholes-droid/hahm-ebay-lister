@@ -2,6 +2,7 @@
 import { useState, useRef } from "react";
 import type { ItemGroup, Photo } from "@/lib/types";
 import type { AccountOptions } from "@/lib/ebay/publish";
+import { requestText } from "@/lib/text-dialog";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
 interface Props {
@@ -271,8 +272,8 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
         })}
         <button
           type="button"
-          onClick={() => {
-            const name = window.prompt("Specific name, such as Model");
+          onClick={async () => {
+            const name = await requestText("Specific name, such as Model");
             if (name?.trim())
               edit({ item_specifics: { ...specifics, [name.trim()]: "" } });
           }}

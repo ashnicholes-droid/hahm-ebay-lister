@@ -1140,3 +1140,18 @@ textarea {
   color: #8b361b;
   padding-left: 22px;
 }
+
+.text-entry-dialog {
+  border: 1px solid #b7c9c4;
+  border-radius: 14px;
+  padding: 24px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  color: #173e35;
+  background: #fff;
+}
+.text-entry-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.text-entry-dialog label { display: grid; gap: 14px; line-height: 1.5; }
+.text-entry-dialog input { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; }
+.text-entry-dialog form > div { display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; }

@@ -243,3 +243,73 @@ test("phone review fits the viewport", async ({ page }) => {
     fullPage: true,
   });
 });
+
+test("eBay sign-in uses an in-page access form and a user-clicked link", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.prompt = () => {
+      throw new Error("prompt() is not supported.");
+    };
+    window.open = () => {
+      throw new Error("Automatic popups are not supported.");
+    };
+  });
+  await setup(page);
+  await page.route("**/api/ebay/status", (r) =>
+    r.fulfill({ json: { configured: true, connected: false } }),
+  );
+  await page.route("**/api/ebay/auth", (r) => {
+    const valid = r.request().headers()["x-app-secret"] === "test-correct-code";
+    return r.fulfill({
+      status: valid ? 200 : 401,
+      json: valid
+        ? { ok: true, url: "https://auth.ebay.com/oauth2/authorize?test=1" }
+        : { ok: false, code: "ACCESS_CODE_REQUIRED" },
+    });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Open eBay" }).click();
+  const dialog = page.getByRole("dialog", { name: "App access code" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("input")).toHaveAttribute("type", "password");
+  await dialog.locator("input").fill("wrong-code");
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(dialog).toContainText("try again");
+  await dialog.locator("input").fill("test-correct-code");
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Continue to eBay" }),
+  ).toHaveAttribute("href", "https://auth.ebay.com/oauth2/authorize?test=1");
+});
+
+test("cancelling access entry closes the form and allows another attempt", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/ebay/status", (r) =>
+    r.fulfill({ json: { configured: true, connected: false } }),
+  );
+  await page.route("**/api/ebay/auth", (r) =>
+    r.fulfill({
+      status: 401,
+      json: {
+        ok: false,
+        code: "ACCESS_CODE_REQUIRED",
+        error: "Access code required.",
+      },
+    }),
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Open eBay" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open eBay" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
