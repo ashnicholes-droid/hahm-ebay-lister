@@ -20,7 +20,7 @@ import {
   EBAY_CATEGORY_TREE_ID,
   EBAY_TOKEN_URL,
   basicAuthHeader,
-  getEbayCreds,
+  getEbayAppCreds,
 } from "./config";
 
 export type AspectMode = "FREE_TEXT" | "SELECTION_ONLY";
@@ -60,7 +60,7 @@ export async function appToken(): Promise<string> {
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60_000)
     return cachedToken.token;
-  const creds = getEbayCreds();
+  const creds = getEbayAppCreds();
   const resp = await boundedFetch(EBAY_TOKEN_URL, {
     method: "POST",
     headers: {

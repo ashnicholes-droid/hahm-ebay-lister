@@ -38,27 +38,42 @@ export interface EbayCreds {
   ruName: string;
 }
 
-export function getEbayCreds(): EbayCreds {
+export function getEbayAppCreds(): Pick<
+  EbayCreds,
+  "clientId" | "clientSecret"
+> {
   const clientId = process.env.EBAY_CLIENT_ID;
   const clientSecret = process.env.EBAY_CLIENT_SECRET;
-  const ruName = process.env.EBAY_RU_NAME;
-  if (!clientId || !clientSecret || !ruName) {
+  if (!clientId || !clientSecret)
     throw new Error(
-      "eBay is not configured. Set EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, and EBAY_RU_NAME in Vercel."
+      "eBay research requires EBAY_CLIENT_ID and EBAY_CLIENT_SECRET.",
     );
-  }
-  return { clientId, clientSecret, ruName };
+  return { clientId, clientSecret };
+}
+
+export function isEbayAppConfigured(): boolean {
+  return Boolean(process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET);
+}
+
+export function getEbayCreds(): EbayCreds {
+  const creds = getEbayAppCreds();
+  const ruName = process.env.EBAY_RU_NAME;
+  if (!ruName)
+    throw new Error("Connecting an eBay seller requires EBAY_RU_NAME.");
+  return { ...creds, ruName };
 }
 
 export function isEbayConfigured(): boolean {
   return Boolean(
     process.env.EBAY_CLIENT_ID &&
-      process.env.EBAY_CLIENT_SECRET &&
-      process.env.EBAY_RU_NAME
+    process.env.EBAY_CLIENT_SECRET &&
+    process.env.EBAY_RU_NAME,
   );
 }
 
-export function basicAuthHeader(creds: EbayCreds): string {
+export function basicAuthHeader(
+  creds: Pick<EbayCreds, "clientId" | "clientSecret">,
+): string {
   const raw = `${creds.clientId}:${creds.clientSecret}`;
   return `Basic ${Buffer.from(raw).toString("base64")}`;
 }
