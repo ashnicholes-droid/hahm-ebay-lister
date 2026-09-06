@@ -35,8 +35,23 @@ export function clearAccessCode(): void {
   }
 }
 
-async function doFetch(path: string, body: unknown, code: string | null): Promise<Response> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+async function accessRequired(res: Response): Promise<boolean> {
+  if (res.status !== 401) return false;
+  try {
+    return (await res.clone().json()).code === "ACCESS_CODE_REQUIRED";
+  } catch {
+    return false;
+  }
+}
+
+async function doFetch(
+  path: string,
+  body: unknown,
+  code: string | null,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (code) headers["x-app-secret"] = code;
   return fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
 }
@@ -50,11 +65,11 @@ export async function apiPost(path: string, body: unknown): Promise<Response> {
   let res = await doFetch(path, body, code);
 
   // Up to two prompt attempts: covers both "no code yet" and "wrong code".
-  for (let attempt = 0; attempt < 2 && res.status === 401; attempt++) {
+  for (let attempt = 0; attempt < 2 && (await accessRequired(res)); attempt++) {
     const entered = window.prompt(
       attempt === 0
         ? "Enter your access code. This is the APP_SECRET you set in Vercel (Settings → Environment Variables) — not your Anthropic API key."
-        : "That didn't match the APP_SECRET set in Vercel — try again:"
+        : "That didn't match the APP_SECRET set in Vercel — try again:",
     );
     if (!entered || !entered.trim()) return res; // user cancelled — surface the 401
     code = entered.trim();

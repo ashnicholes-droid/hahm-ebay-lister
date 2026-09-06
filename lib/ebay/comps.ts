@@ -1,3 +1,4 @@
+import { boundedFetch } from "@/lib/network";
 // Comparable-listing price research via eBay's Browse API.
 //
 // The analysis model's suggested_price is a visual guess with no market data
@@ -11,7 +12,8 @@
 import { EBAY_CURRENCY, EBAY_MARKETPLACE_ID } from "./config";
 import type { CompsSummary, ListingResult } from "@/lib/types";
 
-const EBAY_BROWSE_SEARCH = "https://api.ebay.com/buy/browse/v1/item_summary/search";
+const EBAY_BROWSE_SEARCH =
+  "https://api.ebay.com/buy/browse/v1/item_summary/search";
 
 export type { CompsSummary };
 
@@ -29,15 +31,41 @@ function isNewGrade(condition: string | undefined): boolean {
 
 export function buildCompQuery(listing: ListingResult): string {
   const brand = String(listing.brand || "").trim();
-  const usableBrand = brand && !/^(no\s?brand|unbranded|unknown)$/i.test(brand) ? brand : "";
+  const usableBrand =
+    brand && !/^(no\s?brand|unbranded|unknown)$/i.test(brand) ? brand : "";
   const itemType = String(listing.item_type || "").trim();
-  const parts = [usableBrand, itemType].filter(Boolean);
+  const ids = compIdentifiers(listing);
+  const parts = [
+    usableBrand,
+    ...ids,
+    itemType,
+    String(listing.size || ""),
+    String(listing.item_specifics?.Edition || ""),
+  ].filter(Boolean);
   if (parts.length) return parts.join(" ").slice(0, 100);
   // No brand/type — fall back to the first few title words.
-  return String(listing.title || "").split(/\s+/).slice(0, 6).join(" ").slice(0, 100);
+  return String(listing.title || "")
+    .split(/\s+/)
+    .slice(0, 6)
+    .join(" ")
+    .slice(0, 100);
+}
+
+export function compIdentifiers(listing: ListingResult): string[] {
+  const fields = ["UPC", "ISBN", "EAN", "MPN", "Model"];
+  return [
+    ...new Set(
+      fields
+        .map((k) => String(listing.item_specifics?.[k] || "").trim())
+        .filter((v) => v && !/^(unknown|n\/?a|does not apply)$/i.test(v)),
+    ),
+  ];
 }
 
 interface BrowseItem {
+  itemId?: string;
+  itemWebUrl?: string;
+  shippingOptions?: { shippingCost?: { value?: string; currency?: string } }[];
   title?: string;
   price?: { value?: string; currency?: string };
   conditionId?: string;
@@ -46,7 +74,7 @@ interface BrowseItem {
 
 export function filterComps(
   items: BrowseItem[],
-  listingCondition: string | undefined
+  listingCondition: string | undefined,
 ): number[] {
   const wantNew = isNewGrade(listingCondition);
   const prices: number[] = [];
@@ -80,7 +108,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Median, 10–90% band, trimmed mean, and a confidence heuristic based on how
 // many valid comps exist and how tightly they cluster.
-export function compStats(prices: number[]): Omit<CompsSummary, "ok" | "query" | "basis"> {
+export function compStats(
+  prices: number[],
+): Omit<CompsSummary, "ok" | "query" | "basis"> {
   const sorted = [...prices].sort((a, b) => a - b);
   const count = sorted.length;
   if (count === 0) return { count: 0, confidence: 0 };
@@ -111,7 +141,10 @@ export function compStats(prices: number[]): Omit<CompsSummary, "ok" | "query" |
 
 // Identical items in a batch (or a re-analyze) shouldn't re-spend Browse API
 // quota — cache per warm lambda for a while.
-const compsCache = new Map<string, { summary: CompsSummary; expiresAt: number }>();
+const compsCache = new Map<
+  string,
+  { summary: CompsSummary; expiresAt: number }
+>();
 const COMPS_TTL_MS = 10 * 60_000;
 const COMPS_CACHE_MAX = 200;
 
@@ -119,14 +152,26 @@ const COMPS_CACHE_MAX = 200;
 // module's client-credentials flow — the Browse API accepts the same scope.
 export async function searchComps(
   appToken: string,
-  listing: ListingResult
+  listing: ListingResult,
 ): Promise<CompsSummary> {
   const query = buildCompQuery(listing);
-  const empty: CompsSummary = { ok: false, query, count: 0, confidence: 0, basis: "" };
+  const empty: CompsSummary = {
+    ok: false,
+    query,
+    count: 0,
+    confidence: 0,
+    basis: "",
+  };
   if (!query) return empty;
 
   const wantNew = isNewGrade(listing.condition);
-  const cacheKey = `${query}|${wantNew ? "new" : "used"}`;
+  const cacheKey = JSON.stringify([
+    query,
+    listing.condition,
+    listing.category_id,
+    EBAY_CURRENCY,
+    EBAY_MARKETPLACE_ID,
+  ]);
   const cached = compsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.summary;
   const params = new URLSearchParams({
@@ -134,25 +179,82 @@ export async function searchComps(
     limit: "50",
     filter: `buyingOptions:{FIXED_PRICE},conditions:{${wantNew ? "NEW" : "USED"}},priceCurrency:${EBAY_CURRENCY}`,
   });
-  const resp = await fetch(`${EBAY_BROWSE_SEARCH}?${params}`, {
+  if (listing.category_id) params.set("category_ids", listing.category_id);
+  const resp = await boundedFetch(`${EBAY_BROWSE_SEARCH}?${params}`, {
     headers: {
       Authorization: `Bearer ${appToken}`,
       Accept: "application/json",
       "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE_ID,
     },
   });
-  if (!resp.ok) return empty;
+  if (!resp.ok)
+    throw new Error(`eBay comparable search failed (${resp.status}).`);
   const data = await resp.json().catch(() => null);
   const items: BrowseItem[] = data?.itemSummaries ?? [];
-  const prices = filterComps(items, listing.condition);
+  const identifiers = compIdentifiers(listing);
+  const seen = new Set<string>();
+  const candidates = items.filter((it) => {
+    if (!it.itemId || seen.has(it.itemId) || !it.itemWebUrl) return false;
+    seen.add(it.itemId);
+    const title = String(it.title || "").toLowerCase();
+    // Require identifiers as complete tokens; R5 must not match R50.
+    const norm = (v: string) =>
+      " " +
+      v
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim() +
+      " ";
+    return identifiers.every((id) => norm(title).includes(norm(id)));
+  });
+  const sources = candidates
+    .filter((it) => filterComps([it], listing.condition).length)
+    .map((it) => {
+      const shipping = it.shippingOptions?.[0]?.shippingCost;
+      const shippingPrice =
+        shipping?.currency === EBAY_CURRENCY &&
+        Number.isFinite(Number(shipping.value))
+          ? Number(shipping.value)
+          : undefined;
+      const price = Number(it.price!.value);
+      return {
+        id: it.itemId!,
+        title: it.title || "",
+        url: it.itemWebUrl!,
+        price,
+        shipping: shippingPrice,
+        total: shippingPrice === undefined ? undefined : price + shippingPrice,
+        condition: it.conditionId || "unknown",
+      };
+    })
+    .filter((it) => {
+      try {
+        const u = new URL(it.url);
+        return (
+          u.protocol === "https:" &&
+          (u.hostname === "www.ebay.com" || u.hostname === "ebay.com")
+        );
+      } catch {
+        return false;
+      }
+    });
+  const prices = sources
+    .filter((s) => s.total !== undefined)
+    .map((s) => s.total!);
   const stats = compStats(prices);
   const summary: CompsSummary = {
     ok: stats.count > 0,
     query,
     ...stats,
+    confidence: Math.min(stats.confidence, identifiers.length ? 0.8 : 0.3),
+    sources,
+    checkedAt: new Date().toISOString(),
+    matchBasis: identifiers.length
+      ? "identifier-filtered asking prices"
+      : "broad asking-price research",
     basis:
       stats.count > 0
-        ? `${stats.count} active ${wantNew ? "new" : "pre-owned"} listings matching “${query}” (asking prices, not sold)`
+        ? `${stats.count} active ${wantNew ? "new" : "pre-owned"} listings matching “${query}” (item + known shipping; active asking prices, not sold; verify each match)`
         : "",
   };
   if (compsCache.size > COMPS_CACHE_MAX) compsCache.clear();

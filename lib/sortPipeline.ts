@@ -1,3 +1,4 @@
+import { measuredMessage } from "@/lib/ai-usage";
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropicAuthError, parseModelJson } from "@/lib/anthropic";
 import {
@@ -62,16 +63,19 @@ function firstText(resp: Anthropic.Message): string {
 async function mapLimit<T, R>(
   items: T[],
   limit: number,
-  fn: (item: T, index: number) => Promise<R>
+  fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const i = cursor++;
-      results[i] = await fn(items[i], i);
-    }
-  });
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const i = cursor++;
+        results[i] = await fn(items[i], i);
+      }
+    },
+  );
   await Promise.all(workers);
   return results;
 }
@@ -87,7 +91,7 @@ async function claudeJson<T>(
   content: Anthropic.ContentBlockParam[],
   maxTokens: number,
   label: string,
-  deadline: number
+  deadline: number,
 ): Promise<T | null> {
   for (let attempt = 0; attempt < 4; attempt++) {
     const remaining = deadline - Date.now();
@@ -96,13 +100,15 @@ async function claudeJson<T>(
       return null;
     }
     try {
-      const resp = await client.messages.create(
+      const resp = await measuredMessage(
+        "sort",
+        client,
         {
           model,
           max_tokens: maxTokens,
           messages: [{ role: "user", content }],
         },
-        { timeout: Math.min(PER_CALL_TIMEOUT_MS, remaining), maxRetries: 0 }
+        { timeout: Math.min(PER_CALL_TIMEOUT_MS, remaining), maxRetries: 0 },
       );
       return parseModelJson<T>(firstText(resp));
     } catch (e) {
@@ -115,16 +121,21 @@ async function claudeJson<T>(
       if (fatal) throw fatal;
       const retryable = status === undefined || RETRYABLE_STATUS.has(status);
       if (attempt < 3 && retryable) {
-        const wait = Math.min(10000, 800 * 2 ** attempt) + Math.floor(Math.random() * 400);
+        const wait =
+          Math.min(10000, 800 * 2 ** attempt) + Math.floor(Math.random() * 400);
         if (Date.now() + wait + MIN_CALL_MS >= deadline) {
           console.warn(`[sort] ${label}: no budget left for retry — giving up`);
           return null;
         }
-        console.warn(`[sort] ${label}: ${status ?? "parse/conn"} error — retry ${attempt + 1} in ${wait}ms`);
+        console.warn(
+          `[sort] ${label}: ${status ?? "parse/conn"} error — retry ${attempt + 1} in ${wait}ms`,
+        );
         await sleep(wait);
         continue;
       }
-      console.warn(`[sort] ${label}: giving up (${status ?? (e as Error).message})`);
+      console.warn(
+        `[sort] ${label}: giving up (${status ?? (e as Error).message})`,
+      );
       return null;
     }
   }
@@ -138,17 +149,29 @@ async function groupPhotos(
   client: Anthropic,
   images: WireImage[],
   model: string,
-  deadline: number
+  deadline: number,
 ): Promise<{ name: string; indices: number[] }[]> {
   const total = images.length;
-  const batches: { offset: number; batch: WireImage[]; labelStart: number; labelEnd: number }[] = [];
+  const batches: {
+    offset: number;
+    batch: WireImage[];
+    labelStart: number;
+    labelEnd: number;
+  }[] = [];
   for (let offset = 0; offset < total; offset += BATCH_SIZE) {
     const batch = images.slice(offset, offset + BATCH_SIZE);
-    batches.push({ offset, batch, labelStart: offset + 1, labelEnd: offset + batch.length });
+    batches.push({
+      offset,
+      batch,
+      labelStart: offset + 1,
+      labelEnd: offset + batch.length,
+    });
   }
 
   const perBatch = await mapLimit(batches, GROUP_CONCURRENCY, async (b) => {
-    const content: Anthropic.ContentBlockParam[] = [...labeledContent(b.batch, b.labelStart)];
+    const content: Anthropic.ContentBlockParam[] = [
+      ...labeledContent(b.batch, b.labelStart),
+    ];
     const note =
       b.offset > 0
         ? ` (These are photos ${b.labelStart}–${b.labelEnd} of ${total} total. Group only the photos shown above.)`
@@ -159,16 +182,29 @@ async function groupPhotos(
     });
     const data = await claudeJson<{
       groups?: { folder_name?: string; photo_indices?: number[] }[];
-    }>(client, model, content, 2000, `group ${b.labelStart}-${b.labelEnd}`, deadline);
+    }>(
+      client,
+      model,
+      content,
+      2000,
+      `group ${b.labelStart}-${b.labelEnd}`,
+      deadline,
+    );
 
     const out: { name: string; indices: number[] }[] = [];
     for (const g of data?.groups ?? []) {
       const indices: number[] = [];
       for (const idx of g.photo_indices ?? []) {
         const real = Number(idx) - 1;
-        if (Number.isInteger(real) && real >= 0 && real < total) indices.push(real);
+        if (
+          Number.isInteger(real) &&
+          real >= b.offset &&
+          real < b.offset + b.batch.length
+        )
+          indices.push(real);
       }
-      if (indices.length) out.push({ name: slugifyFolderName(g.folder_name ?? "item"), indices });
+      if (indices.length)
+        out.push({ name: slugifyFolderName(g.folder_name ?? "item"), indices });
     }
     // data === null means the call failed after exhausting retries (vs. a
     // successful call that simply returned no groups) — track it so we can tell a
@@ -178,7 +214,7 @@ async function groupPhotos(
 
   if (perBatch.length > 0 && perBatch.every((b) => b.failed)) {
     throw new SortUnavailableError(
-      "The photo-sorting service was unavailable or rate-limited — every request failed. Wait a minute and try again; reducing the number of photos won't help."
+      "The photo-sorting service was unavailable or rate-limited — every request failed. Wait a minute and try again; reducing the number of photos won't help.",
     );
   }
 
@@ -193,22 +229,27 @@ async function verifyGroups(
   images: WireImage[],
   groups: { name: string; indices: number[] }[],
   model: string,
-  deadline: number
-): Promise<{ groups: { name: string; indices: number[] }[]; orphans: number[] }> {
+  deadline: number,
+): Promise<{
+  groups: { name: string; indices: number[] }[];
+  orphans: number[];
+}> {
   const orphans: number[] = [];
 
   const checks = await mapLimit(groups, VERIFY_CONCURRENCY, async (group) => {
     if (group.indices.length === 1) return group;
-    const content = labeledContent(group.indices.map((i) => images[i]), 1);
-    content.push({ type: "text", text: buildVerifyGroupPrompt(group.indices.length) });
-    const result = await claudeJson<{ valid?: boolean; keep_indices?: number[] }>(
-      client,
-      model,
-      content,
-      300,
-      `verify ${group.name}`,
-      deadline
+    const content = labeledContent(
+      group.indices.map((i) => images[i]),
+      1,
     );
+    content.push({
+      type: "text",
+      text: buildVerifyGroupPrompt(group.indices.length),
+    });
+    const result = await claudeJson<{
+      valid?: boolean;
+      keep_indices?: number[];
+    }>(client, model, content, 300, `verify ${group.name}`, deadline);
 
     if (!result || result.valid !== false) return group;
     const keepRaw = result.keep_indices ?? [];
@@ -232,58 +273,67 @@ async function mergeSplitGroups(
   images: WireImage[],
   groups: { name: string; indices: number[] }[],
   model: string,
-  deadline: number
+  deadline: number,
 ): Promise<{ name: string; indices: number[] }[]> {
   if (groups.length < 2) return groups;
 
   const pairs = groups.slice(0, -1);
-  const pairVotes = await mapLimit(pairs, MERGE_CONCURRENCY, async (group, i) => {
-    const next = groups[i + 1];
-    const aBlock = toImageBlock(images[group.indices[0]]);
-    const bBlock = toImageBlock(images[next.indices[0]]);
-    if (!aBlock || !bBlock) return false;
-    const content: Anthropic.ContentBlockParam[] = [
-      { type: "text", text: "Photo 1:" },
-      aBlock,
-      { type: "text", text: "--- Group B ---" },
-      { type: "text", text: "Photo 2:" },
-      bBlock,
-      { type: "text", text: buildVerifyMergePrompt(group.indices.length, next.indices.length) },
-    ];
-    const result = await claudeJson<{ merge?: boolean }>(
-      client,
-      model,
-      content,
-      100,
-      `merge ${i}`,
-      deadline
-    );
-    return result?.merge === true;
-  });
+  const pairVotes = await mapLimit(
+    pairs,
+    MERGE_CONCURRENCY,
+    async (group, i) => {
+      const next = groups[i + 1];
+      if (group.indices.length + next.indices.length > 24) return false;
+      const aBlock = toImageBlock(images[group.indices[0]]);
+      const bBlock = toImageBlock(images[next.indices[0]]);
+      if (!aBlock || !bBlock) return false;
+      const content: Anthropic.ContentBlockParam[] = [
+        ...labeledContent(group.indices.map((i) => images[i])),
+        { type: "text", text: "--- Group B ---" },
+        ...labeledContent(next.indices.map((i) => images[i])),
+        {
+          type: "text",
+          text: buildVerifyMergePrompt(
+            group.indices.length,
+            next.indices.length,
+          ),
+        },
+      ];
+      const result = await claudeJson<{ merge?: boolean }>(
+        client,
+        model,
+        content,
+        100,
+        `merge ${i}`,
+        deadline,
+      );
+      return result?.merge === true;
+    },
+  );
 
   const merged: { name: string; indices: number[] }[] = [];
-  let i = 0;
-  while (i < groups.length) {
-    if (i < groups.length - 1 && pairVotes[i]) {
-      merged.push({
-        name: groups[i].name,
-        indices: [...groups[i].indices, ...groups[i + 1].indices],
-      });
-      i += 2;
-    } else {
-      merged.push(groups[i]);
-      i += 1;
+  for (let i = 0; i < groups.length; i++) {
+    const group = { name: groups[i].name, indices: [...groups[i].indices] };
+    while (i < groups.length - 1 && pairVotes[i]) {
+      i++;
+      group.indices.push(...groups[i].indices);
     }
+    merged.push(group);
   }
   return merged;
 }
 
-function uniqueNames(groups: { name: string; indices: number[] }[]): SortGroup[] {
+function uniqueNames(
+  groups: { name: string; indices: number[] }[],
+): SortGroup[] {
   const counts = new Map<string, number>();
   return groups.map((g) => {
     const n = (counts.get(g.name) ?? 0) + 1;
     counts.set(g.name, n);
-    return { name: n === 1 ? g.name : `${g.name}-${n}`, photoIndices: g.indices };
+    return {
+      name: n === 1 ? g.name : `${g.name}-${n}`,
+      photoIndices: g.indices,
+    };
   });
 }
 
@@ -297,7 +347,7 @@ export async function checkMergePair(
   imageB: WireImage,
   countA: number,
   countB: number,
-  model?: string
+  model?: string,
 ): Promise<boolean> {
   const aBlock = toImageBlock(imageA);
   const bBlock = toImageBlock(imageB);
@@ -308,7 +358,10 @@ export async function checkMergePair(
     { type: "text", text: "--- Group B ---" },
     { type: "text", text: "Photo 2:" },
     bBlock,
-    { type: "text", text: buildVerifyMergePrompt(countA, countB) },
+    {
+      type: "text",
+      text: 'These are only two representative photos, not all group photos. Return {"merge":false} unless identifying marks prove this is the same physical item. Never infer sameness merely from similar appearance.',
+    },
   ];
   const result = await claudeJson<{ merge?: boolean }>(
     client,
@@ -317,7 +370,7 @@ export async function checkMergePair(
     100,
     "merge chunk-boundary",
     // The merge-check route runs under a 30s maxDuration — budget within it.
-    Date.now() + 25_000
+    Date.now() + 25_000,
   );
   return result?.merge === true;
 }
@@ -326,13 +379,40 @@ export async function sortPhotos(
   client: Anthropic,
   images: WireImage[],
   model?: string,
-  budgetMs: number = SORT_TIME_BUDGET_MS
+  budgetMs: number = SORT_TIME_BUDGET_MS,
 ): Promise<SortResult> {
   const m = model ?? GROUP_MODEL;
   const deadline = Date.now() + budgetMs;
   const grouped = await groupPhotos(client, images, m, deadline);
   if (grouped.length === 0) return { groups: [], orphanIndices: [] };
-  const verified = await verifyGroups(client, images, grouped, m, deadline);
-  const merged = await mergeSplitGroups(client, images, verified.groups, m, deadline);
-  return { groups: uniqueNames(merged), orphanIndices: verified.orphans };
+  const seen = new Set<number>();
+  for (const g of grouped)
+    g.indices = g.indices.filter((i) => {
+      if (seen.has(i)) return false;
+      seen.add(i);
+      return true;
+    });
+  const verified = await verifyGroups(
+    client,
+    images,
+    grouped.filter((g) => g.indices.length),
+    m,
+    deadline,
+  );
+  const merged = await mergeSplitGroups(
+    client,
+    images,
+    verified.groups,
+    m,
+    deadline,
+  );
+  const checked =
+    merged.length < verified.groups.length
+      ? await verifyGroups(client, images, merged, m, deadline)
+      : { groups: merged, orphans: [] };
+  const assigned = new Set(checked.groups.flatMap((g) => g.indices));
+  return {
+    groups: uniqueNames(checked.groups),
+    orphanIndices: images.map((_, i) => i).filter((i) => !assigned.has(i)),
+  };
 }

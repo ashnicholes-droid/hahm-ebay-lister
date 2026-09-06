@@ -1,3 +1,4 @@
+import { boundedFetch } from "@/lib/network";
 // eBay Taxonomy API: resolve the correct LEAF category and its REQUIRED item
 // specifics (aspects) with valid values — instead of guessing from a static map.
 //
@@ -40,6 +41,7 @@ export interface AspectMeta {
   // publish with 25002 ("Fabric weight must be greater than 0").
   dataType?: string; // e.g. "STRING" | "NUMBER" | "DATE"
   format?: string; // e.g. "int32" | "double"
+  constraints?: Record<string, { name: string; values: string[] }[]>;
   values: string[]; // eBay's allowed/suggested values (full list for SELECTION_ONLY)
 }
 
@@ -56,9 +58,10 @@ let cachedToken: { token: string; expiresAt: number } | null = null;
 // scope (e.g. Browse-API comp searches).
 export async function appToken(): Promise<string> {
   const now = Date.now();
-  if (cachedToken && cachedToken.expiresAt > now + 60_000) return cachedToken.token;
+  if (cachedToken && cachedToken.expiresAt > now + 60_000)
+    return cachedToken.token;
   const creds = getEbayCreds();
-  const resp = await fetch(EBAY_TOKEN_URL, {
+  const resp = await boundedFetch(EBAY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -70,14 +73,20 @@ export async function appToken(): Promise<string> {
     }).toString(),
   });
   if (!resp.ok) throw new Error(`eBay app token failed (${resp.status})`);
-  const data = (await resp.json()) as { access_token: string; expires_in: number };
-  cachedToken = { token: data.access_token, expiresAt: now + data.expires_in * 1000 };
+  const data = (await resp.json()) as {
+    access_token: string;
+    expires_in: number;
+  };
+  cachedToken = {
+    token: data.access_token,
+    expiresAt: now + data.expires_in * 1000,
+  };
   return data.access_token;
 }
 
 async function taxGet(path: string): Promise<any | null> {
   const token = await appToken();
-  const resp = await fetch(
+  const resp = await boundedFetch(
     `${EBAY_TAX_BASE}/category_tree/${EBAY_CATEGORY_TREE_ID}/${path}`,
     {
       headers: {
@@ -85,7 +94,7 @@ async function taxGet(path: string): Promise<any | null> {
         Accept: "application/json",
         "Accept-Language": "en-US",
       },
-    }
+    },
   );
   if (!resp.ok) return null;
   return resp.json().catch(() => null);
@@ -99,17 +108,22 @@ async function taxGet(path: string): Promise<any | null> {
 // far better than the old static list of unrelated collectible categories.
 export async function suggestLeafCategories(
   query: string,
-  limit = 3
+  limit = 3,
 ): Promise<CategorySuggestion[]> {
   const q = (query || "").trim().slice(0, 350);
   if (!q) return [];
   try {
-    const data = await taxGet(`get_category_suggestions?q=${encodeURIComponent(q)}`);
+    const data = await taxGet(
+      `get_category_suggestions?q=${encodeURIComponent(q)}`,
+    );
     const out: CategorySuggestion[] = [];
     for (const s of data?.categorySuggestions ?? []) {
       const id = s?.category?.categoryId;
       if (!id) continue;
-      out.push({ id: String(id), name: String(s?.category?.categoryName ?? "") });
+      out.push({
+        id: String(id),
+        name: String(s?.category?.categoryName ?? ""),
+      });
       if (out.length >= limit) break;
     }
     return out;
@@ -118,21 +132,25 @@ export async function suggestLeafCategories(
   }
 }
 
-export async function suggestLeafCategory(query: string): Promise<string | null> {
+export async function suggestLeafCategory(
+  query: string,
+): Promise<string | null> {
   const suggestions = await suggestLeafCategories(query, 1);
   return suggestions[0]?.id ?? null;
 }
 
-const aspectCache = new Map<string, AspectMeta[]>();
+const aspectCache = new Map<string, { value: AspectMeta[]; expires: number }>();
 
 // Required + optional aspects for a leaf category, with eBay's allowed values.
-export async function categoryAspects(categoryId: string): Promise<AspectMeta[]> {
+export async function categoryAspects(
+  categoryId: string,
+): Promise<AspectMeta[]> {
   if (!categoryId) return [];
   const cached = aspectCache.get(categoryId);
-  if (cached) return cached;
+  if (cached && cached.expires > Date.now()) return cached.value;
   try {
     const data = await taxGet(
-      `get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`
+      `get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`,
     );
     const out: AspectMeta[] = [];
     for (const a of data?.aspects ?? []) {
@@ -149,25 +167,43 @@ export async function categoryAspects(categoryId: string): Promise<AspectMeta[]>
           : con?.aspectUsage === "RECOMMENDED"
             ? "RECOMMENDED"
             : "OPTIONAL",
-        mode: con?.aspectMode === "SELECTION_ONLY" ? "SELECTION_ONLY" : "FREE_TEXT",
+        mode:
+          con?.aspectMode === "SELECTION_ONLY" ? "SELECTION_ONLY" : "FREE_TEXT",
         cardinality:
           con?.itemToAspectCardinality === "MULTI" ? "MULTI" : "SINGLE",
         maxLength: Number.isFinite(maxLen) && maxLen > 0 ? maxLen : undefined,
         dataType: con?.aspectDataType ? String(con.aspectDataType) : undefined,
         format: con?.aspectFormat ? String(con.aspectFormat) : undefined,
+        constraints: Object.fromEntries(
+          (a?.aspectValues ?? [])
+            .filter((v: any) => v.valueConstraints?.length)
+            .map((v: any) => [
+              v.localizedValue,
+              v.valueConstraints.map((d: any) => ({
+                name: d.applicableForLocalizedAspectName,
+                values: d.applicableForLocalizedAspectValues ?? [],
+              })),
+            ]),
+        ),
         values: (a?.aspectValues ?? [])
           .map((v: any) => String(v?.localizedValue ?? "").trim())
           .filter(Boolean),
       });
     }
-    aspectCache.set(categoryId, out);
+    if (out.length) {
+      if (aspectCache.size > 500) aspectCache.clear();
+      aspectCache.set(categoryId, {
+        value: out,
+        expires: Date.now() + 3600_000,
+      });
+    }
     return out;
   } catch {
     return [];
   }
 }
 
-const condCache = new Map<string, Set<number>>();
+const condCache = new Map<string, { value: Set<number>; expires: number }>();
 
 // Numeric condition IDs eBay accepts for a leaf category (Sell Metadata API).
 // Lets us pick a condition the category actually allows — fashion leaves reject
@@ -181,17 +217,17 @@ const condCache = new Map<string, Set<number>>();
 // real grade.
 export async function acceptedConditionIds(
   categoryId: string,
-  userToken?: string
+  userToken?: string,
 ): Promise<Set<number>> {
   if (!categoryId) return new Set();
   const cached = condCache.get(categoryId);
-  if (cached) return cached;
+  if (cached && cached.expires > Date.now()) return cached.value;
   try {
     const token = userToken || (await appToken());
     const url =
       `${EBAY_META_BASE}/marketplace/${EBAY_MARKETPLACE_ID}` +
       `/get_item_condition_policies?filter=categoryIds:%7B${encodeURIComponent(categoryId)}%7D`;
-    const resp = await fetch(url, {
+    const resp = await boundedFetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
@@ -201,7 +237,7 @@ export async function acceptedConditionIds(
     if (!resp.ok) {
       // Don't fail silently — this is exactly the path that mis-grades items.
       console.warn(
-        `[ebay/taxonomy] condition policies unavailable for category ${categoryId} (HTTP ${resp.status})`
+        `[ebay/taxonomy] condition policies unavailable for category ${categoryId} (HTTP ${resp.status})`,
       );
       return new Set();
     }
@@ -212,11 +248,14 @@ export async function acceptedConditionIds(
         const n = Number(c?.conditionId);
         if (n) ids.add(n);
       }
-    condCache.set(categoryId, ids);
+    if (ids.size) {
+      if (condCache.size > 500) condCache.clear();
+      condCache.set(categoryId, { value: ids, expires: Date.now() + 3600_000 });
+    }
     return ids;
   } catch (e) {
     console.warn(
-      `[ebay/taxonomy] condition policies failed for category ${categoryId}: ${(e as Error).message}`
+      `[ebay/taxonomy] condition policies failed for category ${categoryId}: ${(e as Error).message}`,
     );
     return new Set();
   }

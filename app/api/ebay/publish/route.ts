@@ -1,7 +1,9 @@
+import { withDeadline } from "@/lib/network";
+import { validationMessage } from "@/lib/validation";
 import { NextRequest, NextResponse } from "next/server";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
 import { guardApiRequest } from "@/lib/api-guard";
-import { fetchAccountSetup, publishListing } from "@/lib/ebay/publish";
+import { publishListing } from "@/lib/ebay/publish";
 import type { PublishInput } from "@/lib/ebay/publish";
 
 // Photo upload + several eBay calls + recovery loops — give it room.
@@ -9,7 +11,7 @@ import type { PublishInput } from "@/lib/ebay/publish";
 // still be slow; 300s is within both Hobby-with-fluid-compute and Pro limits.)
 export const maxDuration = 300;
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest) {
   // Check access + rate limit BEFORE parsing the (potentially large) body.
   const denied = guardApiRequest(req);
   if (denied) return denied;
@@ -18,35 +20,46 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as PublishInput;
   } catch {
-    return NextResponse.json({ success: false, error: "Invalid request." }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Invalid request." },
+      { status: 400 },
+    );
   }
 
   const hasImages = Array.isArray(body.images) && body.images.length > 0;
-  const hasImageUrls = Array.isArray(body.imageUrls) && body.imageUrls.length > 0;
+  const hasImageUrls =
+    Array.isArray(body.imageUrls) && body.imageUrls.length > 0;
   if (!body.sku || !body.listing || (!hasImages && !hasImageUrls)) {
     return NextResponse.json(
       { success: false, error: "Missing SKU, listing, or photos." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Mint a fresh access token from the encrypted connection cookie.
   let accessToken: string | null;
   try {
-    accessToken = await accessTokenFromCookie(req.cookies.get(EBAY_COOKIE)?.value);
+    accessToken = await accessTokenFromCookie(
+      req.cookies.get(EBAY_COOKIE)?.value,
+    );
   } catch (e) {
-    return NextResponse.json({ success: false, error: (e as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: validationMessage(e) },
+      { status: 500 },
+    );
   }
   if (!accessToken) {
     return NextResponse.json(
-      { success: false, error: "eBay isn't connected. Connect your account and try again." },
-      { status: 401 }
+      {
+        success: false,
+        error: "eBay isn't connected. Connect your account and try again.",
+      },
+      { status: 401 },
     );
   }
 
   try {
-    const setup = await fetchAccountSetup(accessToken);
-    const result = await publishListing(accessToken, setup, body);
+    const result = await publishListing(accessToken, body);
     // A failed publish is a business outcome (eBay rejected the listing), not a
     // server error. Return 422 so it can't be confused with Vercel's own
     // platform 502 (function crash/timeout). The client keys off `success`, not
@@ -56,7 +69,11 @@ export async function POST(req: NextRequest) {
     console.error(`[ebay/publish] unhandled error sku=${body.sku}:`, e);
     return NextResponse.json(
       { success: false, sku: body.sku, error: (e as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
+}
+
+export async function POST(req: NextRequest) {
+  return withDeadline(240_000, () => handle(req));
 }

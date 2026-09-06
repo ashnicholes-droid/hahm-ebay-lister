@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadDraft, saveDraft } from "@/lib/draft-store";
+import { processFiles } from "@/lib/intake";
+import { draftIssues } from "@/lib/client-review";
 import { apiPost } from "@/lib/api-client";
 import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
@@ -29,7 +32,7 @@ const WRITE_CONCURRENCY = 3;
 // eBay accepts at most 12 photos per listing. They ship to eBay in small
 // batches (lib/uploadBatches.ts) before publish, so no single request ever
 // nears Vercel's 4.5 MB body limit.
-const MAX_PUBLISH_PHOTOS = 12;
+const MAX_PUBLISH_PHOTOS = 24;
 // HTTP statuses worth waiting out and retrying: rate limits and transient
 // platform errors.
 const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
@@ -49,7 +52,7 @@ function newId(): string {
 // wrong path.
 async function readJson(
   res: Response,
-  tooLargeHint = "Try again with fewer or smaller photos."
+  tooLargeHint = "Try again with fewer or smaller photos.",
 ): Promise<any> {
   const text = await res.text();
   try {
@@ -57,11 +60,11 @@ async function readJson(
   } catch {
     if (res.status === 413) {
       throw new Error(
-        `That was too much photo data to send at once. ${tooLargeHint}`
+        `That was too much photo data to send at once. ${tooLargeHint}`,
       );
     }
     throw new Error(
-      text.trim().slice(0, 140) || `Request failed (${res.status}).`
+      text.trim().slice(0, 140) || `Request failed (${res.status}).`,
     );
   }
 }
@@ -70,15 +73,18 @@ async function readJson(
 async function runPool<T>(
   items: T[],
   limit: number,
-  worker: (item: T) => Promise<void>
+  worker: (item: T) => Promise<void>,
 ): Promise<void> {
   let cursor = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const idx = cursor++;
-      await worker(items[idx]);
-    }
-  });
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        await worker(items[idx]);
+      }
+    },
+  );
   await Promise.all(runners);
 }
 
@@ -96,6 +102,10 @@ export default function Home() {
   const [skuStart, setSkuStart] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [ebayConnected, setEbayConnected] = useState(false);
+  const [restored, setRestored] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("Loading saved work…");
+  const [readOnly, setReadOnly] = useState(false);
+  const inFlight = useRef(new Set<string>());
   const inputRef = useRef<HTMLInputElement>(null);
 
   const photoMap = useMemo(() => {
@@ -104,6 +114,88 @@ export default function Home() {
     return m;
   }, [photos]);
   const photoById = useCallback((id: string) => photoMap.get(id), [photoMap]);
+
+  useEffect(() => {
+    let active = true;
+    let release: () => void = () => {};
+    const restore = async () => {
+      try {
+        const d = await loadDraft();
+        if (d && active) {
+          setPhotos(d.photos);
+          setGroups(d.groups);
+          setOrphanIds(d.orphanIds);
+          setBinPrefix(d.binPrefix);
+          setSkuStart(d.skuStart);
+          setStep(d.step);
+        }
+      } catch (e) {
+        if (active) {
+          setError((e as Error).message);
+          setSaveStatus(
+            "Autosave unavailable — keep this tab open and export drafts.",
+          );
+        }
+      } finally {
+        if (active) setRestored(true);
+      }
+    };
+    if (navigator.locks)
+      void navigator.locks.request(
+        "listing-writer-workspace",
+        { ifAvailable: true },
+        async (lock) => {
+          if (!active) return;
+          if (!lock) {
+            setReadOnly(true);
+            setRestored(true);
+            return;
+          }
+          await restore();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+            if (!active) resolve();
+          });
+        },
+      );
+    else void restore();
+    return () => {
+      active = false;
+      release();
+    };
+  }, []);
+  useEffect(() => {
+    if (!restored || readOnly) return;
+    setSaveStatus("Saving…");
+    const timer = setTimeout(() => {
+      void saveDraft({
+        version: 1,
+        photos,
+        groups,
+        orphanIds,
+        binPrefix,
+        skuStart,
+        step,
+        updatedAt: Date.now(),
+      })
+        .then(() => setSaveStatus("Saved on this device"))
+        .catch(() =>
+          setSaveStatus(
+            "Could not save — device storage may be full. Keep this tab open and export drafts.",
+          ),
+        );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [
+    restored,
+    readOnly,
+    photos,
+    groups,
+    orphanIds,
+    binPrefix,
+    skuStart,
+    step,
+  ]);
 
   // Latest groups, readable inside async workers without stale closures.
   const groupsRef = useRef(groups);
@@ -125,26 +217,37 @@ export default function Home() {
   }, []);
 
   // ── Upload ──────────────────────────────────────────────
-  const addFiles = useCallback(async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
-    setError(null);
-    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
-    if (files.length === 0) {
-      setError("Those didn't look like photos. Use JPG, PNG, or WebP.");
-      return;
-    }
-    try {
-      const resized = await Promise.all(files.map(resizeImage));
-      setPhotos((prev) =>
-        [...prev, ...resized.map((r) => ({ id: newId(), ...r }))].slice(
-          0,
-          MAX_PHOTOS
-        )
+  const addFiles = useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+      setError(null);
+      const files = Array.from(fileList).filter((f) =>
+        f.type.startsWith("image/"),
       );
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
+      if (files.length === 0) {
+        setError("Those didn't look like photos. Use JPG, PNG, or WebP.");
+        return;
+      }
+      try {
+        const result = await processFiles(
+          files,
+          MAX_PHOTOS - photos.length,
+          resizeImage,
+        );
+        const resized = result.values;
+        if (result.errors.length) setError(result.errors.join("; "));
+        setPhotos((prev) =>
+          [...prev, ...resized.map((r) => ({ id: newId(), ...r }))].slice(
+            0,
+            MAX_PHOTOS,
+          ),
+        );
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [photos.length],
+  );
 
   const removePhoto = (id: string) =>
     setPhotos((prev) => prev.filter((p) => p.id !== id));
@@ -165,9 +268,15 @@ export default function Home() {
       let skuOffset = 0;
       if (binPrefix.trim()) {
         try {
-          const r = await apiPost("/api/ebay/next-sku", { prefix: binPrefix.trim() });
+          const r = await apiPost("/api/ebay/next-sku", {
+            prefix: binPrefix.trim(),
+          });
           const d = (await readJson(r)) as { ok?: boolean; nextIndex?: number };
-          if (d.ok && Number.isInteger(d.nextIndex) && (d.nextIndex as number) > 0) {
+          if (
+            d.ok &&
+            Number.isInteger(d.nextIndex) &&
+            (d.nextIndex as number) > 0
+          ) {
             skuOffset = d.nextIndex as number;
           }
         } catch {
@@ -183,7 +292,7 @@ export default function Home() {
         const chunk = photos.slice(off, off + SORT_CHUNK);
         if (photos.length > SORT_CHUNK) {
           setSortProgress(
-            `Sorting photos ${off + 1}–${off + chunk.length} of ${photos.length}…`
+            `Sorting photos ${off + 1}–${off + chunk.length} of ${photos.length}…`,
           );
         }
         const res = await apiPost("/api/sort", {
@@ -194,7 +303,10 @@ export default function Home() {
           })),
           sortModel: getSortModel() ?? undefined,
         });
-        const data = (await readJson(res, "Try sorting fewer photos per batch.")) as SortResponse;
+        const data = (await readJson(
+          res,
+          "Try sorting fewer photos per batch.",
+        )) as SortResponse;
         if (!data.ok || !data.groups) {
           throw new Error(data.error || "Could not sort the photos.");
         }
@@ -205,59 +317,28 @@ export default function Home() {
               name: g.name,
               photoIds: g.photoIndices.map(idxToId).filter(Boolean) as string[],
             }))
-            .filter((g) => g.photoIds.length > 0)
+            .filter((g) => g.photoIds.length > 0),
         );
         orphanIdsAll.push(
-          ...((data.orphanIndices ?? []).map(idxToId).filter(Boolean) as string[])
+          ...((data.orphanIndices ?? [])
+            .map(idxToId)
+            .filter(Boolean) as string[]),
         );
       }
 
-      // Stitch chunks back together: an item photographed across a chunk
-      // boundary lands split in two — ask the model whether the group holding
-      // the boundary's last photo and the one holding the next chunk's first
-      // photo are actually the same item.
-      const merged: RawGroup[] = [...(chunkResults[0] ?? [])];
-      for (let c = 1; c < chunkResults.length; c++) {
-        const rest = [...chunkResults[c]];
-        const lastId = photos[c * SORT_CHUNK - 1]?.id;
-        const firstId = photos[c * SORT_CHUNK]?.id;
-        const prevGroup = merged.find((g) => lastId && g.photoIds.includes(lastId));
-        const nextGroup = rest.find((g) => firstId && g.photoIds.includes(firstId));
-        if (prevGroup && nextGroup) {
-          setSortProgress("Checking for items split across batches…");
-          try {
-            const a = photoMap.get(prevGroup.photoIds[0]);
-            const b = photoMap.get(nextGroup.photoIds[0]);
-            if (a && b) {
-              const res = await apiPost("/api/merge-check", {
-                a: { mediaType: a.mediaType, data: a.previewUrl.split(",")[1] },
-                b: { mediaType: b.mediaType, data: b.previewUrl.split(",")[1] },
-                countA: prevGroup.photoIds.length,
-                countB: nextGroup.photoIds.length,
-                sortModel: getSortModel() ?? undefined,
-              });
-              const d = (await readJson(res)) as { ok?: boolean; merge?: boolean };
-              if (d.ok && d.merge) {
-                prevGroup.photoIds = [...prevGroup.photoIds, ...nextGroup.photoIds];
-                rest.splice(rest.indexOf(nextGroup), 1);
-              }
-            }
-          } catch {
-            /* boundary check is best-effort — worst case the item stays split */
-          }
-        }
-        merged.push(...rest);
-      }
-
+      // Cross-chunk identity requires review; never join physical items from one thumbnail.
+      const merged: RawGroup[] = chunkResults.flat();
       const assigned = new Set<string>();
       merged.forEach((g) => g.photoIds.forEach((id) => assigned.add(id)));
       orphanIdsAll.forEach((id) => assigned.add(id));
       // Any photo the sorter never placed shouldn't vanish — surface it.
-      const leftover = photos.filter((p) => !assigned.has(p.id)).map((p) => p.id);
+      const leftover = photos
+        .filter((p) => !assigned.has(p.id))
+        .map((p) => p.id);
 
       const nextGroups: ItemGroup[] = merged.map((g, i) => ({
         id: newId(),
-        sku: buildSku(binPrefix, skuOffset + i),
+        sku: `${buildSku(binPrefix, skuOffset + i).slice(0, 37)}-${newId().replace(/-/g, "").slice(0, 12)}`,
         name: g.name,
         photoIds: g.photoIds,
         status: "idle",
@@ -277,12 +358,12 @@ export default function Home() {
   // ── Review edits ────────────────────────────────────────
   const rename = (groupId: string, name: string) =>
     setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, name } : g))
+      prev.map((g) => (g.id === groupId ? { ...g, name } : g)),
     );
 
   const renameSku = (groupId: string, sku: string) =>
     setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, sku } : g))
+      prev.map((g) => (g.id === groupId ? { ...g, sku } : g)),
     );
 
   const movePhoto = (photoId: string, toGroupId: string | "orphans") => {
@@ -300,9 +381,19 @@ export default function Home() {
         return {
           ...g,
           photoIds: nextIds,
-          ...(changed && g.status === "done" ? { status: "idle" as const } : {}),
+          ...(changed
+            ? {
+                status: "idle" as const,
+                listing: undefined,
+                analysisPhotoIds: undefined,
+                preparation: undefined,
+                comps: undefined,
+                imageUrls: undefined,
+                uploadedPhotoIds: undefined,
+              }
+            : {}),
         };
-      })
+      }),
     );
     setOrphanIds((prev) => {
       const without = prev.filter((id) => id !== photoId);
@@ -313,7 +404,11 @@ export default function Home() {
   // Reorder photos within a group. The array order is the eBay photo order
   // (index 0 = cover/gallery image), so this is all that's needed — `writeGroup`
   // and `postGroup` re-derive their image order from `photoIds` at call time.
-  const reorderPhoto = (groupId: string, fromIndex: number, toIndex: number) => {
+  const reorderPhoto = (
+    groupId: string,
+    fromIndex: number,
+    toIndex: number,
+  ) => {
     if (fromIndex === toIndex) return;
     setGroups((prev) =>
       prev.map((g) => {
@@ -329,8 +424,13 @@ export default function Home() {
         const next = [...g.photoIds];
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
-        return { ...g, photoIds: next };
-      })
+        return {
+          ...g,
+          photoIds: next,
+          imageUrls: undefined,
+          uploadedPhotoIds: undefined,
+        };
+      }),
     );
   };
 
@@ -348,7 +448,7 @@ export default function Home() {
       ...prev,
       {
         id: newId(),
-        sku: buildSku(binPrefix, skuStart + prev.length),
+        sku: `${buildSku(binPrefix, skuStart + prev.length).slice(0, 37)}-${newId().replace(/-/g, "").slice(0, 12)}`,
         name: `new-item-${prev.length + 1}`,
         photoIds: [],
         status: "idle",
@@ -360,15 +460,16 @@ export default function Home() {
     async (groupId: string) => {
       // Snapshot this group's photos from the latest state (no stale closure).
       const group = groupsRef.current.find((g) => g.id === groupId);
-      if (!group) return;
-      const imgs = group.photoIds
+      if (!group || inFlight.current.has(groupId)) return;
+      inFlight.current.add(groupId);
+      const imgs = (group.analysisPhotoIds ?? group.photoIds)
         .map((id) => photoMap.get(id))
-        .filter((p): p is Photo => Boolean(p))
+        .filter((p): p is Photo => Boolean(p) && p!.analysisSelected !== false)
         .map((p) => ({ mediaType: p.mediaType, data: p.data }));
       setGroups((prev) =>
         prev.map((g) =>
-          g.id === groupId ? { ...g, status: "writing", error: undefined } : g
-        )
+          g.id === groupId ? { ...g, status: "writing", error: undefined } : g,
+        ),
       );
       try {
         const res = await apiPost("/api/analyze", {
@@ -384,23 +485,95 @@ export default function Home() {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
-              ? { ...g, status: "done", listing: data.listing }
-              : g
-          )
+              ? {
+                  ...g,
+                  status: "writing",
+                  listing: data.listing,
+                  evidencePhotoIds: [
+                    ...(group.analysisPhotoIds ?? group.photoIds),
+                  ],
+                  usage: (data as any).usage ?? [],
+                  preparation: undefined,
+                  comps: undefined,
+                  compsStatus: "loading",
+                }
+              : g,
+          ),
         );
+        // Resolve final category/schema before review, never during publication.
+        let researchListing = data.listing;
+        try {
+          const pr = await apiPost("/api/ebay/prepare", {
+            listing: data.listing,
+            images: imgs,
+            enrich: true,
+          });
+          const pd = await readJson(pr);
+          if (pd.ok) researchListing = pd.listing;
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === groupId
+                ? pd.ok
+                  ? {
+                      ...g,
+                      status: "done",
+                      listing: pd.listing,
+                      preparation: pd.preparation,
+                      usage: [...(g.usage ?? []), ...(pd.usage ?? [])],
+                    }
+                  : { ...g, status: "done", preparationError: pd.error }
+                : g,
+            ),
+          );
+        } catch (e) {
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === groupId
+                ? {
+                    ...g,
+                    status: "done",
+                    preparationError: (e as Error).message,
+                  }
+                : g,
+            ),
+          );
+        }
         // Market price check — advisory and best-effort, so it runs in the
         // background and silently stays hidden if it can't answer.
         void (async () => {
           try {
-            const res = await apiPost("/api/ebay/comps", { listing: data.listing });
-            const d = (await readJson(res)) as { ok?: boolean; comps?: CompsSummary };
+            const res = await apiPost("/api/ebay/comps", {
+              listing: researchListing,
+            });
+            const d = (await readJson(res)) as {
+              ok?: boolean;
+              comps?: CompsSummary;
+            };
             if (d.ok && d.comps?.ok) {
               setGroups((prev) =>
-                prev.map((g) => (g.id === groupId ? { ...g, comps: d.comps } : g))
+                prev.map((g) =>
+                  g.id === groupId && g.listing === researchListing
+                    ? { ...g, comps: d.comps, compsStatus: "ready" }
+                    : g,
+                ),
+              );
+            } else {
+              setGroups((prev) =>
+                prev.map((g) =>
+                  g.id === groupId && g.listing === researchListing
+                    ? { ...g, compsStatus: "unavailable" }
+                    : g,
+                ),
               );
             }
           } catch {
-            /* comps unavailable — price stays purely the AI estimate */
+            setGroups((prev) =>
+              prev.map((g) =>
+                g.id === groupId && g.listing === researchListing
+                  ? { ...g, compsStatus: "unavailable" }
+                  : g,
+              ),
+            );
           }
         })();
       } catch (e) {
@@ -408,12 +581,14 @@ export default function Home() {
           prev.map((g) =>
             g.id === groupId
               ? { ...g, status: "error", error: (e as Error).message }
-              : g
-          )
+              : g,
+          ),
         );
+      } finally {
+        inFlight.current.delete(groupId);
       }
     },
-    [photoMap]
+    [photoMap],
   );
 
   const writeAll = async () => {
@@ -429,36 +604,77 @@ export default function Home() {
     await runPool(usable, WRITE_CONCURRENCY, writeGroup);
   };
 
+  const editGroup = (id: string, patch: Partial<ItemGroup>) =>
+    setGroups((prev) =>
+      prev.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+    );
   const editListing = (groupId: string, patch: Partial<ListingResult>) =>
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId && g.listing
-          ? { ...g, listing: { ...g.listing, ...patch } }
-          : g
-      )
+          ? {
+              ...g,
+              listing: {
+                ...g.listing,
+                ...patch,
+                ...(patch.size !== undefined
+                  ? {
+                      item_specifics: {
+                        ...g.listing.item_specifics,
+                        Size: patch.size,
+                      },
+                      evidence: {},
+                    }
+                  : {}),
+              },
+              comps: undefined,
+              compsStatus: "stale",
+            }
+          : g,
+      ),
     );
 
   const postGroup = useCallback(
     async (groupId: string) => {
       const group = groupsRef.current.find((g) => g.id === groupId);
-      if (!group || !group.listing) return;
+      if (!group || !group.listing || inFlight.current.has(groupId)) return;
+      const issues = draftIssues(group);
+      if (
+        groupsRef.current.some((g) => g.id !== groupId && g.sku === group.sku)
+      )
+        issues.push("Another item in this batch has the same SKU.");
+      if (issues.length) {
+        editGroup(groupId, {
+          postStatus: "error",
+          postError: issues.join("; "),
+        });
+        return;
+      }
+      inFlight.current.add(groupId);
       const images = group.photoIds
         .map((id) => photoMap.get(id))
         .filter((p): p is Photo => Boolean(p))
-        .map((p) => ({ mediaType: p.mediaType, data: p.data }))
-        .slice(0, MAX_PUBLISH_PHOTOS);
+        .map((p) => ({ mediaType: p.mediaType, data: p.uploadData ?? p.data }));
       setGroups((prev) =>
         prev.map((g) =>
-          g.id === groupId ? { ...g, postStatus: "posting", postError: undefined } : g
-        )
+          g.id === groupId
+            ? { ...g, postStatus: "posting", postError: undefined }
+            : g,
+        ),
       );
       try {
         // 1. Ship the photos to eBay first, in batches small enough that no
         // single request can hit Vercel's 4.5 MB body limit — the old
         // all-in-one publish request 413-failed on photo-heavy listings.
-        const imageUrls: string[] = [];
+        const alreadyUploaded =
+          group.uploadedPhotoIds?.join(",") === group.photoIds.join(",")
+            ? group.imageUrls
+            : undefined;
+        const imageUrls: string[] = alreadyUploaded ? [...alreadyUploaded] : [];
         let uploadedCount = 0;
-        for (const batch of chunkImagesForUpload(images)) {
+        for (const batch of chunkImagesForUpload(
+          alreadyUploaded ? [] : images,
+        )) {
           for (let attempt = 0; ; attempt++) {
             const res = await apiPost("/api/ebay/upload-photos", {
               sku: group.sku,
@@ -469,9 +685,18 @@ export default function Home() {
               await sleep(res.status === 429 ? 65_000 : 8_000);
               continue;
             }
-            const d = (await readJson(res)) as { ok?: boolean; error?: string; urls?: string[] };
-            if (!d.ok) throw new Error(d.error || "Could not upload photos to eBay.");
-            imageUrls.push(...(Array.isArray(d.urls) ? d.urls : []));
+            const d = (await readJson(res)) as {
+              ok?: boolean;
+              error?: string;
+              urls?: string[];
+            };
+            if (!d.ok)
+              throw new Error(d.error || "Could not upload photos to eBay.");
+            if (!Array.isArray(d.urls) || d.urls.length !== batch.length)
+              throw new Error(
+                "Some selected photos failed to upload. Nothing was published. Retry the upload.",
+              );
+            imageUrls.push(...d.urls);
             break;
           }
           uploadedCount += batch.length;
@@ -479,15 +704,29 @@ export default function Home() {
         if (imageUrls.length === 0) {
           throw new Error("Could not upload any photos to eBay.");
         }
-        // Partial upload failures don't block the listing, but they're loud —
-        // a listing quietly missing photos sells worse and looks like a bug.
-        const uploadWarnings =
-          imageUrls.length < images.length
-            ? [
-                `${images.length - imageUrls.length} photo(s) failed to upload to eBay — the listing was posted with ${imageUrls.length}.`,
-              ]
-            : [];
-
+        if (imageUrls.length !== images.length)
+          throw new Error("All selected photos must upload before posting.");
+        const uploadWarnings: string[] = [];
+        const uploaded = {
+          ...group,
+          imageUrls,
+          uploadedPhotoIds: [...group.photoIds],
+          postStatus: "posting" as const,
+          publicationAttemptSku: group.sku,
+        };
+        editGroup(groupId, uploaded);
+        await saveDraft({
+          version: 1,
+          photos: [...photoMap.values()],
+          groups: groupsRef.current.map((g) =>
+            g.id === groupId ? uploaded : g,
+          ),
+          orphanIds,
+          binPrefix,
+          skuStart,
+          step: "listings",
+          updatedAt: Date.now(),
+        });
         // 2. Publish with the eBay-hosted URLs (a few KB instead of megabytes).
         let data: {
           success: boolean;
@@ -502,6 +741,9 @@ export default function Home() {
             sku: group.sku,
             listing: group.listing,
             imageUrls,
+            shipping: group.shipping,
+            review: group.preparation,
+            expectedPhotoCount: group.photoIds.length,
           });
           // Wait out rate limits / transient platform errors instead of dying
           // mid-batch with "try again later".
@@ -515,10 +757,17 @@ export default function Home() {
         }
         // A retried publish that finds the SKU already live means the earlier
         // attempt actually landed before the timeout — that's a success.
-        if (data && !data.success && data.alreadyListed && hadTransientRetry && data.listingId) {
+        if (
+          data &&
+          !data.success &&
+          data.alreadyListed &&
+          (hadTransientRetry || group.publicationAttemptSku === group.sku) &&
+          data.listingId
+        ) {
           data = { success: true, listingId: data.listingId };
         }
-        if (!data?.success) throw new Error(data?.error || "eBay rejected the listing.");
+        if (!data?.success)
+          throw new Error(data?.error || "eBay rejected the listing.");
         const allWarnings = [...uploadWarnings, ...(data.warnings ?? [])];
         setGroups((prev) =>
           prev.map((g) =>
@@ -529,25 +778,32 @@ export default function Home() {
                   listingId: data!.listingId,
                   postWarnings: allWarnings.length ? allWarnings : undefined,
                 }
-              : g
-          )
+              : g,
+          ),
         );
       } catch (e) {
         setGroups((prev) =>
           prev.map((g) =>
             g.id === groupId
               ? { ...g, postStatus: "error", postError: (e as Error).message }
-              : g
-          )
+              : g,
+          ),
         );
+      } finally {
+        inFlight.current.delete(groupId);
       }
     },
-    [photoMap]
+    [photoMap, orphanIds, binPrefix, skuStart],
   );
 
   const postAll = async () => {
     const ready = groups
-      .filter((g) => g.status === "done" && g.postStatus !== "posted")
+      .filter(
+        (g) =>
+          g.status === "done" &&
+          g.postStatus !== "posted" &&
+          !draftIssues(g).length,
+      )
       .map((g) => g.id);
     // Sequential — keeps eBay calls gentle and errors easy to read.
     for (const id of ready) {
@@ -557,18 +813,30 @@ export default function Home() {
 
   const usableGroups = useMemo(
     () => groups.filter((g) => g.photoIds.length > 0),
-    [groups]
+    [groups],
   );
 
+  if (!restored) return <main className="wrap">Restoring saved work…</main>;
+  if (readOnly)
+    return (
+      <main className="wrap">
+        This workspace is already open in another tab. Close that tab and reload
+        here to avoid conflicting edits.
+      </main>
+    );
   return (
     <main className="wrap">
+      <p role="status">{saveStatus}</p>
       <header className="masthead">
         <span className="logo-mark" aria-hidden="true">
           🪄
         </span>
         <div>
           <h1>Listing Writer</h1>
-          <p>Upload a pile of photos · auto-sort into items · write every listing.</p>
+          <p>
+            Upload a pile of photos · auto-sort into items · write every
+            listing.
+          </p>
         </div>
       </header>
 
@@ -595,7 +863,13 @@ export default function Home() {
             <div className="field bin-field">
               <label htmlFor="bin">
                 Bin / SKU code{" "}
-                <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                <span
+                  style={{
+                    fontWeight: 400,
+                    textTransform: "none",
+                    letterSpacing: 0,
+                  }}
+                >
                   (where these items are stored)
                 </span>
               </label>
@@ -608,10 +882,13 @@ export default function Home() {
                 autoCapitalize="characters"
               />
               <span className="field-hint">
-                Each item gets {binPrefix ? `${binPrefix.trim()}-A, ${binPrefix.trim()}-B` : "A, B, C"}
-                … in order, so you can find it in the bin later. If this bin
-                already has listings on eBay, lettering continues where it left
-                off. You can edit any SKU after sorting.
+                Each item gets{" "}
+                {binPrefix
+                  ? `${binPrefix.trim()}-A, ${binPrefix.trim()}-B`
+                  : "A, B, C"}
+                … with a unique suffix to prevent collisions across devices. If
+                this bin already has listings on eBay, lettering continues where
+                it left off. You can edit any SKU after sorting.
               </span>
             </div>
 
@@ -621,7 +898,8 @@ export default function Home() {
               tabIndex={0}
               onClick={() => inputRef.current?.click()}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+                if (e.key === "Enter" || e.key === " ")
+                  inputRef.current?.click();
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -666,8 +944,32 @@ export default function Home() {
               </div>
             )}
 
-            <div className="result-actions" style={{ borderTop: "none", paddingTop: 0 }}>
+            <div
+              className="result-actions"
+              style={{ borderTop: "none", paddingTop: 0 }}
+            >
               <ModelSelector />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!photos.length || photos.length > 24 || sorting}
+                onClick={() => {
+                  const id = newId();
+                  setGroups([
+                    {
+                      id,
+                      sku: `${buildSku(binPrefix, 0).slice(0, 37)}-${id.replace(/-/g, "").slice(0, 12)}`,
+                      name: "Single item",
+                      photoIds: photos.map((p) => p.id),
+                      status: "idle",
+                    },
+                  ]);
+                  setOrphanIds([]);
+                  setStep("review");
+                }}
+              >
+                These photos are one item
+              </button>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -728,6 +1030,7 @@ export default function Home() {
           photoById={photoById}
           ebayConnected={ebayConnected}
           onEdit={editListing}
+          onGroupEdit={editGroup}
           onRenameSku={renameSku}
           onRetry={writeGroup}
           onPost={postGroup}

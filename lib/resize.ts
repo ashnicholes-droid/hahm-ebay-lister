@@ -13,6 +13,8 @@ const THUMB_DIM = 360;
 const THUMB_QUALITY = 0.5;
 
 export interface ResizedImage {
+  original: Blob;
+  uploadData: string;
   mediaType: "image/jpeg";
   data: string; // base64 (no prefix) ~1024px — for listing analysis
   previewUrl: string; // data url ~400px — for display + sorting
@@ -21,9 +23,17 @@ export interface ResizedImage {
 export async function resizeImage(file: File): Promise<ResizedImage> {
   const bitmap = await loadBitmap(file);
   const full = drawToJpeg(bitmap, FULL_DIM, FULL_QUALITY);
+  // Retain the original locally; upload a high-detail derivative bounded for Vercel.
+  let upload = drawToJpeg(bitmap, 2400, 0.9);
+  if (upload.length > 2_700_000) upload = drawToJpeg(bitmap, 2000, 0.8);
+  if (upload.length > 2_700_000) upload = drawToJpeg(bitmap, 1600, 0.75);
+  if (upload.length > 2_700_000)
+    throw new Error("Photo is too large to upload.");
   const thumb = drawToJpeg(bitmap, THUMB_DIM, THUMB_QUALITY);
   if ("close" in bitmap) bitmap.close();
   return {
+    original: file,
+    uploadData: upload.split(",")[1],
     mediaType: "image/jpeg",
     data: full.split(",")[1],
     previewUrl: thumb,
@@ -33,7 +43,7 @@ export async function resizeImage(file: File): Promise<ResizedImage> {
 function drawToJpeg(
   src: ImageBitmap | HTMLImageElement,
   maxDim: number,
-  quality: number
+  quality: number,
 ): string {
   const w = "width" in src ? src.width : 0;
   const h = "height" in src ? src.height : 0;
