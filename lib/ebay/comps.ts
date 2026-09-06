@@ -72,6 +72,49 @@ export function comparisonTerms(listing: ListingResult): string[] {
   ].slice(0, 3);
 }
 
+// Search may relax size terms. Require a matching tagged apparel size in
+// candidate titles; a men's possessive must not accidentally match size S.
+export function matchesApparelSize(
+  title: string,
+  listing: ListingResult,
+): boolean {
+  if (!/^(mens|womens)_/.test(listing.category || "")) return true;
+  const aliases = [
+    ["xxs", "2xs", "xx small", "xxsmall", "extra extra small"],
+    ["xs", "x small", "xsmall", "extra small"],
+    ["s", "small"],
+    ["m", "medium"],
+    ["l", "large"],
+    ["xl", "x large", "xlarge", "extra large"],
+    ["xxl", "2xl", "xx large", "xxlarge", "extra extra large"],
+    ["xxxl", "3xl", "xxx large", "xxxlarge", "extra extra extra large"],
+  ];
+  const normalize = (v: string) =>
+    v
+      .toLowerCase()
+      .replace(/[’']s\b/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const size = normalize(
+    listing.size || listing.item_specifics?.Size || "",
+  ).replace(/^us /, "");
+  const wanted = aliases.find((row) => row.includes(size));
+  if (!wanted) return true;
+  // Longer phrases win so "extra large" cannot count as plain Large.
+  let rest = " " + normalize(title) + " ";
+  const matches = new Set<string[]>();
+  for (const [phrase, row] of aliases
+    .flatMap((row) => row.map((a) => [a, row] as const))
+    .sort((a, b) => b[0].length - a[0].length)) {
+    const token = " " + phrase + " ";
+    if (rest.includes(token)) {
+      matches.add(row);
+      rest = rest.split(token).join(" ");
+    }
+  }
+  return matches.has(wanted) && matches.size === 1;
+}
+
 export function buildCompQuery(listing: ListingResult): string {
   const brand = String(listing.brand || "").trim();
   const usableBrand =
@@ -259,6 +302,7 @@ export async function searchComps(
     if (!it.itemId || seen.has(it.itemId) || !it.itemWebUrl) return false;
     seen.add(it.itemId);
     const title = String(it.title || "").toLowerCase();
+    if (!matchesApparelSize(title, listing)) return false;
     // Require identifiers as complete tokens; R5 must not match R50.
     const norm = (v: string) =>
       " " +

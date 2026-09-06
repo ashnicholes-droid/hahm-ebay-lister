@@ -201,3 +201,21 @@ it("photo-only output cannot claim a new sale condition or tape measurements", a
   ).toBe(false);
   expect(AI_LISTING_SCHEMA.properties.measurements.enum).toEqual([""]);
 });
+
+it("rejects relaxed-search apparel sizes and possessive false matches", async () => {
+  const { matchesApparelSize } = await import("@/lib/ebay/comps");
+  const l = {
+    title: "Pants",
+    description: "",
+    category: "mens_bottom",
+    size: "XXL",
+  };
+  expect(matchesApparelSize("Chubbies Mens XXL 30 Inseam", l)).toBe(true);
+  expect(matchesApparelSize("Chubbies Extra Extra Large Pants", l)).toBe(true);
+  expect(matchesApparelSize("Chubbies Mens Large Pants", l)).toBe(false);
+  expect(matchesApparelSize("Chubbies XL Extra Large Pants", l)).toBe(false);
+  expect(matchesApparelSize("Men's Shirt", { ...l, size: "S" })).toBe(false);
+  expect(matchesApparelSize("Shirt Extra Large", { ...l, size: "L" })).toBe(
+    false,
+  );
+});
