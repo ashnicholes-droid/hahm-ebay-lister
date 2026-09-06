@@ -1,3 +1,4 @@
+import { acceptedPhotoFact } from "@/lib/photo-facts";
 import { AI_LISTING_SCHEMA } from "@/lib/ai-schema";
 import {
   parseListing,
@@ -214,18 +215,8 @@ async function handle(req: NextRequest) {
         );
         const raw = parseModelJson<Record<string, unknown>>(firstText(resp));
         const specifics = Array.isArray(raw.specifics) ? raw.specifics : [];
-        const supported = specifics.filter(
-          (s: any) =>
-            typeof s?.name === "string" &&
-            typeof s.value === "string" &&
-            Array.isArray(s.photoIndices) &&
-            s.photoIndices.length &&
-            s.photoIndices.every(
-              (i: unknown) =>
-                Number.isInteger(i) &&
-                Number(i) > 0 &&
-                Number(i) <= imageBlocks.length,
-            ),
+        const supported = specifics.filter((s) =>
+          acceptedPhotoFact(s, imageBlocks.length),
         );
         const listing = parseListing({
           ...raw,

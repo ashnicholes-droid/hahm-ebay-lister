@@ -18,9 +18,13 @@ function mockClient(create: ReturnType<typeof vi.fn>): Anthropic {
 
 describe("sortPhotos time budgeting", () => {
   it("caps each Anthropic call's timeout and disables SDK-internal retries", async () => {
-    const create = vi.fn().mockResolvedValue(
-      groupResponse({ groups: [{ folder_name: "shirt", photo_indices: [1, 2] }] })
-    );
+    const create = vi
+      .fn()
+      .mockResolvedValue(
+        groupResponse({
+          groups: [{ folder_name: "shirt", photo_indices: [1, 2] }],
+        }),
+      );
 
     await sortPhotos(mockClient(create), [IMG, IMG]);
 
@@ -35,14 +39,18 @@ describe("sortPhotos time budgeting", () => {
   });
 
   it("skips calls entirely once the budget is exhausted", async () => {
-    const create = vi.fn().mockResolvedValue(
-      groupResponse({ groups: [{ folder_name: "shirt", photo_indices: [1] }] })
-    );
+    const create = vi
+      .fn()
+      .mockResolvedValue(
+        groupResponse({
+          groups: [{ folder_name: "shirt", photo_indices: [1] }],
+        }),
+      );
 
     // Zero budget: every grouping batch is skipped → total-failure error.
-    await expect(sortPhotos(mockClient(create), [IMG, IMG], undefined, 0)).rejects.toThrow(
-      SortUnavailableError
-    );
+    await expect(
+      sortPhotos(mockClient(create), [IMG, IMG], undefined, 0),
+    ).rejects.toThrow(SortUnavailableError);
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -60,16 +68,53 @@ describe("sortPhotos time budgeting", () => {
           ],
         });
       }
-      const err = new Error("Request timed out.") as Error & { status?: number };
+      const err = new Error("Request timed out.") as Error & {
+        status?: number;
+      };
       throw err; // status undefined → retryable, but budget-bounded
     });
 
     // Small budget: grouping fits, but verify/merge retries are cut off by the
     // deadline instead of looping through the full backoff schedule.
-    const result = await sortPhotos(mockClient(create), [IMG, IMG, IMG], undefined, 6_000);
+    const result = await sortPhotos(
+      mockClient(create),
+      [IMG, IMG, IMG],
+      undefined,
+      6_000,
+    );
 
     expect(result.groups.map((g) => g.name)).toEqual(["shirt", "mug"]);
     expect(result.groups[0].photoIndices).toEqual([0, 1]);
     expect(result.orphanIndices).toEqual([]);
   });
 });
+
+for (const recover of [true, false]) {
+  it(`keeps detail recovery evidence-gated (${recover})`, async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(
+        groupResponse({
+          groups: [{ folder_name: "knit", photo_indices: [1, 2, 3] }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        groupResponse({ valid: false, keep_indices: [1, 2] }),
+      )
+      .mockResolvedValueOnce(
+        groupResponse(
+          recover
+            ? {
+                group: 1,
+                detailPhoto: true,
+                evidence: "Same ribbed seam and contrasting cuff construction",
+              }
+            : { group: 0, detailPhoto: false, evidence: "" },
+        ),
+      );
+    const result = await sortPhotos(mockClient(create), [IMG, IMG, IMG]);
+    expect(result.groups[0].photoIndices).toEqual(recover ? [0, 1, 2] : [0, 1]);
+    expect(result.orphanIndices).toEqual(recover ? [] : [2]);
+    expect(create).toHaveBeenCalledTimes(3);
+  });
+}

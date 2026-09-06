@@ -44,6 +44,7 @@ export const listingSchema = z.object({
         .max(12),
     ])
     .optional(),
+  search_terms: z.array(text).max(4).optional(),
   seo_keywords: z.array(text).max(10).optional(),
   key_features: z.array(text).max(10).optional(),
   item_specifics: z

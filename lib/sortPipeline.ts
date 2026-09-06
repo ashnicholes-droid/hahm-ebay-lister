@@ -158,7 +158,7 @@ async function groupPhotos(
     labelStart: number;
     labelEnd: number;
   }[] = [];
-  for (let offset = 0; offset < total; offset += BATCH_SIZE) {
+  for (let offset = 0; offset < total; offset += BATCH_SIZE - 2) {
     const batch = images.slice(offset, offset + BATCH_SIZE);
     batches.push({
       offset,
@@ -323,6 +323,91 @@ async function mergeSplitGroups(
   return merged;
 }
 
+// A detail image rejected by an isolated verification may need the surrounding
+// items for comparison. Require an explicit visual explanation; uncertainty
+// stays unassigned rather than becoming a new listing or an automatic merge.
+async function recoverDetailPhotos(
+  client: Anthropic,
+  images: WireImage[],
+  groups: { name: string; indices: number[] }[],
+  model: string,
+  deadline: number,
+) {
+  const assigned = new Set(groups.flatMap((g) => g.indices));
+  const orphans = images
+    .map((_, i) => i)
+    .filter((i) => !assigned.has(i))
+    .slice(0, 6);
+  for (const index of orphans) {
+    const candidates = groups
+      .filter((g) => g.indices.length < 24)
+      .map((g) => ({
+        g,
+        distance: Math.min(...g.indices.map((i) => Math.abs(i - index))),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 2);
+    if (!candidates.length) continue;
+    const content: Anthropic.ContentBlockParam[] = [
+      { type: "text", text: "UNASSIGNED DETAIL PHOTO:" },
+      ...labeledContent([images[index]]),
+    ];
+    candidates.forEach(({ g }, i) =>
+      content.push(
+        { type: "text", text: `Candidate group ${i + 1}:` },
+        ...labeledContent(g.indices.slice(0, 12).map((j) => images[j])),
+      ),
+    );
+    content.push({
+      type: "text",
+      text: 'Is the unassigned image a tag, close-up or tape-measure view of exactly one candidate item? Compare textile texture, seams, trim, shape, color and measurement placement with ALL candidate views. A cropped view need not show the full item, but matching color or adjacency alone is insufficient. Reject conflicting labels/construction or ambiguous identical items. Return {"group":0,"detailPhoto":false,"evidence":""} if uncertain. Otherwise return {"group":1-based candidate number,"detailPhoto":true,"evidence":"specific visible matching features"}. JSON only.',
+    });
+    const vote = await claudeJson<{
+      group?: number;
+      detailPhoto?: boolean;
+      evidence?: string;
+    }>(client, model, content, 250, "recover detail", deadline);
+    if (
+      vote?.detailPhoto === true &&
+      Number.isInteger(vote.group) &&
+      vote.group! > 0 &&
+      vote.group! <= candidates.length &&
+      typeof vote.evidence === "string" &&
+      vote.evidence.length >= 15
+    ) {
+      const g = candidates[vote.group! - 1].g;
+      g.indices.push(index);
+      g.indices.sort((a, b) => a - b);
+    }
+  }
+  return groups;
+}
+
+// Overlapping batch windows share the very same source photos. Rejoin those
+// identities before visual verification; never merge solely on color or adjacency.
+export function joinOverlappingGroups(
+  groups: { name: string; indices: number[] }[],
+): { name: string; indices: number[] }[] {
+  const out: { name: string; indices: number[] }[] = [];
+  for (const original of groups) {
+    let g = { ...original, indices: [...new Set(original.indices)] };
+    for (let i = 0; i < out.length;) {
+      if (out[i].indices.some((x) => g.indices.includes(x))) {
+        g = {
+          name: out[i].name,
+          indices: [...new Set([...out[i].indices, ...g.indices])].sort(
+            (a, b) => a - b,
+          ),
+        };
+        out.splice(i, 1);
+        i = 0;
+      } else i++;
+    }
+    out.push(g);
+  }
+  return out.sort((a, b) => a.indices[0] - b.indices[0]);
+}
+
 function uniqueNames(
   groups: { name: string; indices: number[] }[],
 ): SortGroup[] {
@@ -385,8 +470,9 @@ export async function sortPhotos(
   const deadline = Date.now() + budgetMs;
   const grouped = await groupPhotos(client, images, m, deadline);
   if (grouped.length === 0) return { groups: [], orphanIndices: [] };
+  const linked = joinOverlappingGroups(grouped);
   const seen = new Set<number>();
-  for (const g of grouped)
+  for (const g of linked)
     g.indices = g.indices.filter((i) => {
       if (seen.has(i)) return false;
       seen.add(i);
@@ -395,7 +481,7 @@ export async function sortPhotos(
   const verified = await verifyGroups(
     client,
     images,
-    grouped.filter((g) => g.indices.length),
+    linked.filter((g) => g.indices.length),
     m,
     deadline,
   );
@@ -410,6 +496,7 @@ export async function sortPhotos(
     merged.length < verified.groups.length
       ? await verifyGroups(client, images, merged, m, deadline)
       : { groups: merged, orphans: [] };
+  await recoverDetailPhotos(client, images, checked.groups, m, deadline);
   const assigned = new Set(checked.groups.flatMap((g) => g.indices));
   return {
     groups: uniqueNames(checked.groups),

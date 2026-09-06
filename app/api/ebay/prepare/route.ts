@@ -1,3 +1,4 @@
+import { categoryMatches, expectedDepartment } from "@/lib/category-selection";
 import { NextRequest, NextResponse } from "next/server";
 import { guardApiRequest } from "@/lib/api-guard";
 import {
@@ -13,7 +14,6 @@ import {
 import {
   buildAspects,
   reconcileAspects,
-  conditionCandidates,
   CONDITION_ID_ENUM,
 } from "@/lib/ebay/publish";
 import { enforceCardinality, sanitizeNumericAspects } from "@/lib/ebay/aspects";
@@ -38,13 +38,16 @@ export async function POST(req: NextRequest) {
           const suggestions = listing.category_id
             ? []
             : await suggestLeafCategories(
-                `${listing.category_hint || ""} ${listing.title}`,
-                3,
+                `${expectedDepartment(listing)} ${listing.category_hint || ""} ${listing.title}`,
+                10,
               );
-          const id = listing.category_id || suggestions[0]?.id;
+          const compatible = suggestions.filter((c) =>
+            categoryMatches(c, listing),
+          );
+          const id = listing.category_id || compatible[0]?.id;
           if (!id)
             throw new Error(
-              "Could not resolve an eBay category. Retry or enter a leaf category ID.",
+              "Could not resolve a category matching this department. Review the department/category and enter the correct leaf category ID.",
             );
           const token = await accessTokenFromCookie(
             req.cookies.get(EBAY_COOKIE)?.value,
@@ -56,6 +59,16 @@ export async function POST(req: NextRequest) {
           if (!meta.length || !ids.size)
             throw new Error(
               "Category specifics or conditions could not be loaded. Connect eBay and retry.",
+            );
+          const departmentMeta = meta.find((a) => a.name === "Department");
+          const expected = expectedDepartment(listing);
+          if (
+            expected &&
+            departmentMeta?.mode === "SELECTION_ONLY" &&
+            !departmentMeta.values.includes(expected)
+          )
+            throw new Error(
+              `This category does not accept Department ${expected}. Choose the correct category.`,
             );
           const aspects = buildAspects(listing, listing.category || "");
           reconcileAspects(aspects, meta, listing, listing.category || "");
@@ -85,13 +98,9 @@ export async function POST(req: NextRequest) {
           listing.item_specifics = Object.fromEntries(
             Object.entries(aspects).map(([k, v]) => [k, v.join(" | ")]),
           );
+          // Cosmetic AI grades cannot establish the seller's sale condition.
           if (!conditions.some((c) => c.value === listing.ebay_condition))
-            listing.ebay_condition =
-              conditionCandidates(
-                listing.condition,
-                ids,
-                listing.category || "",
-              )[0] || "";
+            listing.ebay_condition = "";
           const expiresAt = Date.now() + 23 * 3600_000;
           return NextResponse.json({
             ok: true,
@@ -99,7 +108,8 @@ export async function POST(req: NextRequest) {
             preparation: {
               categoryId: id,
               categoryName:
-                suggestions.find((c) => c.id === id)?.name || `Category ${id}`,
+                suggestions.find((c) => c.id === id)?.path || `Category ${id}`,
+              suggestions: compatible,
               aspects: meta,
               conditions,
               expiresAt,

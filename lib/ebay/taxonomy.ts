@@ -48,6 +48,7 @@ export interface AspectMeta {
 export interface CategorySuggestion {
   id: string;
   name: string;
+  path: string;
 }
 
 // ── App token (client-credentials), cached in the warm lambda ────────────────
@@ -123,6 +124,14 @@ export async function suggestLeafCategories(
       out.push({
         id: String(id),
         name: String(s?.category?.categoryName ?? ""),
+        path: [...(s.categoryTreeNodeAncestors ?? [])]
+          .reverse()
+          .map((a: any) =>
+            String(a.categoryName ?? a.category?.categoryName ?? ""),
+          )
+          .concat(String(s.category.categoryName ?? ""))
+          .filter(Boolean)
+          .join(" > "),
       });
       if (out.length >= limit) break;
     }

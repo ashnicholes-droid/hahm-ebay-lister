@@ -32,7 +32,7 @@ async function setup(page: Page) {
     return r.fulfill({
       json: {
         ok: true,
-        listing: { ...l, category_id: "625", ebay_condition: "USED_EXCELLENT" },
+        listing: { ...l, category_id: "625", ebay_condition: "" },
         preparation: {
           categoryId: "625",
           categoryName: "Cameras",
@@ -84,6 +84,12 @@ async function draft(page: Page) {
   await expect(page.getByText("Cameras", { exact: true })).toBeVisible();
 }
 async function shipping(page: Page) {
+  await expect(
+    page.getByRole("button", { name: "Post this to eBay" }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("eBay condition", { exact: true })
+    .selectOption("USED_EXCELLENT");
   await page
     .getByRole("button", { name: "Load my eBay policies and locations" })
     .click();

@@ -1,3 +1,4 @@
+import { PHOTO_FACT_SCHEMA } from "./photo-facts";
 const string = { type: "string" };
 const strings = { type: "array", items: string };
 export const AI_LISTING_SCHEMA = {
@@ -16,8 +17,6 @@ export const AI_LISTING_SCHEMA = {
     condition: {
       type: "string",
       enum: [
-        "NEW_WITH_TAGS",
-        "NEW_NO_TAGS",
         "EXCELLENT",
         "VERY_GOOD",
         "GOOD",
@@ -26,22 +25,14 @@ export const AI_LISTING_SCHEMA = {
       ],
     },
     condition_notes: string,
-    measurements: string,
+    measurements: { type: "string", enum: [""] },
     suggested_price: { type: "number" },
+    search_terms: strings,
     seo_keywords: strings,
     key_features: strings,
     specifics: {
       type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          name: string,
-          value: string,
-          photoIndices: { type: "array", items: { type: "integer" } },
-        },
-        required: ["name", "value", "photoIndices"],
-      },
+      items: PHOTO_FACT_SCHEMA,
     },
   },
   required: [
@@ -58,6 +49,7 @@ export const AI_LISTING_SCHEMA = {
     "condition_notes",
     "measurements",
     "suggested_price",
+    "search_terms",
     "seo_keywords",
     "key_features",
     "specifics",

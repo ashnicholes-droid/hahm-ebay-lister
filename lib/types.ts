@@ -21,6 +21,7 @@ export interface ListingResult {
   measurements?: string;
   description: string;
   suggested_price?: number | string;
+  search_terms?: string[];
   seo_keywords?: string[];
   key_features?: string[];
   item_specifics?: Record<string, string>;
@@ -122,6 +123,7 @@ export interface ItemGroup {
 }
 
 export interface PreparedCategory {
+  suggestions?: import("./ebay/taxonomy").CategorySuggestion[];
   categoryId: string;
   categoryName: string;
   aspects: AspectMeta[];

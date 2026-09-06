@@ -119,6 +119,54 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
     >
       <legend>Review eBay details</legend>
       <label>
+        Clothing department
+        <select
+          aria-label="Clothing department"
+          value={
+            l.category?.startsWith("womens_")
+              ? "Women"
+              : l.category?.startsWith("mens_")
+                ? "Men"
+                : ""
+          }
+          onChange={(e) => {
+            const family = (l.category || "clothing").replace(
+              /^(womens|mens)_/,
+              "",
+            );
+            edit({
+              category: e.target.value
+                ? (e.target.value === "Women" ? "womens_" : "mens_") + family
+                : "accessory",
+              category_id: "",
+              ebay_condition: "",
+              item_specifics: { ...specifics, Department: e.target.value },
+            });
+          }}
+        >
+          <option value="">Not established / other</option>
+          <option>Women</option>
+          <option>Men</option>
+        </select>
+      </label>
+      {!!g.preparation?.suggestions?.length && (
+        <label>
+          Suggested category
+          <select
+            value={l.category_id || ""}
+            onChange={(e) =>
+              edit({ category_id: e.target.value, ebay_condition: "" })
+            }
+          >
+            {g.preparation.suggestions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.path}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label>
         Category ID{" "}
         <input
           aria-label="Category ID"

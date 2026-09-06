@@ -91,9 +91,13 @@ Write a concise title up to 80 characters using verified brand, exact model, ite
 Choose a broad category key appropriate to the item: womens_top, womens_dress, womens_skirt, womens_pants, womens_coat, womens_sweater, womens_jeans, womens_clothing, womens_shoes, handbag, wallet, mens_top, mens_pants, mens_coat, mens_sweater, mens_jeans, mens_clothing, mens_shoes, jewelry, scarf, belt, sunglasses, hat, accessory, doll, collectible, collector_plate, toy, home_decor, book, knife, sporting_goods, electronics, camera, audio, video_game, media, vinyl_record, cd, dvd_bluray, musical_instrument, kitchenware, glassware, pottery_ceramics, art, craft, tool, automotive, office, health_beauty, small_appliance, lighting, linens, holiday, board_game, puzzle, plush, action_figure, trading_card, sports_memorabilia, coin, stamp, ephemera, other.
 category_hint is a specific category search phrase, not a guessed numeric category ID.
 Size must be the printed size, not inferred from body dimensions or apparent fit. Measurements must have an explicit visible label and unit. Leave fields empty if no evidence exists.
-Condition is a preliminary cosmetic assessment for seller review; use FOR_PARTS_OR_NOT_WORKING only when broken/nonfunctional status is supported. Never infer NEW just because something looks clean.
+Condition is a preliminary cosmetic assessment for seller review; use FOR_PARTS_OR_NOT_WORKING only when broken/nonfunctional status is supported. Never infer NEW or NWT, unworn or unused from appearance or attached tags. With photos alone return a preliminary used cosmetic grade and describe tags as attached; the seller selects actual sale condition separately. Never say creases are from storage unless the seller said so.
+Do not infer Fit, Size Type (Regular/Plus/Petite), Vintage, Handmade, Personalize, Season, Occasion, or manufacturing year. Omit these unless a label explicitly establishes the value. Copyright dates are not manufacture dates. Do not assert authenticity or official licensing anywhere in the output, including key_features. You may transcribe visible brand/copyright label text without treating it as proof of authenticity or licensing.
+Do not estimate tape measurements from cropped endpoints. Always leave the measurements field empty in photo-only analysis. Do not include tape-derived measurements anywhere in the title, description or specifics; the seller must verify them manually. A printed inseam label may be transcribed as an Inseam specific with its label quote. Never double a partial chest reading.
+Return search_terms: up to 4 short distinctive exact phrases from the item labels/graphic, such as collaboration name, named style, character graphic, or labeled fiber. Omit generic fit, season, color, size and marketing words. Include important material and collaboration terms rather than just the brand and generic item type.
+Preserve collaboration, product-line, character and fiber information in the title where visible; these distinguish comparable items.
 suggested_price is an unverified estimate from general knowledge, not current sold data. Use 0 when the exact item cannot be identified confidently. No invented comparable URLs, sales or claims of current market research.
-Return structured JSON. Specifics are an array of {name,value,photoIndices}; use exact identifiers visible on labels (Model, MPN, UPC, ISBN, etc.), and only category-relevant fields. photoIndices are 1-based source photo numbers; omit any specific without photo evidence. Do not include empty or irrelevant specifics. Use at most 40 specifics, 5 key features and 10 search phrases. Keep values short. Multiple values may be separated by ' | '.`;
+Return structured JSON. Specifics are an array of {name,value,photoIndices,basis,quote}. basis is label for directly readable label text (quote that text verbatim), or visible_feature for visible construction (quote empty); use exact identifiers visible on labels (Model, MPN, UPC, ISBN, etc.), and only category-relevant fields. photoIndices are 1-based source photo numbers; omit any specific without photo evidence. Do not include empty or irrelevant specifics. Use at most 40 specifics, 5 key features and 10 search phrases. Keep values short. Multiple values may be separated by ' | '.`;
 
 export function buildProfiledAnalysisPrompt(profile: string): string {
   const normalized = normalizeItemProfile(profile);
@@ -137,7 +141,8 @@ export function buildVerifyGroupPrompt(n: number): string {
   return `Look carefully at these ${n} photos. They have been proposed as a single eBay listing.
 
 Do ALL of these photos show the SAME physical item?
-- Front/back/side/tag/close-up shots of ONE item → all the same item → valid
+- Front/back/side/tag/close-up/tape-measure shots of ONE item → all the same item → valid
+- A close-up or measurement view may show only a small section. Compare knit texture, stitching, seams and trim across the full set; do not reject it merely because the brand or whole garment is not visible.
 - A completely different item mixed in by mistake → invalid
 
 If all photos are the SAME item:

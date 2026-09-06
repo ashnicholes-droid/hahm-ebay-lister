@@ -1,3 +1,4 @@
+import { acceptedPhotoFact, PHOTO_FACT_SCHEMA } from "@/lib/photo-facts";
 import { remainingTime } from "@/lib/network";
 import { measuredMessage } from "@/lib/ai-usage";
 // Category-aware, photo-grounded item-specifics fill.
@@ -123,7 +124,7 @@ export async function fillRecommendedAspects(
     Boolean(b),
   );
 
-  const prompt = `You are completing eBay item specifics for a listing that is about to publish.
+  const prompt = `You are completing eBay item specifics for a draft awaiting seller review.
 ${imageBlocks.length ? "The photos above show the actual item. Inspect every photo again — tags, labels, stamps, close-ups — for evidence." : ""}
 ITEM DATA (from earlier photo analysis):
 ${JSON.stringify(itemData, null, 1)}
@@ -132,14 +133,15 @@ EBAY WANTS VALUES FOR THESE ASPECTS (exact aspect names for this category):
 ${unfilled.map(aspectPromptLine).join("\n")}
 
 Rules:
-- Fill ONLY aspects supported by visible evidence in the photos or by the item data. Omit everything else — never guess.
+- Fill ONLY aspects supported directly by these photos. Item data is an unverified earlier draft, not independent evidence. Omit everything else — never guess.
 - Use ONLY the supplied eBay aspect names as keys, spelled exactly as given.
 - For "must be EXACTLY one of" aspects, copy the value verbatim from the list.
 - For "multiple values allowed" aspects you may return a JSON array of values.
 - Never answer with placeholder text like "See photos", "Unknown", or "N/A" — omit the aspect instead.
 - Values must be short (under 65 characters each).
 
-Return ONLY valid JSON mapping aspect name to value (string, or array for multi-value aspects), e.g. {"Sleeve Length": "Long Sleeve", "Material": ["Cotton", "Polyester"]}. Return {} if nothing can be determined. No markdown, no explanation.`;
+Never infer fit, size type, vintage, handmade, personalization, season, occasion or manufacture year. Do not fill these without a directly readable label explicitly establishing the value. A legal eBay value is not evidence. Copyright dates are not manufacture dates. Never infer length or chest measurements from cropped tape views.
+Return {"facts":[{"name":"Material","value":"Cashmere","basis":"label","quote":"100% CASHMERE","photoIndices":[2]}]}. For a directly visible construction feature use basis visible_feature and an empty quote. Photo indices are 1-based. Label-derived facts require exact quoted text. Omit everything unknown; return {"facts":[]} if necessary`;
 
   try {
     const client = getClient();
@@ -148,7 +150,20 @@ Return ONLY valid JSON mapping aspect name to value (string, or array for multi-
       client,
       {
         model: FILL_MODEL,
-        max_tokens: 1500,
+        max_tokens: 2200,
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                facts: { type: "array", items: PHOTO_FACT_SCHEMA },
+              },
+              required: ["facts"],
+            },
+          },
+        },
         messages: [
           {
             role: "user",
@@ -160,11 +175,14 @@ Return ONLY valid JSON mapping aspect name to value (string, or array for multi-
     );
     const block = resp.content.find((b) => b.type === "text");
     const text = block && block.type === "text" ? block.text : "";
-    const filled = parseModelJson<Record<string, unknown>>(text);
+    const filled = parseModelJson<{ facts?: unknown[] }>(text);
 
     const byLower = new Map(unfilled.map((a) => [a.name.toLowerCase(), a]));
     let added = 0;
-    for (const [key, raw] of Object.entries(filled || {})) {
+    for (const fact of filled.facts ?? []) {
+      if (!acceptedPhotoFact(fact, imageBlocks.length)) continue;
+      const key = fact.name,
+        raw = fact.value;
       const a = byLower.get(String(key).toLowerCase());
       if (!a || aspects[a.name]) continue;
       const parts = Array.isArray(raw)
@@ -198,6 +216,7 @@ Return ONLY valid JSON mapping aspect name to value (string, or array for multi-
         a.cardinality === "MULTI"
           ? vals.slice(0, MAX_MULTI_VALUES)
           : vals.slice(0, 1);
+      listing.evidence = { ...listing.evidence, [a.name]: fact.photoIndices };
       added++;
     }
     if (added) {
