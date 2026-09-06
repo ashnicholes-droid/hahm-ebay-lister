@@ -49,4 +49,13 @@ Proposed infrastructure, subject to account setup and cost confirmation:
 6. Resume from cloud state on reconnect, stream/poll progress and show per-item failures. Device drafts migrate only after successful uploads and cloud confirmation.
 7. Validate browser close/reopen, worker timeout after a successful eBay response, duplicate events, account disconnection, quota exhaustion, stale edits and photo retention. Then test real-photo batches of 10, 25 and 100 and record seller handling time, wall time, cost, corrections and failures.
 
-No cloud accounts, subscriptions or background infrastructure have been created by this change.
+## Supabase foundation applied September 6, 2026
+
+The seller created the Free Supabase project `hahm-ebay-lister` and authenticated the local CLI. Applied `supabase/migrations/20260906070000_private_batch_foundation.sql` through the Management API to the new empty database.
+
+- Four service-only tables: batches, items, photo references and jobs. RLS enabled; public and signed-in browser roles have no table privileges.
+- Private `lister-photos-preview` bucket, JPEG derivatives only, 8 MiB per-object ceiling. No production bucket or customer photo uploads created.
+- New-format secret API key and project URL transferred directly to Vercel Preview, scoped to `feat/batch-throughput`. No secret in Git, chat, or browser-exposed environment variables.
+- Live REST check: server key HTTP 200, publishable key HTTP 401. Catalog checks verified RLS and revoked browser privileges on all four tables. Rolled-back SQL test verified that publish jobs require an approved snapshot.
+
+These are infrastructure foundations only: the UI does not yet read/write cloud batches and no background worker is connected. Inngest account setup, application integration, ownership enforcement, authenticated upload grants, retention cleanup and close-browser recovery tests remain outstanding. No paid subscription has been activated. The schema expiry field does not itself delete data; implement retention before uploading real batches.
