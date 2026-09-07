@@ -31,6 +31,7 @@ const contains = (title: string, phrase: string) =>
 // Distinctive graphics, premium fibers and named product lines remain constraints.
 const features: [string, RegExp][] = [
   ["burger", /\b(?:burger|hamburger|cheeseburger)\b/i],
+  ["scouts", /\b(?:scouts|guardians)\b/i],
   ["rainbow", /\brainbow\b/i],
   ["wave", /\b(?:wave|waves|wavy)\b/i],
   ["pocket", /\bpockets?\b/i],
@@ -121,7 +122,7 @@ export function apparelMatchScore(title: string, l: ListingResult): number {
     return 0;
   if (
     l.item_specifics?.["Size Type"] === "Regular" &&
-    /\b(?:petite|maternity|plus)\b/.test(candidate)
+    /\b(?:petites?|maternity|plus)\b/.test(candidate)
   )
     return 0;
   const type = family(l);
@@ -130,13 +131,57 @@ export function apparelMatchScore(title: string, l: ListingResult): number {
   if (type?.[0] === "shirt" && /\b(?:t[ -]?shirt|tee|polo)\b/i.test(title))
     return 0;
   if (type?.[0] === "pants" && /\bshorts\b/i.test(title)) return 0;
+  const neckline = l.item_specifics?.Neckline || "";
+  if (
+    /crew/i.test(neckline) &&
+    /\b(?:hoodie|hooded|hood|zip|v[ -]?neck|turtleneck)\b/i.test(title)
+  )
+    return 0;
+  if (
+    /graphic/i.test(l.item_specifics?.Pattern || "") &&
+    /\b(?:embroidered|embroidery|symbols)\b/i.test(title)
+  )
+    return 0;
+  // Ignore missing colors, but reject explicit conflicting colorways.
+  const colors = (value: string) =>
+    words(
+      value.replace(/grey/gi, "gray").replace(/navy|indigo/gi, "blue"),
+    ).filter((w) =>
+      [
+        "black",
+        "white",
+        "blue",
+        "red",
+        "green",
+        "yellow",
+        "pink",
+        "purple",
+        "orange",
+        "gray",
+        "brown",
+        "beige",
+        "cream",
+      ].includes(w),
+    );
+  const targetColors = colors(
+    l.item_specifics?.Color ||
+      (Array.isArray(l.color) ? l.color.join(" ") : l.color || ""),
+  );
+  const candidateColors = colors(title);
+  if (
+    targetColors.length &&
+    candidateColors.length &&
+    !targetColors.some((c) => candidateColors.includes(c))
+  )
+    return 0;
   if (!anchors(l).every((a) => contains(title, a))) return 0;
   const wanted = wantedFeatures(l);
   const matched = wanted.filter(([, re]) => re.test(title)).length;
   // Strong graphic identities cannot be replaced by generic brand matches.
   if (
     wanted.some(
-      ([name, re]) => ["burger", "rainbow"].includes(name) && !re.test(title),
+      ([name, re]) =>
+        ["burger", "rainbow", "scouts"].includes(name) && !re.test(title),
     )
   )
     return 0;

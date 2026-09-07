@@ -40,7 +40,7 @@ it("does not require every fiber percentage in sweatshirt titles", () => {
   };
   expect(apparelQuery(l)).not.toMatch(/62|rayon|Naoko/);
   expect(
-    apparelMatchScore("Sailor Moon Women's Crewneck Sweatshirt M", l),
+    apparelMatchScore("Sailor Moon Scouts Women's Crewneck Sweatshirt M", l),
   ).toBeGreaterThan(0);
   expect(apparelMatchScore("Sailor Moon Women's T-Shirt M", l)).toBe(0);
 });
@@ -204,4 +204,35 @@ it("removes review labels while preserving actual flaws and measurements wording
       "Untested. Stain on back; missing button. Tags are attached.",
     ),
   ).toBe("Untested. Stain on back; missing button. Tags are attached.");
+});
+it("rejects the wrong color, hood, sizing and graphic found in live retrieval", () => {
+  const l = {
+    ...shirt,
+    title: "Sailor Moon Scouts sweatshirt",
+    brand: "Sailor Moon",
+    category: "womens_sweater",
+    item_type: "Sweatshirt",
+    size: "L",
+    search_terms: ["Sailor Scouts"],
+    item_specifics: {
+      Color: "Blue",
+      Pattern: "Graphic Print",
+      Neckline: "Crew Neck",
+      "Size Type": "Regular",
+    },
+  };
+  expect(
+    apparelMatchScore(
+      "Sailor Moon Scouts Blue Graphic Crewneck Sweatshirt L",
+      l,
+    ),
+  ).toBeGreaterThan(0);
+  for (const title of [
+    "Sailor Moon Pink Scouts Sweatshirt L",
+    "Sailor Moon Scouts Blue Hoodie Sweatshirt L",
+    "Sailor Moon Scouts Blue Sweatshirt Petites L",
+    "Sailor Moon Moon Power Blue Embroidered Sweatshirt L",
+    "Sailor Moon Blue Chibi-Usa Luna Sweatshirt L",
+  ])
+    expect(apparelMatchScore(title, l)).toBe(0);
 });

@@ -1,3 +1,4 @@
+import { withDeadline } from "@/lib/network";
 import { NextRequest, NextResponse } from "next/server";
 import { guardApiRequest } from "@/lib/api-guard";
 import { isEbayAppConfigured } from "@/lib/ebay/config";
@@ -36,8 +37,9 @@ export async function researchListing(input: unknown) {
   }
 
   try {
-    const token = await appToken();
-    const comps = await searchComps(token, body.listing);
+    const comps = await withDeadline(25_000, async () =>
+      searchComps(await appToken(), body.listing!),
+    );
     // The band stays raw market truth; the "use median" affordance carries the
     // deployment's storewide markup so it matches analysis-suggested pricing.
     const markup = priceMarkupPercent();
