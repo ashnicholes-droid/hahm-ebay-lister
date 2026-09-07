@@ -4,6 +4,7 @@ import type { ItemGroup, Photo } from "@/lib/types";
 import type { AccountOptions } from "@/lib/ebay/publish";
 import { applyShippingDefaults } from "@/lib/shipping-defaults";
 import { requestText } from "@/lib/text-dialog";
+import { loadAccountOptions } from "@/lib/account-options-client";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
 interface Props {
@@ -87,16 +88,14 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       setBusy(false);
     }
   }
-  async function loadOptions() {
+  async function loadOptions(refresh = false) {
     setBusy(true);
     setError("");
     try {
-      const r = await apiPost("/api/ebay/options", {});
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error);
-      setOptions(d.options);
+      const options = await loadAccountOptions(refresh);
+      setOptions(options);
       const current = latest.current;
-      const shipping = applyShippingDefaults(current.shipping ?? {}, d.options);
+      const shipping = applyShippingDefaults(current.shipping ?? {}, options);
       if (JSON.stringify(shipping) !== JSON.stringify(current.shipping ?? {}))
         onGroupEdit(g.id, { shipping });
     } catch (e) {
@@ -359,7 +358,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
             then reload policies here.
           </p>
         )}
-        <button type="button" onClick={loadOptions}>
+        <button type="button" onClick={() => void loadOptions(true)}>
           Load my eBay policies and locations
         </button>
         {(
