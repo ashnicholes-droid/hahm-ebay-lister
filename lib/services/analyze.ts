@@ -1,3 +1,4 @@
+import { cleanGeneratedDescription } from "@/lib/description";
 import { acceptedPhotoFact } from "@/lib/photo-facts";
 import { AI_LISTING_SCHEMA } from "@/lib/ai-schema";
 import {
@@ -221,6 +222,7 @@ async function handle(input: unknown) {
             supported.map((s: any) => [s.name, s.value]),
           ),
         });
+        listing.description = cleanGeneratedDescription(listing.description);
         listing.item_profile = profile;
         listing.evidence = Object.fromEntries(
           supported.map((s: any) => [s.name, s.photoIndices]),
