@@ -911,7 +911,8 @@ export async function fetchAccountOptions(
     ebayRequest(accessToken, "GET", EBAY_ACC_BASE + "/payment_policy?" + mp),
     ebayRequest(accessToken, "GET", EBAY_ACC_BASE + "/return_policy?" + mp),
     ebayRequest(accessToken, "GET", EBAY_INV_BASE + "/location?limit=100"),
-  ]);
+  ]); 
+  console.log("EBAY LOCATION DEBUG:", JSON.stringify(results[3].json));
   if (results.some((r) => !r.ok))
     throw new Error(
       "Could not load all eBay policies and locations. Reconnect or retry.",
