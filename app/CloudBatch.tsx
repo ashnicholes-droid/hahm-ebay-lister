@@ -143,11 +143,13 @@ export function CloudBatch({
         setMessage(
           `Uploading ${count}/${ids.length} photos. Keep this tab open until uploads finish.`,
         );
-        const { links } = await call({
+        const { links, uploadedIds = [] } = await call({
           action: "upload-links",
           batchId: id,
           photoIds: chunk,
         });
+        count += uploadedIds.length;
+        setMessage(`Uploaded ${count}/${ids.length} photos.`);
         const result = await runBatch<any>(links, 3, async (link) => {
           const p =
             (await loadPhoto(link.id)) ?? photos.find((p) => p.id === link.id);
@@ -167,7 +169,12 @@ export function CloudBatch({
           setMessage(`Uploaded ${count}/${ids.length} photos.`);
         });
         if (result.errors.length) throw result.errors[0];
-        await call({ action: "confirm-uploads", batchId: id, photoIds: chunk });
+        if (links.length)
+          await call({
+            action: "confirm-uploads",
+            batchId: id,
+            photoIds: links.map((link: { id: string }) => link.id),
+          });
       }
       await call({ action: "start", batchId: id });
       pending.forEach((g) =>

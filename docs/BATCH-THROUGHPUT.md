@@ -2,6 +2,15 @@
 
 The objective is lower seller handling time for batches of 100 items. This change keeps Anthropic and the seller's existing condition, Regular sizing, policy and optional parcel defaults.
 
+## Resumed work: September 22, 2026
+
+- Recovered draft PR #52, `feat/batch-throughput`, at `13588b5`. Its base is the current public `main` (`edfc7d0`); the batch changes remain unmerged.
+- The seller reports that Supabase and Inngest have not been deployed. The September 6 preview observations below are historical records, not confirmation that either service is connected or functioning now. Verify the current Vercel environment, Supabase migrations/storage and Inngest registration before any live test.
+- Fixed interrupted photo-batch retries: the API returns already-confirmed photo IDs without issuing new upload grants. The browser counts those photos as complete and uploads/confirms only the unfinished portion. Photos in an unconfirmed chunk may still be retransmitted; this is not byte-level resumable uploading.
+- Revalidation: 210 unit/integration tests pass, including four new upload-resume cases; the production build and its TypeScript checks pass. Added a browser regression for a 21-photo batch interrupted after the first 20 were confirmed, then reloaded and resumed without uploading those 20 again.
+- Browser execution is pending in this workspace: Playwright's Chromium download failed with a truncated/invalid archive. The new browser regression and the existing close/reopen test have not been rerun here.
+- No real photos, paid AI calls, eBay publication or cloud configuration changes were made during this revalidation. Private Preview verification and real-photo time, cost and accuracy measurements remain pending. Follow PR #52 for remote validation results.
+
 ## Implemented
 
 - Compact review table by default for multiple items, 25 rows per page. Single-item workflows retain detailed cards. Expand one row for full review.

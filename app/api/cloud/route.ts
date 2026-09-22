@@ -108,26 +108,33 @@ export async function POST(req: NextRequest) {
       );
       if (rows.length !== new Set(ids).size)
         throw new Error("Photo not in this batch.");
+      // Confirmed derivatives survive a tab closing or a later upload failing.
+      // Do not issue overwrite grants or send their bytes again on resume.
+      const uploadedIds = rows
+        .filter((p) => p.state === "uploaded")
+        .map((p) => p.client_id);
       const links = await Promise.all(
-        rows.map(async (p) => ({
-          id: p.client_id,
-          analysis: checked(
-            await db()
-              .storage.from(p.bucket_id)
-              .createSignedUploadUrl(p.object_path + "/analysis.jpg", {
-                upsert: true,
-              }),
-          ).signedUrl,
-          upload: checked(
-            await db()
-              .storage.from(p.bucket_id)
-              .createSignedUploadUrl(p.object_path + "/upload.jpg", {
-                upsert: true,
-              }),
-          ).signedUrl,
-        })),
+        rows
+          .filter((p) => p.state !== "uploaded")
+          .map(async (p) => ({
+            id: p.client_id,
+            analysis: checked(
+              await db()
+                .storage.from(p.bucket_id)
+                .createSignedUploadUrl(p.object_path + "/analysis.jpg", {
+                  upsert: true,
+                }),
+            ).signedUrl,
+            upload: checked(
+              await db()
+                .storage.from(p.bucket_id)
+                .createSignedUploadUrl(p.object_path + "/upload.jpg", {
+                  upsert: true,
+                }),
+            ).signedUrl,
+          })),
       );
-      return NextResponse.json({ ok: true, links });
+      return NextResponse.json({ ok: true, links, uploadedIds });
     }
     if (body.action === "confirm-uploads") {
       const ids = z.array(clientId).min(1).max(20).parse(body.photoIds);
