@@ -198,7 +198,12 @@ test("resumes an interrupted photo batch after reload without uploading confirme
       exact: true,
     })
     .click();
-  await expect(page.getByRole("alert")).toContainText("Photo upload failed");
+  const cloudPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Background drafts", exact: true }),
+  });
+  await expect(cloudPanel.getByRole("alert")).toContainText(
+    "Photo upload failed",
+  );
   expect(uploaded.size).toBe(20);
   const confirmed = new Set(uploaded);
   await expect(page.getByRole("status")).toContainText("Saved on this device");
@@ -223,5 +228,5 @@ test("resumes an interrupted photo batch after reload without uploading confirme
   for (const id of confirmed) {
     expect(puts.filter((url) => url.includes(`/${id}/`))).toHaveLength(2);
   }
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(cloudPanel.getByRole("alert")).toHaveCount(0);
 });
