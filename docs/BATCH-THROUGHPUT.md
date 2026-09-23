@@ -2,6 +2,16 @@
 
 The objective is lower seller handling time for batches of 100 items. This change keeps Anthropic and the seller's existing condition, Regular sizing, policy and optional parcel defaults.
 
+## Current verification: September 23, 2026 UTC
+
+This section supersedes the earlier implementation milestones below.
+
+- The seller successfully entered the preview access code and submitted one real item with six photos. Supabase independently confirms all six photos are marked uploaded in the private preview bucket and the draft job is queued with no analysis saved.
+- Event delivery failed with `401 Cannot send events to an archived environment` from Inngest. This is an environment recovery issue, not a completed draft or a speed benchmark. The exact dashboard environment and its current app registration still need authenticated verification.
+- Queued jobs now have a retry action that survives reload, reuses existing photos and stable event IDs, and leaves running/completed jobs alone. The status distinguishes queued jobs from workers actually processing. Delivery failures return a service-unavailable response explaining that photos are saved.
+- Local validation: 213 unit/integration tests and the production build/typecheck pass. A Chromium regression covers a rejected dispatch, reload, and retry without recreating the batch or uploading its photos again; remote browser validation follows in PR #52.
+- Recovery: unarchive the intended Inngest preview environment, verify/sync the app endpoint to the current preview, and retry queued jobs or allow the existing five-minute recovery dispatcher to run. Keep the seller's original test tab: local photos and the owner session belong to that browser origin, and opening a different deployment URL will not automatically restore them.
+
 ## Resumed work: September 22, 2026
 
 - Recovered draft PR #52, `feat/batch-throughput`, at `13588b5`. Its base is the current public `main` (`edfc7d0`); the batch changes remain unmerged.

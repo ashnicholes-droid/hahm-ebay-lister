@@ -3,6 +3,120 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=",
   "base64",
 );
+
+test("queued drafts can be retried after delivery failure and reload without uploading again", async ({
+  page,
+  context,
+}) => {
+  let groups: any[] = [];
+  let status: string | undefined;
+  const actions: string[] = [];
+  let uploads = 0;
+  await context.route("**/api/ebay/status", (r) =>
+    r.fulfill({ json: { connected: false } }),
+  );
+  await context.route("**/api/models", (r) =>
+    r.fulfill({ json: { sortModels: [], analysisModels: [] } }),
+  );
+  await context.route("**/api/ebay/options", (r) =>
+    r.fulfill({ json: { ok: false, error: "Connect eBay" } }),
+  );
+  await context.route("**/api/cloud", (r) => {
+    if (r.request().method() === "GET")
+      return r.fulfill({ json: { enabled: true } });
+    const body = r.request().postDataJSON();
+    actions.push(body.action);
+    if (body.action === "create") groups = body.groups;
+    if (body.action === "upload-links")
+      return r.fulfill({
+        json: {
+          ok: true,
+          links: body.photoIds.map((id: string) => ({
+            id,
+            analysis: "http://127.0.0.1:3190/mock-upload",
+            upload: "http://127.0.0.1:3190/mock-upload",
+          })),
+        },
+      });
+    if (body.action === "start") {
+      status = "queued";
+      return r.fulfill({
+        status: 503,
+        json: {
+          ok: false,
+          code: "BACKGROUND_DISPATCH_FAILED",
+          error:
+            "Your photos are saved, but background processing is unavailable.",
+        },
+      });
+    }
+    if (body.action === "retry") status = "running";
+    if (body.action === "status")
+      return r.fulfill({
+        json: {
+          ok: true,
+          status: status ? "running" : "draft",
+          items: groups.map((g) => ({
+            clientId: g.id,
+            draft: g,
+            job: status ? { status } : undefined,
+          })),
+        },
+      });
+    return r.fulfill({ json: { ok: true } });
+  });
+  await context.route("**/mock-upload", (r) => {
+    uploads++;
+    return r.fulfill({ status: 200, body: "{}" });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Restoring saved work…")).toBeHidden();
+  await page
+    .locator("input[type=file]")
+    .setInputFiles({ name: "shirt.png", mimeType: "image/png", buffer: png });
+  await page.getByRole("button", { name: "These photos are one item" }).click();
+  await page
+    .getByRole("button", {
+      name: "Write unfinished drafts in background",
+      exact: true,
+    })
+    .click();
+  const panel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Background drafts",
+        exact: true,
+      }),
+    });
+  await expect(panel.getByRole("alert")).toContainText("Your photos are saved");
+  await expect(
+    panel.getByText("0/1 cloud drafts finished · 1 queued"),
+  ).toBeVisible({ timeout: 10000 });
+  await expect(panel).not.toContainText("Processing");
+  await expect(
+    panel.getByRole("button", { name: "Retry 1 unfinished item", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+
+  await page.reload();
+  await panel
+    .getByRole("button", { name: "Retry 1 unfinished item", exact: true })
+    .click();
+  await expect(panel).toContainText(
+    "Retry submitted; saved photos and completed analysis will be reused.",
+  );
+  await expect(
+    panel.getByText("0/1 cloud drafts finished · Processing"),
+  ).toBeVisible({ timeout: 10000 });
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  expect(actions.filter((action) => action === "create")).toHaveLength(1);
+  expect(actions.filter((action) => action === "upload-links")).toHaveLength(1);
+  expect(actions.filter((action) => action === "start")).toHaveLength(1);
+  expect(actions.filter((action) => action === "retry")).toHaveLength(1);
+  expect(uploads).toBe(2);
+});
+
 test("cloud drafts finish after closing the tab and preserve subsequent edits", async ({
   page,
   context,

@@ -198,9 +198,8 @@ export function CloudBatch({
     (i) => i.job?.status === "succeeded",
   ).length;
   const failed = cloudItems.filter((i) => i.job?.status === "failed").length;
-  const running = cloudItems.some(
-    (i) => i.job && ["queued", "running"].includes(i.job.status),
-  );
+  const queued = cloudItems.filter((i) => i.job?.status === "queued").length;
+  const running = cloudItems.some((i) => i.job?.status === "running");
   if (!enabled) return null;
   return (
     <section className="panel">
@@ -213,22 +212,23 @@ export function CloudBatch({
       <div className="batch-toolbar">
         <button
           type="button"
-          disabled={busy || running || !groups.length}
+          disabled={busy || running || queued > 0 || !groups.length}
           onClick={() => void uploadAndStart()}
         >
           {busy ? "Uploading…" : "Write unfinished drafts in background"}
         </button>
-        {failed > 0 && (
+        {failed + queued > 0 && (
           <button
             type="button"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
+              setError("");
               try {
                 await call({ action: "retry", batchId });
                 setError("");
                 setMessage(
-                  "Retry submitted; completed analysis will be reused.",
+                  "Retry submitted; saved photos and completed analysis will be reused.",
                 );
               } catch (e) {
                 setError((e as Error).message);
@@ -237,7 +237,8 @@ export function CloudBatch({
               }
             }}
           >
-            Retry {failed} failed items
+            Retry {failed + queued} unfinished{" "}
+            {failed + queued === 1 ? "item" : "items"}
           </button>
         )}
       </div>
@@ -245,6 +246,7 @@ export function CloudBatch({
         <p aria-live="polite">
           {finished}/{cloudItems.length} cloud drafts finished
           {failed ? ` · ${failed} failed` : ""}
+          {queued ? ` · ${queued} queued` : ""}
           {running ? " · Processing" : ""}
         </p>
       )}

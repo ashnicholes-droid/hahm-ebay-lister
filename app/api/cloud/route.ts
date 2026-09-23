@@ -235,14 +235,35 @@ export async function POST(req: NextRequest) {
           )
           .eq("status", "queued"),
       );
-      if (queued.length)
-        await inngest.send(
-          queued.map((job) => ({
-            id: `${job.id}-${job.attempts}`,
-            name: "lister/draft.requested",
-            data: { jobId: job.id },
-          })),
-        );
+      if (queued.length) {
+        try {
+          await inngest.send(
+            queued.map((job) => ({
+              id: `${job.id}-${job.attempts}`,
+              name: "lister/draft.requested",
+              data: { jobId: job.id },
+            })),
+          );
+        } catch (e) {
+          // Keep the saved jobs queued: delivery can be retried with the same
+          // event IDs, including when the response was lost after acceptance.
+          console.error("Background event delivery failed", {
+            reason:
+              e instanceof Error && /archived environment/i.test(e.message)
+                ? "archived-environment"
+                : "send-failed",
+          });
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "BACKGROUND_DISPATCH_FAILED",
+              error:
+                "Your photos are saved, but background processing is unavailable. Retry unfinished items once the background service is restored.",
+            },
+            { status: 503 },
+          );
+        }
+      }
       return NextResponse.json({ ok: true });
     }
     if (body.action === "status") {
