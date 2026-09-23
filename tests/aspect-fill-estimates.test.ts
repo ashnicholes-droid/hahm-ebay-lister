@@ -35,3 +35,9 @@ it("fills confident estimates, marks them, and leaves low-confidence aspects bla
   expect(aspects["Shoe Width"]).toBeUndefined();
   expect(listing.estimates).toEqual({ "Upper Material": 75 });
 });
+
+it("asks for a best guess on always-estimate aspects in the fill prompt", async () => {
+  const { alwaysEstimatePromptLine } = await import("@/lib/ebay/aspectFill");
+  expect(alwaysEstimatePromptLine(["Upper Material", "Color"])).toContain('"Upper Material"');
+  expect(alwaysEstimatePromptLine(["Color"])).toBe("");
+});

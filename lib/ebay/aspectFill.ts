@@ -1,4 +1,5 @@
 import {
+  ALWAYS_ESTIMATE,
   acceptedPhotoFact,
   isEstimate,
   MIN_ESTIMATE_CONFIDENCE,
@@ -73,6 +74,14 @@ function aspectPromptLine(a: AspectMeta): string {
   return `- "${a.name}"${tag} (free text)${multi}${hint}`;
 }
 
+export function alwaysEstimatePromptLine(names: string[]): string {
+  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  const always = ALWAYS_ESTIMATE.filter((n) => wanted.has(n.toLowerCase()));
+  return always.length
+    ? `- Always return your single best guess for ${always.map((n) => `"${n}"`).join(", ")}, even below ${MIN_ESTIMATE_CONFIDENCE}; report your true confidence.`
+    : "";
+}
+
 export async function fillRecommendedAspects(
   listing: ListingResult,
   aspects: Record<string, string[]>,
@@ -140,6 +149,7 @@ ${unfilled.map(aspectPromptLine).join("\n")}
 Rules:
 - Fill every aspect you can determine or reasonably estimate from the photos and item data. Educated guesses are welcome: judge materials, construction, style, width, closure, theme, etc. from what the item looks like, the brand, and the model.
 - Give each fact a confidence from 0 to 100 that the value is correct. Omit any aspect below ${MIN_ESTIMATE_CONFIDENCE}; it is better blank than wrong.
+${alwaysEstimatePromptLine(unfilled.map((a) => a.name))}
 - Use ONLY the supplied eBay aspect names as keys, spelled exactly as given.
 - For "must be EXACTLY one of" aspects, copy the value verbatim from the list.
 - For "multiple values allowed" aspects you may return a JSON array of values.

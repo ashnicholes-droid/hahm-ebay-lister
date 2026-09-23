@@ -29,9 +29,10 @@ it("accepts confident educated guesses for any category aspect", () => {
 });
 
 it("leaves an aspect blank when confidence is under 60% or missing", () => {
-  expect(acceptedPhotoFact(fact({ confidence: 59 }), 2)).toBe(false);
-  expect(acceptedPhotoFact(fact({ confidence: undefined }), 2)).toBe(false);
-  expect(acceptedPhotoFact(fact({ confidence: "high" }), 2)).toBe(false);
+  const width = { name: "Shoe Width", value: "Medium" };
+  expect(acceptedPhotoFact(fact({ ...width, confidence: 59 }), 2)).toBe(false);
+  expect(acceptedPhotoFact(fact({ ...width, confidence: undefined }), 2)).toBe(false);
+  expect(acceptedPhotoFact(fact({ ...width, confidence: "high" }), 2)).toBe(false);
 });
 
 it("never guesses identifiers, provenance or measurements", () => {
@@ -63,4 +64,11 @@ it("still accepts label-read identifiers that match their quote", () => {
       2,
     ),
   ).toBe(true);
+});
+
+it("always accepts a best guess for Upper Material, whatever the confidence", () => {
+  expect(acceptedPhotoFact(fact({ confidence: 20 }), 2)).toBe(true);
+  expect(acceptedPhotoFact(fact({ name: "upper material", confidence: 0 }), 2)).toBe(true);
+  expect(acceptedPhotoFact(fact({ confidence: undefined }), 2)).toBe(false);
+  expect(acceptedPhotoFact(fact({ name: "Lining Material", confidence: 20 }), 2)).toBe(false);
 });

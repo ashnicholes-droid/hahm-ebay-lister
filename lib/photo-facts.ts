@@ -2,6 +2,9 @@
 // guesses are accepted at >= MIN_ESTIMATE_CONFIDENCE so the seller only fills
 // genuinely unknown aspects. An eBay allowed-value list is never evidence.
 export const MIN_ESTIMATE_CONFIDENCE = 60;
+// Seller preference: always take the best guess for these, at any confidence.
+export const ALWAYS_ESTIMATE = ["Upper Material"];
+const alwaysEstimate = new Set(ALWAYS_ESTIMATE.map((n) => n.toLowerCase()));
 // A wrong guess here misrepresents the item or breaks catalog matching:
 // these must come from a readable label or stay empty.
 const labelOnly =
@@ -68,7 +71,9 @@ export function acceptedPhotoFact(
   if (labelOnly.test(s.name)) return false;
   if (typeof s.confidence === "number")
     return (
-      Number.isFinite(s.confidence) && s.confidence >= MIN_ESTIMATE_CONFIDENCE
+      Number.isFinite(s.confidence) &&
+      (s.confidence >= MIN_ESTIMATE_CONFIDENCE ||
+        alwaysEstimate.has(s.name.toLowerCase()))
     );
   return s.basis === "visible_feature" && visible.has(s.name.toLowerCase());
 }
