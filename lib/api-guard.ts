@@ -39,14 +39,14 @@ function clientIp(req: NextRequest): string {
   );
 }
 
-function rateLimited(ip: string): boolean {
+function rateLimited(ip: string, limit = RATE_LIMIT_MAX_REQUESTS): boolean {
   const now = Date.now();
   const windowStart = now - RATE_LIMIT_WINDOW_MS;
   const recent = (hits.get(ip) ?? []).filter((t) => t > windowStart);
   recent.push(now);
   hits.set(ip, recent);
   if (hits.size > 5000) hits.clear(); // bound memory under address-spray
-  return recent.length > RATE_LIMIT_MAX_REQUESTS;
+  return recent.length > limit;
 }
 
 /**
@@ -57,7 +57,7 @@ export function rateLimitRequest(req: NextRequest): NextResponse | null {
   if (rateLimited(clientIp(req))) {
     return NextResponse.json(
       { ok: false, error: "Too many requests — wait a minute and try again." },
-      { status: 429 }
+      { status: 429 },
     );
   }
   return null;
@@ -67,20 +67,35 @@ export function rateLimitRequest(req: NextRequest): NextResponse | null {
  * Returns an error response when the request isn't allowed, or null to proceed.
  */
 export function guardApiRequest(req: NextRequest): NextResponse | null {
-  const limited = rateLimitRequest(req);
-  if (limited) return limited;
+  const authenticated = Boolean(
+    process.env.APP_SECRET &&
+    timingSafeEqual(
+      req.headers.get("x-app-secret") ?? "",
+      process.env.APP_SECRET,
+    ),
+  );
+  if (
+    authenticated ? rateLimited(clientIp(req), 600) : rateLimited(clientIp(req))
+  )
+    return NextResponse.json(
+      { ok: false, error: "Too many requests — wait a minute and try again." },
+      { status: 429 },
+    );
 
   const secret = process.env.APP_SECRET;
   if (!secret) {
     // Fail closed in production — never run a deployed app without an access code.
-    if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    if (
+      process.env.NODE_ENV === "production" ||
+      process.env.VERCEL_ENV === "production"
+    ) {
       return NextResponse.json(
         {
           ok: false,
           error:
             "This deployment has no APP_SECRET configured. Set it in Vercel → Settings → Environment Variables, then redeploy.",
         },
-        { status: 503 }
+        { status: 503 },
       );
     }
     return null; // local development only
@@ -89,8 +104,12 @@ export function guardApiRequest(req: NextRequest): NextResponse | null {
   const provided = req.headers.get("x-app-secret") ?? "";
   if (!provided || !timingSafeEqual(provided, secret)) {
     return NextResponse.json(
-      { ok: false, code: "ACCESS_CODE_REQUIRED", error: "Access code required." },
-      { status: 401 }
+      {
+        ok: false,
+        code: "ACCESS_CODE_REQUIRED",
+        error: "Access code required.",
+      },
+      { status: 401 },
     );
   }
 
@@ -101,7 +120,7 @@ export function guardApiRequest(req: NextRequest): NextResponse | null {
 export function safeErrorResponse(
   context: string,
   e: unknown,
-  fallback: string
+  fallback: string,
 ): NextResponse {
   console.error(`[${context}]`, e);
   return NextResponse.json({ ok: false, error: fallback }, { status: 500 });

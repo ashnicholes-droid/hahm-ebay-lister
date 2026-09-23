@@ -11,6 +11,8 @@ export interface ListingResult {
   category_id?: string;
   ebay_condition?: string;
   evidence?: Record<string, number[]>;
+  // Confidence (60–100) for specifics the AI estimated rather than read off a label.
+  estimates?: Record<string, number>;
   brand?: string;
   item_type?: string;
   color?: string[] | string;
@@ -95,6 +97,7 @@ export interface CompsSummary {
 }
 
 export interface ItemGroup {
+  cloudBatchId?: string;
   id: string;
   sku: string; // bin reference, e.g. "K75-A"
   name: string;

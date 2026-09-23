@@ -158,8 +158,24 @@ and redeploy with `vercel --prod`.
 | `PRICE_MARKUP_PERCENT` | optional | Storewide markup applied to every **auto-suggested** price (the AI estimate and the comps "use median" button) before you review it — for sellers who run a permanent store-level sale that discounts everything. `40` lists at 1.4×. The marked-up price is what you see on the card, and you can still edit it; manually typed prices are never touched. Note the math: +40% then a 40%-off sale nets 84% of the original — to land back on the suggested price after an X%-off sale, set `100·X/(100−X)` (≈`66.7` for 40% off). Unset = no markup. |
 | `EBAY_MARKETPLACE_ID` / `EBAY_CATEGORY_TREE_ID` / `EBAY_CURRENCY` | optional, experimental | Marketplace override, e.g. `EBAY_GB` / `3` / `GBP` for eBay UK — set all three together. Defaults: `EBAY_US` / `0` / `USD`. ⚠️ **The US site is the only tested marketplace.** Known gaps on other sites: photo uploads still use the US site ID, condition-tier and size-standardization handling were validated against eBay US, and the UI shows prices with a `$` symbol. After changing marketplace, regenerate the offline category map: `npx tsx scripts/refresh-category-map.ts`. |
 
+| `CLOUD_BATCH_ENABLED`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | optional, advanced | Only for [background drafts](#optional-background-drafts). Leave unset to keep the feature off. |
+
 **Never commit real keys.** `.env.local` is gitignored; production keys live in
 Vercel only.
+
+---
+
+## Optional: background drafts
+
+By default, listings are written in your browser tab, and **that's all most
+sellers need** — no extra accounts or setup.
+
+If you draft big batches and want them to keep writing after you close the
+tab, you can turn on **background drafts**. It adds two services (Supabase for
+private photo storage, Inngest to run the jobs), both with free tiers. It stays
+completely off unless you set it up.
+
+👉 **[Background drafts setup guide](docs/BACKGROUND-DRAFTS.md)**
 
 ---
 
@@ -194,6 +210,8 @@ flowchart TD
   inventory→offer→publish flow, with recovery for eBay's category/aspect quirks.
 - **Stack**: Next.js (App Router) + TypeScript, deployed on Vercel. Nothing is
   stored server-side; photos are used to build listings and discarded.
+  (Exception: if you turn on the optional background drafts, resized photo
+  copies are kept in your own private Supabase bucket until the batch expires.)
 
 ---
 
@@ -202,6 +220,8 @@ flowchart TD
 - **Anthropic**: a few cents per item (sorting + writing). You set your own key.
 - **eBay**: normal eBay selling fees apply to listings you post.
 - **Vercel**: free Hobby tier is plenty for personal use.
+- **Background drafts** (optional): Supabase and Inngest free tiers to start.
+  See the [setup guide](docs/BACKGROUND-DRAFTS.md#what-it-costs).
 
 ---
 

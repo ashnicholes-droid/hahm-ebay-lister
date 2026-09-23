@@ -30,6 +30,7 @@ import {
   sanitizeNumericAspects,
 } from "./aspects";
 import { fillRecommendedAspects } from "./aspectFill";
+import { applyShoeSize } from "./shoe-size";
 import {
   extractProductIdentifiers,
   hasCatalogIdentifier,
@@ -556,6 +557,7 @@ export function reconcileAspects(
   catKey: string,
 ): void {
   canonicalizeAspectKeys(aspects, meta);
+  applyShoeSize(aspects, meta, cleanSize(listing.size), catKey);
   // Missing facts stay missing. Legal values are not evidence.
   for (const a of meta) {
     const values = aspects[a.name];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { clearAccountOptions } from "@/lib/account-options-client";
 import { apiPost } from "@/lib/api-client";
 
 interface Status {
@@ -47,6 +48,8 @@ export function EbayConnect() {
     setBusy(true);
     try {
       await apiPost("/api/ebay/disconnect", {});
+      clearAccountOptions();
+      window.dispatchEvent(new Event("ebay-connection-changed"));
       await refresh();
       setNotice({ ok: true, msg: "Disconnected from eBay." });
     } finally {
@@ -83,6 +86,8 @@ export function EbayConnect() {
       const data = (await r.json()) as { ok: boolean; error?: string };
       if (!data.ok) throw new Error(data.error || "Couldn't connect.");
       setPasteValue("");
+      clearAccountOptions();
+      window.dispatchEvent(new Event("ebay-connection-changed"));
       await refresh();
       setNotice({ ok: true, msg: "eBay account connected!" });
     } catch (e) {

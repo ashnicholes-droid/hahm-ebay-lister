@@ -1,3 +1,4 @@
+import { isApparel, apparelQuery, apparelMatchScore } from "./apparel-comps";
 import { boundedFetch } from "@/lib/network";
 // Comparable-listing price research via eBay's Browse API.
 //
@@ -115,6 +116,7 @@ export function matchesApparelSize(
 }
 
 export function buildCompQuery(listing: ListingResult): string {
+  if (isApparel(listing)) return apparelQuery(listing);
   const brand = String(listing.brand || "").trim();
   const usableBrand =
     brand && !/^(no\s?brand|unbranded|unknown)$/i.test(brand) ? brand : "";
@@ -251,11 +253,13 @@ export async function searchComps(
   };
   if (!query) return empty;
 
-  const wantNew = isNewGrade(listing.condition);
+  const selectedCondition = listing.ebay_condition || listing.condition;
+  const wantNew = isNewGrade(selectedCondition);
   const cacheKey = JSON.stringify([
     query,
-    listing.condition,
+    selectedCondition,
     listing.category_id,
+    listing,
     listing.item_specifics?.UPC,
     listing.item_specifics?.EAN,
     EBAY_CURRENCY,
@@ -297,11 +301,12 @@ export async function searchComps(
   if (!items.length) items = await requestSearch(params);
   const identifiers = compIdentifiers(listing);
   const seen = new Set<string>();
-  const candidates = items.filter((it) => {
-    if (!it.itemId || seen.has(it.itemId) || !it.itemWebUrl) return false;
-    seen.add(it.itemId);
+  const match = (it: BrowseItem) => {
+    if (!it.itemId || !it.itemWebUrl) return false;
     const title = String(it.title || "").toLowerCase();
     if (!matchesApparelSize(title, listing)) return false;
+    if (isApparel(listing) && !gtinMatched)
+      return apparelMatchScore(title, listing) > 0;
     // Require identifiers as complete tokens; R5 must not match R50.
     const norm = (v: string) =>
       " " +
@@ -336,9 +341,37 @@ export async function searchComps(
       (!listing.material ||
         norm(title).includes(norm(String(listing.material))))
     );
-  });
+  };
+  let candidates = items.filter(match);
+  const fallback = isApparel(listing) ? apparelQuery(listing, true) : query;
+  const queries = [query];
+  // At most one broader retrieval; keep the same identity and size checks.
+  if (!gtinMatched && candidates.length < 3 && fallback !== query) {
+    const relaxed = new URLSearchParams(params);
+    relaxed.set("q", fallback);
+    try {
+      const extra = await requestSearch(relaxed);
+      candidates.push(...extra.filter(match));
+      queries.push(fallback);
+    } catch (error) {
+      if (!candidates.length) throw error;
+      // Keep already verified candidates when optional retrieval is unavailable.
+    }
+  }
+  candidates = candidates
+    .filter((it) => {
+      if (seen.has(it.itemId!)) return false;
+      seen.add(it.itemId!);
+      return true;
+    })
+    .sort((a, b) =>
+      isApparel(listing)
+        ? apparelMatchScore(b.title || "", listing) -
+          apparelMatchScore(a.title || "", listing)
+        : 0,
+    );
   const sources = candidates
-    .filter((it) => filterComps([it], listing.condition).length)
+    .filter((it) => filterComps([it], selectedCondition).length)
     .map((it) => {
       const shipping = it.shippingOptions?.[0]?.shippingCost;
       const shippingPrice =
@@ -381,14 +414,16 @@ export async function searchComps(
     checkedAt: new Date().toISOString(),
     matchBasis: gtinMatched
       ? "GTIN-matched asking prices"
-      : listing.search_terms?.length
-        ? "distinctive-title asking-price research"
-        : identifiers.length
-          ? "identifier-filtered asking prices"
-          : "broad asking-price research",
+      : isApparel(listing)
+        ? "brand, garment, size and distinguishing-feature matched asking prices"
+        : listing.search_terms?.length
+          ? "distinctive-title asking-price research"
+          : identifiers.length
+            ? "identifier-filtered asking prices"
+            : "broad asking-price research",
     basis:
       stats.count > 0
-        ? `${stats.count} active ${wantNew ? "new" : "pre-owned"} listings matching “${query}” (item + known shipping; active asking prices, not sold; verify each match)`
+        ? `${stats.count} active ${wantNew ? "new" : "pre-owned"} listings matching “${queries.join(" / ")}” (item + known shipping; active asking prices, not sold; verify each match)`
         : "",
   };
   if (compsCache.size > COMPS_CACHE_MAX) compsCache.clear();

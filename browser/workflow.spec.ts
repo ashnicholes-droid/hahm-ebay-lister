@@ -367,3 +367,29 @@ test("defaults the seller policies and allows review without package measurement
     "heavy",
   );
 });
+test("start new batch warns about unposted drafts, then clears saved work across reload", async ({
+  page,
+}) => {
+  await setup(page);
+  await draft(page);
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+  const messages: string[] = [];
+  page.once("dialog", (d) => {
+    messages.push(d.message());
+    void d.dismiss();
+  });
+  await page.getByRole("button", { name: "Start new batch" }).click();
+  expect(messages[0]).toContain("1 written listing has not been posted");
+  await expect(page.locator(".title-input")).toBeVisible();
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: "Start new batch" }).click();
+  await expect(page.locator(".title-input")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Start new batch" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+  await page.reload();
+  await expect(page.getByText("Restoring saved work…")).toBeHidden();
+  await expect(page.locator(".thumb")).toHaveCount(0);
+  await expect(page.locator(".title-input")).toHaveCount(0);
+});

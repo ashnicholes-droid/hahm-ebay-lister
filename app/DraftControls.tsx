@@ -4,6 +4,7 @@ import type { ItemGroup, Photo } from "@/lib/types";
 import type { AccountOptions } from "@/lib/ebay/publish";
 import { applyShippingDefaults } from "@/lib/shipping-defaults";
 import { requestText } from "@/lib/text-dialog";
+import { loadAccountOptions } from "@/lib/account-options-client";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
 interface Props {
@@ -38,6 +39,13 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
         if (key in patch.item_specifics)
           next[field] = patch.item_specifics[key];
       next.evidence = {};
+      next.estimates = Object.fromEntries(
+        Object.entries(l.estimates ?? {}).filter(
+          ([k]) =>
+            !(k in patch.item_specifics!) ||
+            patch.item_specifics![k] === l.item_specifics?.[k],
+        ),
+      );
     }
     onGroupEdit(g.id, {
       listing: next,
@@ -87,16 +95,14 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       setBusy(false);
     }
   }
-  async function loadOptions() {
+  async function loadOptions(refresh = false) {
     setBusy(true);
     setError("");
     try {
-      const r = await apiPost("/api/ebay/options", {});
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error);
-      setOptions(d.options);
+      const options = await loadAccountOptions(refresh);
+      setOptions(options);
       const current = latest.current;
-      const shipping = applyShippingDefaults(current.shipping ?? {}, d.options);
+      const shipping = applyShippingDefaults(current.shipping ?? {}, options);
       if (JSON.stringify(shipping) !== JSON.stringify(current.shipping ?? {}))
         onGroupEdit(g.id, { shipping });
     } catch (e) {
@@ -231,7 +237,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       </label>
       <details open>
         <summary>
-          Editable item specifics — fill only what you can verify
+          Editable item specifics — AI estimates are marked; check them before posting
         </summary>
         {names.map((name) => {
           const meta = g.preparation?.aspects.find((a) => a.name === name);
@@ -246,6 +252,12 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
                     })
                     .join(", ")}; verify)`
                 : ""}
+              {l.estimates?.[name] ? (
+                <span className="estimate-tag">
+                  {" "}
+                  AI estimate · {l.estimates[name]}% sure
+                </span>
+              ) : null}
               {meta?.required ? " *" : ""}
               {meta?.mode === "SELECTION_ONLY" &&
               meta.cardinality !== "MULTI" ? (
@@ -359,7 +371,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
             then reload policies here.
           </p>
         )}
-        <button type="button" onClick={loadOptions}>
+        <button type="button" onClick={() => void loadOptions(true)}>
           Load my eBay policies and locations
         </button>
         {(

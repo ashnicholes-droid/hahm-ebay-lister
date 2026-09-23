@@ -1,4 +1,10 @@
-import { acceptedPhotoFact, PHOTO_FACT_SCHEMA } from "@/lib/photo-facts";
+import {
+  ALWAYS_ESTIMATE,
+  acceptedPhotoFact,
+  isEstimate,
+  MIN_ESTIMATE_CONFIDENCE,
+  PHOTO_FACT_SCHEMA,
+} from "@/lib/photo-facts";
 import { remainingTime } from "@/lib/network";
 import { measuredMessage } from "@/lib/ai-usage";
 // Category-aware, photo-grounded item-specifics fill.
@@ -68,6 +74,14 @@ function aspectPromptLine(a: AspectMeta): string {
   return `- "${a.name}"${tag} (free text)${multi}${hint}`;
 }
 
+export function alwaysEstimatePromptLine(names: string[]): string {
+  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  const always = ALWAYS_ESTIMATE.filter((n) => wanted.has(n.toLowerCase()));
+  return always.length
+    ? `- Always return your single best guess for ${always.map((n) => `"${n}"`).join(", ")}, even below ${MIN_ESTIMATE_CONFIDENCE}; report your true confidence.`
+    : "";
+}
+
 export async function fillRecommendedAspects(
   listing: ListingResult,
   aspects: Record<string, string[]>,
@@ -133,15 +147,17 @@ EBAY WANTS VALUES FOR THESE ASPECTS (exact aspect names for this category):
 ${unfilled.map(aspectPromptLine).join("\n")}
 
 Rules:
-- Fill ONLY aspects supported directly by these photos. Item data is an unverified earlier draft, not independent evidence. Omit everything else — never guess.
+- Fill every aspect you can determine or reasonably estimate from the photos and item data. Educated guesses are welcome: judge materials, construction, style, width, closure, theme, etc. from what the item looks like, the brand, and the model.
+- Give each fact a confidence from 0 to 100 that the value is correct. Omit any aspect below ${MIN_ESTIMATE_CONFIDENCE}; it is better blank than wrong.
+${alwaysEstimatePromptLine(unfilled.map((a) => a.name))}
 - Use ONLY the supplied eBay aspect names as keys, spelled exactly as given.
 - For "must be EXACTLY one of" aspects, copy the value verbatim from the list.
 - For "multiple values allowed" aspects you may return a JSON array of values.
 - Never answer with placeholder text like "See photos", "Unknown", or "N/A" — omit the aspect instead.
 - Values must be short (under 65 characters each).
 
-Never infer fit, size type, vintage, handmade, personalization, season, occasion or manufacture year. Do not fill these without a directly readable label explicitly establishing the value. A legal eBay value is not evidence. Copyright dates are not manufacture dates. Never infer length or chest measurements from cropped tape views.
-Return {"facts":[{"name":"Material","value":"Cashmere","basis":"label","quote":"100% CASHMERE","photoIndices":[2]}]}. For a directly visible construction feature use basis visible_feature and an empty quote. Photo indices are 1-based. Label-derived facts require exact quoted text. Omit everything unknown; return {"facts":[]} if necessary`;
+Label-only (never estimate): UPC/EAN/ISBN/MPN, year of manufacture, country/region of manufacture, vintage, handmade, personalization and any tape measurement. Sizes come from a readable size label; a size estimated from appearance is below ${MIN_ESTIMATE_CONFIDENCE}. A legal eBay value is not evidence by itself. Copyright dates are not manufacture dates.
+Return {"facts":[{"name":"Material","value":"Cashmere","basis":"label","quote":"100% CASHMERE","photoIndices":[2],"confidence":98},{"name":"Upper Material","value":"Leather","basis":"estimate","quote":"","photoIndices":[1],"confidence":80}]}. basis: label for text read off a tag or label (quote it exactly); visible_feature for something plainly visible; estimate for an educated guess. Use an empty quote for visible_feature and estimate. Photo indices are 1-based. Return {"facts":[]} if nothing reaches ${MIN_ESTIMATE_CONFIDENCE}`;
 
   try {
     const client = getClient();
@@ -217,6 +233,11 @@ Return {"facts":[{"name":"Material","value":"Cashmere","basis":"label","quote":"
           ? vals.slice(0, MAX_MULTI_VALUES)
           : vals.slice(0, 1);
       listing.evidence = { ...listing.evidence, [a.name]: fact.photoIndices };
+      if (isEstimate(fact))
+        listing.estimates = {
+          ...listing.estimates,
+          [a.name]: fact.confidence ?? 0,
+        };
       added++;
     }
     if (added) {
