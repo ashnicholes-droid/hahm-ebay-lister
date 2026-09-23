@@ -22,6 +22,10 @@ export function applyListingDefaults(
       listing.evidence = { ...listing.evidence };
       delete listing.evidence["Size Type"];
     }
+    if (listing.estimates) {
+      listing.estimates = { ...listing.estimates };
+      delete listing.estimates["Size Type"];
+    }
   }
   // 2990 is Pre-owned Excellent. 3000 must not be used as a substitute:
   // in these clothing categories it means Pre-owned Good.

@@ -869,6 +869,12 @@ textarea {
   color: var(--color-danger);
 }
 
+.estimate-tag {
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 .save-bar {
   display: flex;
   flex-wrap: wrap;

@@ -39,6 +39,13 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
         if (key in patch.item_specifics)
           next[field] = patch.item_specifics[key];
       next.evidence = {};
+      next.estimates = Object.fromEntries(
+        Object.entries(l.estimates ?? {}).filter(
+          ([k]) =>
+            !(k in patch.item_specifics!) ||
+            patch.item_specifics![k] === l.item_specifics?.[k],
+        ),
+      );
     }
     onGroupEdit(g.id, {
       listing: next,
@@ -230,7 +237,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       </label>
       <details open>
         <summary>
-          Editable item specifics — fill only what you can verify
+          Editable item specifics — AI estimates are marked; check them before posting
         </summary>
         {names.map((name) => {
           const meta = g.preparation?.aspects.find((a) => a.name === name);
@@ -245,6 +252,12 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
                     })
                     .join(", ")}; verify)`
                 : ""}
+              {l.estimates?.[name] ? (
+                <span className="estimate-tag">
+                  {" "}
+                  AI estimate · {l.estimates[name]}% sure
+                </span>
+              ) : null}
               {meta?.required ? " *" : ""}
               {meta?.mode === "SELECTION_ONLY" &&
               meta.cardinality !== "MULTI" ? (

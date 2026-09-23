@@ -1,5 +1,5 @@
 import { cleanGeneratedDescription } from "@/lib/description";
-import { acceptedPhotoFact } from "@/lib/photo-facts";
+import { acceptedPhotoFact, isEstimate } from "@/lib/photo-facts";
 import { AI_LISTING_SCHEMA } from "@/lib/ai-schema";
 import {
   parseListing,
@@ -226,6 +226,9 @@ async function handle(input: unknown) {
         listing.item_profile = profile;
         listing.evidence = Object.fromEntries(
           supported.map((s: any) => [s.name, s.photoIndices]),
+        );
+        listing.estimates = Object.fromEntries(
+          supported.filter(isEstimate).map((s) => [s.name, s.confidence ?? 0]),
         );
         // Deterministic title cleanup happens HERE, before the seller reviews —
         // the title on the card is exactly the title that publishes.

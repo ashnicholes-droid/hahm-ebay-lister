@@ -1,5 +1,12 @@
-// Allow direct label facts and a small set of visible construction attributes.
-// An eBay allowed-value list is never evidence that a value is true.
+// Label facts must match their quoted text. Visual judgments and educated
+// guesses are accepted at >= MIN_ESTIMATE_CONFIDENCE so the seller only fills
+// genuinely unknown aspects. An eBay allowed-value list is never evidence.
+export const MIN_ESTIMATE_CONFIDENCE = 60;
+// A wrong guess here misrepresents the item or breaks catalog matching:
+// these must come from a readable label or stay empty.
+const labelOnly =
+  /\b(upc|ean|isbn|gtin|mpn)\b|manufactur|vintage|handmade|personaliz|inseam|\brise\b|chest|waist size|measurement|length \(in|pit to pit/i;
+// Legacy visible_feature facts without a confidence score.
 const visible = new Set([
   "color",
   "pattern",
@@ -18,8 +25,9 @@ export interface PhotoFact {
   name: string;
   value: string;
   photoIndices: number[];
-  basis: "label" | "visible_feature";
+  basis: "label" | "visible_feature" | "estimate";
   quote: string;
+  confidence?: number;
 }
 export function acceptedPhotoFact(
   raw: unknown,
@@ -56,8 +64,15 @@ export function acceptedPhotoFact(
       .split(" | ")
       .every((v) => normalize(s.quote).includes(normalize(v)));
   }
+  if (s.basis !== "visible_feature" && s.basis !== "estimate") return false;
+  if (labelOnly.test(s.name)) return false;
+  if (typeof s.confidence === "number")
+    return (
+      Number.isFinite(s.confidence) && s.confidence >= MIN_ESTIMATE_CONFIDENCE
+    );
   return s.basis === "visible_feature" && visible.has(s.name.toLowerCase());
 }
+export const isEstimate = (f: PhotoFact) => f.basis !== "label";
 export const PHOTO_FACT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -65,8 +80,9 @@ export const PHOTO_FACT_SCHEMA = {
     name: { type: "string" },
     value: { type: "string" },
     photoIndices: { type: "array", items: { type: "integer" } },
-    basis: { type: "string", enum: ["label", "visible_feature"] },
+    basis: { type: "string", enum: ["label", "visible_feature", "estimate"] },
     quote: { type: "string" },
+    confidence: { type: "integer" },
   },
-  required: ["name", "value", "photoIndices", "basis", "quote"],
+  required: ["name", "value", "photoIndices", "basis", "quote", "confidence"],
 };
