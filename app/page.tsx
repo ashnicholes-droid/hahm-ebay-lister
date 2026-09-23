@@ -15,6 +15,7 @@ import {
   savePhoto,
   loadPhoto,
   lightPhoto,
+  clearDraft,
 } from "@/lib/draft-store";
 import { processFiles } from "@/lib/intake";
 import { draftIssues } from "@/lib/client-review";
@@ -889,6 +890,42 @@ export default function Home() {
     await startQueue(ready, "post", postGroup);
   };
 
+  const hasWork = photos.length > 0 || groups.length > 0;
+  const busy =
+    sorting ||
+    Boolean(queue?.running) ||
+    groups.some((g) => g.status === "writing" || g.postStatus === "posting");
+  async function startNewBatch() {
+    const unposted = groups.filter(
+      (g) => g.listing && g.postStatus !== "posted",
+    ).length;
+    const warning = unposted
+      ? `${unposted} written listing${unposted === 1 ? " has" : "s have"} not been posted to eBay and will be deleted.\n\n`
+      : "";
+    if (
+      !window.confirm(
+        `${warning}Start a new batch? This clears every photo and draft saved on this device.`,
+      )
+    )
+      return;
+    try {
+      await clearDraft();
+      setPhotos([]);
+      setGroups([]);
+      setOrphanIds([]);
+      setBinPrefix("");
+      setSkuStart(0);
+      setStep("upload");
+      setQueue(null);
+      setSortProgress(null);
+      setError(null);
+    } catch {
+      setError(
+        "Could not clear saved work. Close other lister tabs and try again.",
+      );
+    }
+  }
+
   const usableGroups = useMemo(
     () => groups.filter((g) => g.photoIds.length > 0),
     [groups],
@@ -904,7 +941,20 @@ export default function Home() {
     );
   return (
     <main className="wrap">
-      <p role="status">{saveStatus}</p>
+      <div className="save-bar">
+        <p role="status">{saveStatus}</p>
+        {hasWork && (
+          <button
+            type="button"
+            className="btn btn-ghost danger"
+            onClick={startNewBatch}
+            disabled={busy}
+            title={busy ? "Wait for writing or posting to finish" : undefined}
+          >
+            Start new batch
+          </button>
+        )}
+      </div>
       <header className="masthead">
         <span className="logo-mark" aria-hidden="true">
           🪄

@@ -158,3 +158,26 @@ export function saveDraft(draft: WorkspaceDraft): Promise<void> {
     });
   return queue;
 }
+// Queued behind pending autosaves so an in-flight save cannot resurrect the batch.
+export function clearDraft(): Promise<void> {
+  queue = queue
+    .catch(() => {})
+    .then(async () => {
+      const db = await openDb();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(
+            ["workspace", "photos", "assets"],
+            "readwrite",
+          );
+          for (const store of ["workspace", "photos", "assets"])
+            tx.objectStore(store).clear();
+          tx.oncomplete = () => resolve();
+          tx.onabort = tx.onerror = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    });
+  return queue;
+}

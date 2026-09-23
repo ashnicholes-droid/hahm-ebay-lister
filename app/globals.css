@@ -869,6 +869,14 @@ textarea {
   color: var(--color-danger);
 }
 
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
 .btn-ghost.danger:hover {
   background: var(--color-danger-soft);
   border-color: var(--color-danger);
