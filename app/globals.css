@@ -1150,8 +1150,30 @@ a.btn {
   font-size: 1.4rem;
 }
 
+.policy-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.policy-filters .btn-ghost {
+  margin-left: 0;
+}
+
+.policy-filters .btn-ghost[aria-pressed="true"] {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
 .policy-table-wrap {
   overflow-x: auto;
+}
+
+.policy-detail {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 16rem;
 }
 
 .policy-table {

@@ -105,6 +105,16 @@ export interface ShippingPolicyApplyResultRow {
   message: string;
 }
 
+export type ShippingPolicyResultFilter = "all" | "updated" | "skipped" | "error";
+
+export function filterShippingPolicyResults(
+  rows: ShippingPolicyApplyResultRow[],
+  filter: ShippingPolicyResultFilter
+): ShippingPolicyApplyResultRow[] {
+  if (filter === "all") return rows;
+  return rows.filter((row) => row.status === filter);
+}
+
 export function fulfillmentPolicyIdsByName(
   policies: FulfillmentPolicyRecord[],
   name: string

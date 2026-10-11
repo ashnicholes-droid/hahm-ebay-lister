@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiPost } from "@/lib/api-client";
 import {
+  filterShippingPolicyResults,
   SHIPPING_POLICY_APPLY_BATCH,
   type ShippingPolicyApplyResultRow,
   type ShippingPolicyPreviewResult,
+  type ShippingPolicyResultFilter,
 } from "@/lib/ebay/clothing-shipping-policy";
 
 const PAGE_ROWS = 40;
@@ -20,6 +22,7 @@ export default function ShippingPolicyPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applyRows, setApplyRows] = useState<ShippingPolicyApplyResultRow[]>([]);
+  const [resultFilter, setResultFilter] = useState<ShippingPolicyResultFilter>("all");
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -35,12 +38,20 @@ export default function ShippingPolicyPage() {
     [rows, page]
   );
   const wouldUpdate = rows.filter((row) => row.action === "would_update");
+  const updatedCount = applyRows.filter((row) => row.status === "updated").length;
+  const skippedCount = applyRows.filter((row) => row.status === "skipped").length;
+  const errorCount = applyRows.filter((row) => row.status === "error").length;
+  const visibleResults = useMemo(
+    () => filterShippingPolicyResults(applyRows, resultFilter),
+    [applyRows, resultFilter]
+  );
 
   const runPreview = async () => {
     setPreviewing(true);
     setError(null);
     setPreview(null);
     setApplyRows([]);
+    setResultFilter("all");
     setConfirmed(false);
     setPage(0);
     try {
@@ -229,11 +240,26 @@ export default function ShippingPolicyPage() {
       {applyRows.length > 0 && (
         <section className="panel">
           <h2>Resultado de la actualización</h2>
-          <p>
-            Actualizados: {applyRows.filter((row) => row.status === "updated").length}. Omitidos:{" "}
-            {applyRows.filter((row) => row.status === "skipped").length}. Errores:{" "}
-            {applyRows.filter((row) => row.status === "error").length}.
-          </p>
+          <div className="policy-filters" role="group" aria-label="Filtrar resultados">
+            {(
+              [
+                ["all", "Todos", applyRows.length],
+                ["updated", "Actualizados", updatedCount],
+                ["skipped", "Omitidos", skippedCount],
+                ["error", "Errores", errorCount],
+              ] as const
+            ).map(([filter, label, count]) => (
+              <button
+                key={filter}
+                type="button"
+                className="btn btn-ghost"
+                aria-pressed={resultFilter === filter}
+                onClick={() => setResultFilter(filter)}
+              >
+                {label} ({count})
+              </button>
+            ))}
+          </div>
           <div className="policy-table-wrap">
             <table className="policy-table">
               <thead>
@@ -247,16 +273,21 @@ export default function ShippingPolicyPage() {
                 </tr>
               </thead>
               <tbody>
-                {applyRows.map((row) => (
-                  <tr key={`${row.itemId}-${row.status}`}>
+                {visibleResults.map((row) => (
+                  <tr key={`${row.itemId}-${row.status}-${row.message}`}>
                     <td>{row.sku || "—"}</td>
                     <td>{row.title || "—"}</td>
                     <td>{row.itemId}</td>
                     <td>{row.offerId || "—"}</td>
                     <td>{row.status}</td>
-                    <td>{row.message}</td>
+                    <td className="policy-detail">{row.message}</td>
                   </tr>
                 ))}
+                {visibleResults.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No hay listings en este filtro.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

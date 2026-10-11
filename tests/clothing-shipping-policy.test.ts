@@ -1,12 +1,14 @@
 import { describe, expect, test } from "vitest";
 import {
   classifyShippingPolicy,
+  filterShippingPolicyResults,
   fulfillmentPolicyIdsByName,
   missingClothingPolicyMessage,
   offerBodyWithFulfillmentPolicy,
   parseActiveListPage,
   reviseFixedPriceShippingXml,
   selectFulfillmentPolicyByName,
+  type ShippingPolicyApplyResultRow,
 } from "@/lib/ebay/clothing-shipping-policy";
 
 describe("selectFulfillmentPolicyByName", () => {
@@ -207,5 +209,59 @@ describe("offerBodyWithFulfillmentPolicy", () => {
     expect(prepared.body.status).toBeUndefined();
     expect(prepared.body.listing).toBeUndefined();
     expect(offer.listingPolicies.fulfillmentPolicyId).toBe("111");
+  });
+});
+
+describe("filterShippingPolicyResults", () => {
+  const rows: ShippingPolicyApplyResultRow[] = [
+    {
+      itemId: "1",
+      sku: "A",
+      title: "Coat",
+      offerId: "o1",
+      shippingPolicyId: "111",
+      shippingPolicyName: "Other",
+      status: "updated",
+      message: "ok",
+    },
+    {
+      itemId: "2",
+      sku: "B",
+      title: "Book",
+      offerId: "",
+      shippingPolicyId: "555",
+      shippingPolicyName: "Media Mail Book",
+      status: "skipped",
+      message: "Usa Media Mail Book. No se modificó.",
+    },
+    {
+      itemId: "3",
+      sku: "C",
+      title: "Hat",
+      offerId: "o3",
+      shippingPolicyId: "111",
+      shippingPolicyName: "Other",
+      status: "error",
+      message: "eBay: Offer revision failed because the package weight is missing.",
+    },
+  ];
+
+  test("shows only error rows and keeps the full eBay message", () => {
+    const errors = filterShippingPolicyResults(rows, "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      sku: "C",
+      title: "Hat",
+      itemId: "3",
+      offerId: "o3",
+      status: "error",
+      message: "eBay: Offer revision failed because the package weight is missing.",
+    });
+  });
+
+  test("filters updated and skipped without dropping the other groups from all", () => {
+    expect(filterShippingPolicyResults(rows, "updated").map((row) => row.itemId)).toEqual(["1"]);
+    expect(filterShippingPolicyResults(rows, "skipped").map((row) => row.itemId)).toEqual(["2"]);
+    expect(filterShippingPolicyResults(rows, "all")).toHaveLength(3);
   });
 });
