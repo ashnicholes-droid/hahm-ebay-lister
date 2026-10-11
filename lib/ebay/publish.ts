@@ -4,6 +4,12 @@
 // categories.
 
 import {
+  fulfillmentPoliciesUnreadableMessage,
+  selectFulfillmentPolicyByName,
+  type FulfillmentPolicyRecord,
+  type SelectedFulfillmentPolicy,
+} from "./clothing-shipping-policy";
+import {
   EBAY_ACC_BASE,
   EBAY_CURRENCY,
   EBAY_INV_BASE,
@@ -1407,6 +1413,7 @@ async function addFixedPriceItemTrading(
 export interface AccountSetup {
   fulfillmentPolicyId: string;
   fulfillmentPolicyName: string;
+  fulfillmentPolicyError?: string;
   paymentPolicyId: string;
   returnPolicyId: string;
   locationKey: string;
@@ -1447,26 +1454,63 @@ export async function fetchAccountSetup(accessToken: string): Promise<AccountSet
   return setup;
 }
 
+async function listAllFulfillmentPolicies(
+  accessToken: string
+): Promise<{ ok: true; policies: FulfillmentPolicyRecord[] } | { ok: false }> {
+  const mp = `marketplace_id=${EBAY_MARKETPLACE_ID}`;
+  const first = await ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/fulfillment_policy?${mp}`);
+  if (!first.ok) return { ok: false };
+  const policies: FulfillmentPolicyRecord[] = [...(first.json?.fulfillmentPolicies || [])];
+  const seen = new Set(policies.map((policy) => String(policy.fulfillmentPolicyId || "")));
+  const total = Number(first.json?.total ?? policies.length);
+  let offset = policies.length;
+  for (let page = 0; page < 10 && Number.isFinite(total) && policies.length < total; page += 1) {
+    const next = await ebayRequest(
+      accessToken,
+      "GET",
+      `${EBAY_ACC_BASE}/fulfillment_policy?${mp}&limit=50&offset=${offset}`
+    );
+    if (!next.ok) return { ok: false };
+    const batch: FulfillmentPolicyRecord[] = next.json?.fulfillmentPolicies || [];
+    const fresh = batch.filter((policy) => {
+      const id = String(policy.fulfillmentPolicyId || "");
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    if (!fresh.length) break;
+    policies.push(...fresh);
+    offset += batch.length || fresh.length;
+  }
+  return { ok: true, policies };
+}
+
+export async function resolveClothingShippingPolicy(
+  accessToken: string
+): Promise<SelectedFulfillmentPolicy | { error: string }> {
+  const listed = await listAllFulfillmentPolicies(accessToken);
+  if (!listed.ok) return { error: fulfillmentPoliciesUnreadableMessage() };
+  return selectFulfillmentPolicyByName(listed.policies);
+}
+
 async function fetchAccountSetupUncached(accessToken: string): Promise<AccountSetup> {
   const mp = `marketplace_id=${EBAY_MARKETPLACE_ID}`;
-  const [ful, pay, ret] = await Promise.all([
-    ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/fulfillment_policy?${mp}`),
+  const [shipping, pay, ret] = await Promise.all([
+    resolveClothingShippingPolicy(accessToken),
     ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/payment_policy?${mp}`),
     ebayRequest(accessToken, "GET", `${EBAY_ACC_BASE}/return_policy?${mp}`),
   ]);
   const location = await fetchOrCreateLocation(accessToken);
+  const fulfillment = "error" in shipping ? null : shipping;
 
   return {
-    fulfillmentPolicyId: pickFirstPolicy(ful, "fulfillmentPolicies", "fulfillmentPolicyId"),
-    fulfillmentPolicyName: String(ful.json?.fulfillmentPolicies?.[0]?.name || ""),
-
+    fulfillmentPolicyId: fulfillment?.fulfillmentPolicyId || "",
+    fulfillmentPolicyName: fulfillment?.fulfillmentPolicyName || "",
+    fulfillmentPolicyError: "error" in shipping ? shipping.error : undefined,
     paymentPolicyId: pickFirstPolicy(pay, "paymentPolicies", "paymentPolicyId"),
-   returnPolicyId: pickReturnsAcceptedPolicy(ret),
+    returnPolicyId: pickReturnsAcceptedPolicy(ret),
     locationKey: location.key,
-
-
-
-locationName: location.name,
+    locationName: location.name,
   };
 }
 
@@ -1690,12 +1734,21 @@ export async function publishListing(
     );
   }
 
-  if (!setup.fulfillmentPolicyId || !setup.paymentPolicyId || !setup.returnPolicyId) {
+  if (setup.fulfillmentPolicyError || !setup.fulfillmentPolicyId) {
     return {
       success: false,
       sku,
       error:
-        "Your eBay account is missing a business policy (payment, shipping, or returns). Set these up in eBay → Account → Business policies, then try again.",
+        setup.fulfillmentPolicyError ||
+        'No se encontró la Shipping Policy "Ebay Shipping Clothing". No se publicó con otra política.',
+    };
+  }
+  if (!setup.paymentPolicyId || !setup.returnPolicyId) {
+    return {
+      success: false,
+      sku,
+      error:
+        "Your eBay account is missing a business policy (payment or returns). Set these up in eBay → Account → Business policies, then try again.",
     };
   }
 

@@ -130,6 +130,9 @@ const r = await fetch(`/api/ebay/status?${params.toString()}`, {
       {status.connected ? (
         <>
           <span className="ebay-label">eBay account connected</span>
+          <a className="btn-ghost" href="/ebay/shipping-policy">
+            Shipping policy
+          </a>
           <button
             type="button"
             className="btn-ghost"
