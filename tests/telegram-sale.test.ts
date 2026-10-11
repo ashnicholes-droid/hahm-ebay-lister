@@ -35,10 +35,28 @@ describe("telegram sale message", () => {
   });
 
   test("names Vinted, Poshmark, and Depop, and does not invent a missing SKU", () => {
-    expect(saleTelegramMessage("vinted", "2830", SAMPLE_TITLE)).toContain("🛍️ Plataforma: <b>VINTED</b>");
+    const vinted = saleTelegramMessage("vinted", "2830", SAMPLE_TITLE);
+    expect(vinted).toContain("🛍️ Plataforma: <b>VINTED</b>");
+    expect(vinted).toContain("🔍 Si sigue publicado en otra plataforma, retirarlo manualmente.");
     expect(saleTelegramMessage("poshmark", "2830", SAMPLE_TITLE)).toContain("🛍️ Plataforma: <b>POSHMARK</b>");
     expect(saleTelegramMessage("depop", "", SAMPLE_TITLE)).toContain("🔢 SKU: <b>No encontrado</b>");
     expect(saleTelegramMessage("depop", "", SAMPLE_TITLE)).not.toContain("2830");
+    expect(saleTelegramMessage("depop", "", SAMPLE_TITLE)).toContain("🔍 Si sigue publicado, retirarlo manualmente.");
+  });
+
+  test("a Vinted sale without a SKU asks for a manual check and does not invent one", () => {
+    const message = saleTelegramMessage("vinted", "", SAMPLE_TITLE);
+    expect(message).toBe(
+      [
+        "🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>",
+        "🛍️ Plataforma: <b>VINTED</b>",
+        `👕 Artículo: ${SAMPLE_TITLE}`,
+        "🔢 SKU: <b>NO ENCONTRADO</b>",
+        "⚠️ <b>REVISAR VINTED MANUALMENTE</b>",
+      ].join("\n")
+    );
+    expect(message).not.toContain("2830");
+    expect(message).not.toContain("retirarlo manualmente");
   });
 
   test("keeps the full title and escapes HTML", () => {

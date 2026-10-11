@@ -52,6 +52,19 @@ describe("marketplace sale emails", () => {
     ).toBe("ignore");
   });
 
+  test("does not treat a Vinted shipping label as a sale", () => {
+    expect(
+      classifyMailboxEmail({
+        from: "no-reply@vinted.com",
+        subject: "Your USPS shipping label and sale confirmation",
+        text: "Your shipping label is ready.",
+        html: "",
+        messageId: "v-label",
+        date: NEW_DATE,
+      }).kind
+    ).toBe("ignore");
+  });
+
   test("does not treat a Vinted shipping email as a sale", () => {
     expect(
       classifyMailboxEmail({

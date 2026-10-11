@@ -67,7 +67,30 @@ function skuBlock(sku: string): string {
   return `<b>${escapeTelegramHtml(enlargeSkuDigits(exact))}</b>`;
 }
 
+function vintedSaleMessage(sku: string, title: string): string {
+  const item = escapeTelegramHtml(displayTitle(title));
+  const exact = sku.trim();
+  if (!exact) {
+    return [
+      "🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>",
+      "🛍️ Plataforma: <b>VINTED</b>",
+      `👕 Artículo: ${item}`,
+      "🔢 SKU: <b>NO ENCONTRADO</b>",
+      "⚠️ <b>REVISAR VINTED MANUALMENTE</b>",
+    ].join("\n");
+  }
+  return [
+    "🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>",
+    "🛍️ Plataforma: <b>VINTED</b>",
+    `👕 Artículo: ${item}`,
+    `🔢 SKU: <b>${escapeTelegramHtml(enlargeSkuDigits(exact))}</b>`,
+    "⚠️ <b>REVISAR VINTED</b>",
+    "🔍 Si sigue publicado en otra plataforma, retirarlo manualmente.",
+  ].join("\n");
+}
+
 export function saleTelegramMessage(platform: SalePlatform, sku: string, title: string): string {
+  if (platform === "vinted") return vintedSaleMessage(sku, title);
   const item = escapeTelegramHtml(displayTitle(title));
   return [
     "🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>",

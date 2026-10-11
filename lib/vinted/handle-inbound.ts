@@ -1,9 +1,10 @@
-import type { InboundEmail } from "@/lib/vinted/email";
+import { textForSale, type InboundEmail } from "@/lib/vinted/email";
 import { listSaleTitleCandidates } from "@/lib/inventory/links";
 import { claimSaleEvent, finishSaleEvent } from "@/lib/inventory/sale-events";
 import { classifyMailboxEmail } from "@/lib/mailbox/sale-email";
-import { matchSoldTitle } from "@/lib/vinted/match";
+import { resolveSaleIdentity } from "@/lib/vinted/sale-identity";
 import { isNewTelegramSale } from "@/lib/telegram/ebay-sale";
+import { saleTelegramMessage } from "@/lib/telegram/message";
 import { deliverConfirmedSale, type TelegramDelivery } from "@/lib/telegram/notices";
 import { sendPlatformSaleAlert } from "@/lib/whatsapp/send";
 
@@ -12,7 +13,8 @@ export async function handleVintedSaleEmail(
   options?: { dryRun?: boolean }
 ): Promise<{ httpStatus: number; body: Record<string, unknown> }> {
   const dryRun = options?.dryRun === true;
-  const classification = classifyMailboxEmail(email);
+  const text = textForSale(email);
+  const classification = classifyMailboxEmail({ ...email, text, html: "" });
   if (classification.kind === "ignore") {
     return {
       httpStatus: 200,
@@ -35,29 +37,17 @@ export async function handleVintedSaleEmail(
   }
 
   const published = await listSaleTitleCandidates();
-  const match = classification.title
-    ? matchSoldTitle(
-        classification.title,
-        published.map((row) => ({
-          sku: row.sku,
-          vintedTitle: row.vintedTitle ?? "",
-          ebayTitle: row.ebayTitle ?? "",
-        }))
-      )
-    : ({ kind: "none" } as const);
-  const sku = match.kind === "unique" ? match.sku : "";
-  const title = match.kind === "unique" ? match.title : classification.title;
-  if (!title) {
-    return {
-      httpStatus: 200,
-      body: {
-        ok: true,
-        ignored: true,
-        reason: "sale email had no item title",
-        ...(dryRun ? { dryRun: true } : {}),
-      },
-    };
-  }
+  const identity = resolveSaleIdentity(
+    classification.title,
+    text,
+    published.map((row) => ({
+      sku: row.sku,
+      vintedTitle: row.vintedTitle ?? "",
+      ebayTitle: row.ebayTitle ?? "",
+    }))
+  );
+  const sku = identity.sku;
+  const title = identity.title;
 
   if (dryRun) {
     return {
@@ -69,6 +59,7 @@ export async function handleVintedSaleEmail(
         platform: classification.platform,
         sku: sku || null,
         title,
+        message: saleTelegramMessage(classification.platform, sku, title),
         telegram: "not_sent",
       },
     };

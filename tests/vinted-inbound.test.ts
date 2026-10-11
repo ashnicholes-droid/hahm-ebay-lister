@@ -19,6 +19,7 @@ import { listSaleTitleCandidates } from "@/lib/inventory/links";
 import { claimSaleEvent, finishSaleEvent } from "@/lib/inventory/sale-events";
 import { deliverConfirmedSale } from "@/lib/telegram/notices";
 import { handleVintedSaleEmail } from "@/lib/vinted/handle-inbound";
+import { saleTelegramMessage } from "@/lib/telegram/message";
 import { sendPlatformSaleAlert } from "@/lib/whatsapp/send";
 
 const listPublished = vi.mocked(listSaleTitleCandidates);
@@ -94,6 +95,7 @@ describe("vinted inbound", () => {
       platform: "vinted",
       sku: "2830",
       title: "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit",
+      message: saleTelegramMessage("vinted", "2830", "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit"),
       telegram: "not_sent",
     });
     expect(listPublished).toHaveBeenCalledOnce();
@@ -163,11 +165,122 @@ describe("vinted inbound", () => {
       platform: "poshmark",
       sku: null,
       title: "Navy Wool Coat",
+      message: saleTelegramMessage("poshmark", "", "Navy Wool Coat"),
       telegram: "not_sent",
     });
     expect(deliver).not.toHaveBeenCalled();
     expect(claim).not.toHaveBeenCalled();
     expect(whatsapp).not.toHaveBeenCalled();
+  });
+
+  test("a Vinted sale without a title or SKU still previews a manual notice", async () => {
+    const result = await handleVintedSaleEmail(
+      {
+        ...SALE,
+        text: "You sold an item on Vinted",
+        messageId: "gmail-no-title",
+      },
+      { dryRun: true }
+    );
+    expect(result.body).toEqual({
+      ok: true,
+      dryRun: true,
+      status: "would_send",
+      platform: "vinted",
+      sku: null,
+      title: "No identificado",
+      message: saleTelegramMessage("vinted", "", "No identificado"),
+      telegram: "not_sent",
+    });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+  });
+
+  test("reads SKU: from the email when the title is not in inventory", async () => {
+    const result = await handleVintedSaleEmail(
+      {
+        ...SALE,
+        text: "You sold an item on Vinted\n\nNavy wool coat\n\nSKU: 2443\n",
+        messageId: "gmail-sku-line",
+      },
+      { dryRun: true }
+    );
+    expect(result.body).toEqual({
+      ok: true,
+      dryRun: true,
+      status: "would_send",
+      platform: "vinted",
+      sku: "2443",
+      title: "Navy wool coat",
+      message: saleTelegramMessage("vinted", "2443", "Navy wool coat"),
+      telegram: "not_sent",
+    });
+    expect(String(result.body.message)).not.toContain("NO ENCONTRADO");
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  test("reads a SKU that exists only in the html part", async () => {
+    const result = await handleVintedSaleEmail(
+      {
+        ...SALE,
+        text: "",
+        html: "<p>You sold an item on Vinted</p><p>Navy wool coat</p><p>SKU: 2503</p>",
+        messageId: "gmail-html-sku",
+      },
+      { dryRun: true }
+    );
+    expect(result.body).toMatchObject({
+      status: "would_send",
+      sku: "2503",
+      title: "Navy wool coat",
+      telegram: "not_sent",
+    });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  test("sends the manual Vinted notice when the sale has no SKU", async () => {
+    const result = await handleVintedSaleEmail({
+      ...SALE,
+      text: "You sold an item on Vinted",
+      messageId: "gmail-no-sku-live",
+    });
+    expect(result).toEqual({
+      httpStatus: 200,
+      body: {
+        ok: true,
+        status: "sent",
+        platform: "vinted",
+        sku: null,
+        title: "No identificado",
+        telegram: "sent",
+      },
+    });
+    expect(deliver).toHaveBeenCalledWith({
+      platform: "vinted",
+      externalEventId: "gmail-no-sku-live",
+      sku: "",
+      title: "No identificado",
+    });
+    expect(claim).not.toHaveBeenCalled();
+    expect(whatsapp).not.toHaveBeenCalled();
+  });
+
+  test("does not guess when the email SKU and the title match different items", async () => {
+    const result = await handleVintedSaleEmail(
+      {
+        ...SALE,
+        text: `${SALE.text}\nSKU: 9999\n`,
+        messageId: "gmail-conflict",
+      },
+      { dryRun: true }
+    );
+    expect(result.body).toMatchObject({
+      sku: null,
+      title: "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit",
+    });
+    expect(String(result.body.message)).toContain("NO ENCONTRADO");
+    expect(String(result.body.message)).not.toContain("9999");
+    expect(String(result.body.message)).not.toContain("2830");
   });
 
   test("does not send Telegram again for a sale that was already claimed", async () => {

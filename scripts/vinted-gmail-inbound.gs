@@ -20,10 +20,11 @@
  *      INBOUND_SECRET   el mismo valor que VINTED_INBOUND_SECRET en Vercel
  *      DRY_RUN          true
  *    No escribas el secreto en este archivo.
- * 7. Ejecuta baselineExistingSales. Solo guarda la hora de activación; no lee correos antiguos.
- * 8. El activador de checkVintedSales cada 10 minutos se crea solo después de confirmar
+ * 7. Si BASELINED todavía no es true, ejecuta baselineExistingSales una sola vez.
+ *    Si ya existe, no lo vuelvas a ejecutar: no hace falta cambiar ACTIVATED_AT.
+ * 8. Ejecuta previewVintedSale. Usa dryRun, no envía Telegram y no marca correos.
+ * 9. El activador de checkVintedSales cada 10 minutos se crea solo después de confirmar
  *    la publicación. DRY_RUN debe seguir en true hasta esa confirmación.
- *    previewNewestVintedEmail siempre usa simulación y no envía Telegram.
  */
 
 var ALLOWED_URL = "https://hahm-ebay-lister-tau-one.vercel.app/api/vinted/inbound";
@@ -78,28 +79,39 @@ function baselineExistingSales() {
   Logger.log("Línea base lista. No se leyeron ni modificaron correos. ACTIVATED_AT=" + activatedAt.toISOString());
 }
 
-/** Envía la venta nueva más reciente solo en dryRun y escribe la respuesta. */
-function previewNewestVintedEmail() {
+/**
+ * Vista previa de una venta nueva de Vinted. Siempre usa dryRun.
+ * No envía Telegram, no marca el correo y no cambia ACTIVATED_AT, BASELINED ni DRY_RUN.
+ */
+function previewVintedSale() {
   var activatedAt = Date.parse(PropertiesService.getScriptProperties().getProperty("ACTIVATED_AT") || "");
   if (!activatedAt) {
-    Logger.log("Ejecuta baselineExistingSales antes de la vista previa.");
+    Logger.log("No hay ACTIVATED_AT. Ejecuta baselineExistingSales. No se modificó nada.");
     return;
   }
   var ids = listCandidateIds_(activatedAt);
-  for (var i = 0; i < ids.length; i++) {
+  var checked = 0;
+  for (var i = 0; i < ids.length && checked < 20; i++) {
     var email = readMessage_(ids[i]);
     if (!email || email.receivedMs < activatedAt) continue;
+    checked++;
     var result = postSale_(email, true);
-    Logger.log(JSON.stringify({
-      messageId: email.id,
-      subject: email.subject,
-      date: new Date(email.receivedMs).toISOString(),
-      status: result.status,
-      body: result.body,
-    }));
+    var body = result.body || {};
+    if (result.status !== 200 || body.ok !== true || body.dryRun !== true || body.status !== "would_send" || body.platform !== "vinted") {
+      Logger.log("Omitido: " + email.subject + " | " + (body.reason || body.status || result.status));
+      continue;
+    }
+    Logger.log("Asunto: " + email.subject);
+    Logger.log("Fecha: " + new Date(email.receivedMs).toISOString());
+    Logger.log("Plataforma: VINTED");
+    Logger.log("Título: " + (body.title || ""));
+    Logger.log("SKU: " + (body.sku || "NO ENCONTRADO"));
+    Logger.log("Mensaje exacto que se enviaría a Telegram:");
+    Logger.log(body.message || "(el servidor no devolvió el mensaje)");
+    Logger.log("dryRun: true. Telegram no enviado. Correo no marcado. ACTIVATED_AT, BASELINED y DRY_RUN sin cambios.");
     return;
   }
-  Logger.log("No hay ventas nuevas desde la activación. No se envió ningún correo.");
+  Logger.log("No hay una venta nueva de Vinted desde la activación. Revisados: " + checked + ". No se envió Telegram ni se marcó ningún correo.");
 }
 
 function postSale_(email, dryRun) {
@@ -163,7 +175,7 @@ function readMessage_(id) {
     from: headerValue_(message, "from"),
     subject: headerValue_(message, "subject"),
     text: String(bodies["text/plain"] || "").slice(0, 20000),
-    html: bodies["text/plain"] ? "" : String(bodies["text/html"] || "").slice(0, 20000),
+    html: String(bodies["text/html"] || "").slice(0, 20000),
     receivedMs: Number(message.internalDate || "0"),
   };
 }

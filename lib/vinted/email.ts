@@ -25,6 +25,17 @@ const SALE_PATTERNS = [
 const SKIP_LINE =
   /^(you sold|you made a sale|your item(?: just)? sold|ka-ching|you(?:'ve| have) sold|sold!|has vendido|vendiste|tu art[ií]culo se ha vendido|good news|buenas noticias|congratulations|enhorabuena|hi\b|hello\b|hola\b|hey\b|please ship|por favor|the buyer|el comprador|view\b|ver\b|http|www\.|dear\b)/i;
 
+/** Plain text plus the HTML alternative, so a SKU line in either part can be read. */
+export function textForSale(email: InboundEmail): string {
+  const plain = email.text.trim();
+  const fromHtml = email.html.trim() ? htmlToText(email.html) : "";
+  if (!plain) return fromHtml;
+  if (!fromHtml || plain.includes(fromHtml) || fromHtml.includes(plain)) {
+    return plain.length >= fromHtml.length ? plain : fromHtml;
+  }
+  return `${plain}\n${fromHtml}`;
+}
+
 export function htmlToText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
@@ -62,6 +73,7 @@ export function extractSoldTitle(subject: string, text: string, patterns: RegExp
   for (let i = start; i < lines.length; i++) {
     const line = lines[i];
     if (SKIP_LINE.test(line)) continue;
+    if (/^SKU:\s*\S+\s*$/i.test(line)) continue;
     if (line.length < 6) continue;
     if (/^[^0-9\p{L}]+$/u.test(line)) continue;
     return line.slice(0, 180);
