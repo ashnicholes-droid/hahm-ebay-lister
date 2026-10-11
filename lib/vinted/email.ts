@@ -4,6 +4,8 @@ export interface InboundEmail {
   text: string;
   html: string;
   messageId: string;
+  /** When the mailbox received the message. Missing or old dates are not announced. */
+  date?: string;
 }
 
 export type EmailClassification =

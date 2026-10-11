@@ -6,70 +6,87 @@ import { handleVintedSaleEmail } from "@/lib/vinted/handle-inbound";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-interface PostmarkHeader {
+const TEXT_LIMIT = 100_000;
+
+interface HeaderField {
   Name?: string;
   Value?: string;
 }
 
-interface PostmarkInbound {
-  From?: string;
-  Subject?: string;
-  TextBody?: string;
-  HtmlBody?: string;
-  MessageID?: string;
-  Headers?: PostmarkHeader[];
+interface InboundPayload {
+  messageId?: unknown;
+  MessageID?: unknown;
+  from?: unknown;
+  From?: unknown;
+  subject?: unknown;
+  Subject?: unknown;
+  text?: unknown;
+  TextBody?: unknown;
+  html?: unknown;
+  HtmlBody?: unknown;
+  date?: unknown;
+  Date?: unknown;
+  dryRun?: unknown;
+  Headers?: HeaderField[];
 }
 
-function authorized(req: NextRequest): boolean {
-  const user = process.env.VINTED_INBOUND_USER ?? "";
-  const password = process.env.VINTED_INBOUND_PASSWORD ?? "";
-  if (!user || !password) return false;
+function configuredSecret(): string {
+  return process.env.VINTED_INBOUND_SECRET?.trim() ?? "";
+}
+
+function authorized(req: NextRequest, secret: string): boolean {
   const header = req.headers.get("authorization") ?? "";
-  if (!header.startsWith("Basic ")) return false;
-  let decoded = "";
-  try {
-    decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
-  } catch {
-    return false;
-  }
-  const split = decoded.indexOf(":");
-  if (split < 0) return false;
-  return secretEqual(decoded.slice(0, split), user) && secretEqual(decoded.slice(split + 1), password);
+  const bearer = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+  const preserved = (req.headers.get("x-cron-secret") ?? "").trim();
+  if (bearer && secretEqual(bearer, secret)) return true;
+  return Boolean(preserved) && secretEqual(preserved, secret);
 }
 
-function headerValue(headers: PostmarkHeader[] | undefined, name: string): string {
+function asText(value: unknown): string {
+  return typeof value === "string" ? value.slice(0, TEXT_LIMIT) : "";
+}
+
+function headerValue(headers: HeaderField[] | undefined, name: string): string {
   const found = headers?.find((header) => header.Name?.toLowerCase() === name.toLowerCase());
   return found?.Value?.trim() ?? "";
 }
 
+function emailFromPayload(payload: InboundPayload): InboundEmail {
+  return {
+    from: asText(payload.from) || asText(payload.From),
+    subject: asText(payload.subject) || asText(payload.Subject),
+    text: asText(payload.text) || asText(payload.TextBody),
+    html: asText(payload.html) || asText(payload.HtmlBody),
+    messageId: (asText(payload.messageId) || asText(payload.MessageID) || headerValue(payload.Headers, "Message-ID")).trim(),
+    date: (asText(payload.date) || asText(payload.Date)).trim(),
+  };
+}
+
 export async function POST(req: NextRequest) {
-  if (!process.env.VINTED_INBOUND_USER || !process.env.VINTED_INBOUND_PASSWORD) {
+  const secret = configuredSecret();
+  if (!secret) {
     return NextResponse.json({ ok: false, error: "Inbound email is not configured." }, { status: 503 });
   }
-  if (!authorized(req)) {
+  if (!authorized(req, secret)) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
   }
 
-  let payload: PostmarkInbound;
+  let payload: InboundPayload;
   try {
-    payload = (await req.json()) as PostmarkInbound;
+    payload = (await req.json()) as InboundPayload;
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
   }
+  if (!payload || typeof payload !== "object") {
+    return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
+  }
 
-  const email: InboundEmail = {
-    from: payload.From ?? "",
-    subject: payload.Subject ?? "",
-    text: payload.TextBody ?? "",
-    html: payload.HtmlBody ?? "",
-    messageId: (payload.MessageID ?? "").trim() || headerValue(payload.Headers, "Message-ID"),
-  };
-
+  const dryRun = payload.dryRun === true || payload.dryRun === "true";
   try {
-    const result = await handleVintedSaleEmail(email);
+    const result = await handleVintedSaleEmail(emailFromPayload(payload), { dryRun });
     return NextResponse.json(result.body, { status: result.httpStatus });
   } catch (error) {
-    console.error("[vinted/inbound]", error);
+    console.error("[vinted/inbound]", error instanceof Error ? error.name : "Error");
     return NextResponse.json({ ok: false, error: "Could not process the email." }, { status: 500 });
   }
 }
