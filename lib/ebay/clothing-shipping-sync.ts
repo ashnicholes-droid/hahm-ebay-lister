@@ -7,6 +7,7 @@ import {
   isActiveListingStatus,
   isFixedPriceListing,
   isInventoryManagedReviseError,
+  MEDIA_MAIL_BOOK_POLICY_NAME,
   offerBodyWithFulfillmentPolicy,
   parseActiveListPage,
   reviseFixedPriceShippingXml,
@@ -18,7 +19,7 @@ import {
   type ShippingPolicyListingView,
   type ShippingPolicyPreviewResult,
 } from "@/lib/ebay/clothing-shipping-policy";
-import { resolveClothingShippingPolicy } from "@/lib/ebay/publish";
+import { resolveShippingReviewTargets } from "@/lib/ebay/publish";
 
 const TRADING_COMPATIBILITY = "1423";
 const PAGE_DELAY_MS = 250;
@@ -92,27 +93,29 @@ async function ebayJson(
   return { ok: resp.ok, status: resp.status, json, text };
 }
 
-async function requireClothingPolicy(accessToken: string): Promise<{ fulfillmentPolicyId: string }> {
-  const selected = await resolveClothingShippingPolicy(accessToken);
-  if ("error" in selected || selected.fulfillmentPolicyName !== CLOTHING_SHIPPING_POLICY_NAME) {
-    throw new Error(
-      "error" in selected
-        ? selected.error
-        : `No se encontró la Shipping Policy "${CLOTHING_SHIPPING_POLICY_NAME}".`
-    );
-  }
+async function requireReviewTargets(
+  accessToken: string
+): Promise<{ clothingPolicyId: string; mediaMailPolicyIds: string[] }> {
+  const selected = await resolveShippingReviewTargets(accessToken);
+  if ("error" in selected) throw new Error(selected.error);
   return selected;
+}
+
+function offerFulfillmentPolicyId(offer: Record<string, unknown>): string {
+  const policies = offer.listingPolicies as { fulfillmentPolicyId?: string } | undefined;
+  return String(policies?.fulfillmentPolicyId || "").trim();
 }
 
 export async function previewClothingShippingPolicies(
   accessToken: string
 ): Promise<ShippingPolicyPreviewResult> {
-  const selected = await requireClothingPolicy(accessToken);
+  const selected = await requireReviewTargets(accessToken);
   const listings: ShippingPolicyListingView[] = [];
   let pages = 1;
   let totalEntries = 0;
   let truncated = false;
   let alreadyUsing = 0;
+  let mediaMailExcluded = 0;
   let otherPolicy = 0;
   let unreadable = 0;
 
@@ -138,14 +141,16 @@ export async function previewClothingShippingPolicies(
       if (!isActiveListingStatus(listing.listingStatus)) continue;
       const action = classifyShippingPolicy(
         listing,
-        selected.fulfillmentPolicyId,
-        CLOTHING_SHIPPING_POLICY_NAME
+        selected.clothingPolicyId,
+        CLOTHING_SHIPPING_POLICY_NAME,
+        selected.mediaMailPolicyIds
       );
       if (action === "keep") {
         alreadyUsing += 1;
         continue;
       }
-      if (action === "would_update") otherPolicy += 1;
+      if (action === "exclude_media_mail") mediaMailExcluded += 1;
+      else if (action === "would_update") otherPolicy += 1;
       else unreadable += 1;
       listings.push({
         itemId: listing.itemId,
@@ -159,18 +164,19 @@ export async function previewClothingShippingPolicies(
     }
   }
 
-  const totalReviewed = alreadyUsing + otherPolicy + unreadable;
+  const totalReviewed = alreadyUsing + mediaMailExcluded + otherPolicy + unreadable;
   const incomplete = !truncated && totalEntries > 0 && totalReviewed !== totalEntries;
   console.log(
-    `[ebay/shipping-policy] preview dryRun total=${totalReviewed} already=${alreadyUsing} other=${otherPolicy} unreadable=${unreadable} truncated=${truncated}`
+    `[ebay/shipping-policy] preview dryRun total=${totalReviewed} already=${alreadyUsing} mediaMail=${mediaMailExcluded} other=${otherPolicy} unreadable=${unreadable} truncated=${truncated}`
   );
   return {
     ok: true,
     dryRun: true,
     policyName: CLOTHING_SHIPPING_POLICY_NAME,
-    policyId: selected.fulfillmentPolicyId,
+    policyId: selected.clothingPolicyId,
     totalReviewed,
     alreadyUsing,
+    mediaMailExcluded,
     otherPolicy,
     unreadable,
     truncated,
@@ -271,7 +277,7 @@ export async function applyClothingShippingPolicy(
   if (unique.length > SHIPPING_POLICY_APPLY_BATCH) {
     throw new Error(`Envía como máximo ${SHIPPING_POLICY_APPLY_BATCH} listings por lote.`);
   }
-  const selected = await requireClothingPolicy(accessToken);
+  const selected = await requireReviewTargets(accessToken);
   const results: ShippingPolicyApplyResultRow[] = [];
 
   for (let index = 0; index < unique.length; index += 1) {
@@ -289,16 +295,21 @@ export async function applyClothingShippingPolicy(
       }
       const action = classifyShippingPolicy(
         listing,
-        selected.fulfillmentPolicyId,
-        CLOTHING_SHIPPING_POLICY_NAME
+        selected.clothingPolicyId,
+        CLOTHING_SHIPPING_POLICY_NAME,
+        selected.mediaMailPolicyIds
       );
+      if (action === "exclude_media_mail") {
+        results.push(resultRow(listing, "skipped", `Usa ${MEDIA_MAIL_BOOK_POLICY_NAME}. No se modificó.`));
+        continue;
+      }
       if (action === "keep") {
         results.push(resultRow(listing, "skipped", "Ya usa Ebay Shipping Clothing."));
         continue;
       }
       if (action === "unreadable") {
         results.push(
-          resultRow(listing, "error", "No se pudo leer la Shipping Policy actual. No se modificó.")
+          resultRow(listing, "skipped", "No se pudo leer la Shipping Policy actual. No se modificó.")
         );
         continue;
       }
@@ -315,10 +326,31 @@ export async function applyClothingShippingPolicy(
         continue;
       }
       if (found.kind === "one") {
+        const offerPolicyId = offerFulfillmentPolicyId(found.offer);
+        const offerAction = classifyShippingPolicy(
+          { shippingPolicyId: offerPolicyId, shippingPolicyName: "" },
+          selected.clothingPolicyId,
+          CLOTHING_SHIPPING_POLICY_NAME,
+          selected.mediaMailPolicyIds
+        );
+        if (offerAction === "exclude_media_mail") {
+          results.push(resultRow(listing, "skipped", `Usa ${MEDIA_MAIL_BOOK_POLICY_NAME}. No se modificó.`));
+          continue;
+        }
+        if (offerAction === "keep") {
+          results.push(resultRow(listing, "skipped", "Ya usa Ebay Shipping Clothing."));
+          continue;
+        }
+        if (offerAction === "unreadable") {
+          results.push(
+            resultRow(listing, "skipped", "No se pudo leer la Shipping Policy actual. No se modificó.")
+          );
+          continue;
+        }
         const updated = await updatePublishedOffer(
           accessToken,
           found.offer,
-          selected.fulfillmentPolicyId
+          selected.clothingPolicyId
         );
         if ("error" in updated) {
           results.push(resultRow(listing, "error", updated.error));
@@ -339,7 +371,7 @@ export async function applyClothingShippingPolicy(
       const revised = await reviseTradingShipping(
         accessToken,
         listing,
-        selected.fulfillmentPolicyId
+        selected.clothingPolicyId
       );
       if (revised.inventoryManaged) {
         results.push(
@@ -367,7 +399,7 @@ export async function applyClothingShippingPolicy(
     }
   }
 
-  return { ok: true, dryRun: false, policyId: selected.fulfillmentPolicyId, results };
+  return { ok: true, dryRun: false, policyId: selected.clothingPolicyId, results };
 }
 
 function resultRow(

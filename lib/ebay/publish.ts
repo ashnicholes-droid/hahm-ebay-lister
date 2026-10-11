@@ -5,6 +5,8 @@
 
 import {
   fulfillmentPoliciesUnreadableMessage,
+  fulfillmentPolicyIdsByName,
+  MEDIA_MAIL_BOOK_POLICY_NAME,
   selectFulfillmentPolicyByName,
   type FulfillmentPolicyRecord,
   type SelectedFulfillmentPolicy,
@@ -1491,6 +1493,20 @@ export async function resolveClothingShippingPolicy(
   const listed = await listAllFulfillmentPolicies(accessToken);
   if (!listed.ok) return { error: fulfillmentPoliciesUnreadableMessage() };
   return selectFulfillmentPolicyByName(listed.policies);
+}
+
+export async function resolveShippingReviewTargets(accessToken: string): Promise<
+  | { clothingPolicyId: string; mediaMailPolicyIds: string[] }
+  | { error: string }
+> {
+  const listed = await listAllFulfillmentPolicies(accessToken);
+  if (!listed.ok) return { error: fulfillmentPoliciesUnreadableMessage() };
+  const clothing = selectFulfillmentPolicyByName(listed.policies);
+  if ("error" in clothing) return clothing;
+  return {
+    clothingPolicyId: clothing.fulfillmentPolicyId,
+    mediaMailPolicyIds: fulfillmentPolicyIdsByName(listed.policies, MEDIA_MAIL_BOOK_POLICY_NAME),
+  };
 }
 
 async function fetchAccountSetupUncached(accessToken: string): Promise<AccountSetup> {

@@ -112,19 +112,23 @@ export default function ShippingPolicyPage() {
           <div className="policy-counts">
             <div className="policy-count">
               <strong>{preview.totalReviewed}</strong>
-              Revisados
+              Total de listings revisados
             </div>
             <div className="policy-count">
               <strong>{preview.alreadyUsing}</strong>
               Ya usan Ebay Shipping Clothing
             </div>
             <div className="policy-count">
+              <strong>{preview.mediaMailExcluded}</strong>
+              Excluidos porque usan Media Mail Book
+            </div>
+            <div className="policy-count">
               <strong>{preview.otherPolicy}</strong>
-              Usan otra Shipping Policy
+              Usan otra Shipping Policy y sí se actualizarán
             </div>
             <div className="policy-count">
               <strong>{preview.unreadable}</strong>
-              Policy no leída
+              Shipping Policy no leída
             </div>
           </div>
           <p>
@@ -163,7 +167,13 @@ export default function ShippingPolicyPage() {
                       {row.shippingPolicyName || "Sin nombre"}
                       {row.shippingPolicyId ? ` (${row.shippingPolicyId})` : ""}
                     </td>
-                    <td>{row.action === "would_update" ? "Se actualizaría" : "No se tocaría"}</td>
+                    <td>
+                      {row.action === "would_update"
+                        ? "Se actualizaría"
+                        : row.action === "exclude_media_mail"
+                          ? "Excluido: Media Mail Book"
+                          : "No se tocaría"}
+                    </td>
                   </tr>
                 ))}
                 {visible.length === 0 && (
@@ -198,7 +208,7 @@ export default function ShippingPolicyPage() {
               onChange={(event) => setConfirmed(event.target.checked)}
               disabled={applying || wouldUpdate.length === 0}
             />{" "}
-            Ya revisé la vista previa y quiero actualizar solo los listings que usan otra Shipping Policy.
+            Ya revisé la vista previa. Quiero actualizar solo los listings con otra Shipping Policy. Media Mail Book queda intacto.
           </label>
           <p>
             <button
@@ -211,8 +221,7 @@ export default function ShippingPolicyPage() {
             </button>
           </p>
           <p>
-            Esa acción no corre sola. Omite los que ya usan esta política. No cambia precios, títulos,
-            descripciones, fotos, SKU, cantidades, categorías, condition, return policy ni payment policy.
+            Esa acción no corre sola. Omite Ebay Shipping Clothing, Media Mail Book y cualquier listing cuya Shipping Policy no se pueda leer. No cambia precios, títulos, descripciones, fotos, SKU, cantidades, categorías, condition, return policy ni payment policy.
           </p>
         </section>
       )}

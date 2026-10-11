@@ -3,6 +3,7 @@
 // fulfillmentPolicies[0].
 
 export const CLOTHING_SHIPPING_POLICY_NAME = "Ebay Shipping Clothing";
+export const MEDIA_MAIL_BOOK_POLICY_NAME = "Media Mail Book";
 export const SHIPPING_POLICY_APPLY_BATCH = 10;
 export const SHIPPING_POLICY_PAGE_SIZE = 200;
 export const SHIPPING_POLICY_MAX_PAGES = 200;
@@ -65,7 +66,7 @@ export interface ActiveListingPolicy {
   returnPolicyId: string;
 }
 
-export type ShippingPolicyAction = "keep" | "would_update" | "unreadable";
+export type ShippingPolicyAction = "keep" | "exclude_media_mail" | "would_update" | "unreadable";
 
 export interface ShippingPolicyListingView {
   itemId: string;
@@ -84,6 +85,7 @@ export interface ShippingPolicyPreviewResult {
   policyId: string;
   totalReviewed: number;
   alreadyUsing: number;
+  mediaMailExcluded: number;
   otherPolicy: number;
   unreadable: number;
   truncated: boolean;
@@ -103,13 +105,31 @@ export interface ShippingPolicyApplyResultRow {
   message: string;
 }
 
+export function fulfillmentPolicyIdsByName(
+  policies: FulfillmentPolicyRecord[],
+  name: string
+): string[] {
+  const ids: string[] = [];
+  for (const policy of policies) {
+    const policyName = String(policy?.name ?? "").trim();
+    const id = String(policy?.fulfillmentPolicyId ?? "").trim();
+    if (policyName === name && id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 export function classifyShippingPolicy(
   listing: Pick<ActiveListingPolicy, "shippingPolicyId" | "shippingPolicyName">,
   targetId: string,
-  targetName = CLOTHING_SHIPPING_POLICY_NAME
+  targetName = CLOTHING_SHIPPING_POLICY_NAME,
+  mediaMailPolicyIds: readonly string[] = []
 ): ShippingPolicyAction {
   const id = listing.shippingPolicyId.trim();
   const name = listing.shippingPolicyName.trim();
+  const mediaMailIds = mediaMailPolicyIds.map((value) => value.trim()).filter(Boolean);
+  if (name === MEDIA_MAIL_BOOK_POLICY_NAME || (id && mediaMailIds.includes(id))) {
+    return "exclude_media_mail";
+  }
   if ((id && id === targetId.trim()) || name === targetName) return "keep";
   if (!id) return "unreadable";
   return "would_update";
@@ -118,7 +138,8 @@ export function classifyShippingPolicy(
 export function toListingView(
   listing: ActiveListingPolicy,
   targetId: string,
-  targetName = CLOTHING_SHIPPING_POLICY_NAME
+  targetName = CLOTHING_SHIPPING_POLICY_NAME,
+  mediaMailPolicyIds: readonly string[] = []
 ): ShippingPolicyListingView {
   return {
     itemId: listing.itemId,
@@ -127,7 +148,7 @@ export function toListingView(
     offerId: listing.offerId,
     shippingPolicyId: listing.shippingPolicyId,
     shippingPolicyName: listing.shippingPolicyName,
-    action: classifyShippingPolicy(listing, targetId, targetName),
+    action: classifyShippingPolicy(listing, targetId, targetName, mediaMailPolicyIds),
   };
 }
 

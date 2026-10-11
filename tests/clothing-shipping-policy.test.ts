@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   classifyShippingPolicy,
+  fulfillmentPolicyIdsByName,
   missingClothingPolicyMessage,
   offerBodyWithFulfillmentPolicy,
   parseActiveListPage,
@@ -34,6 +35,19 @@ describe("selectFulfillmentPolicyByName", () => {
       { name: "Ebay Shipping Clothing", fulfillmentPolicyId: "444" },
     ]);
     expect("error" in selected).toBe(true);
+  });
+
+  test("collects every Media Mail Book policy id", () => {
+    expect(
+      fulfillmentPolicyIdsByName(
+        [
+          { name: "Media Mail Book", fulfillmentPolicyId: "555" },
+          { name: "Media Mail Books", fulfillmentPolicyId: "556" },
+          { name: "Media Mail Book", fulfillmentPolicyId: "557" },
+        ],
+        "Media Mail Book"
+      )
+    ).toEqual(["555", "557"]);
   });
 });
 
@@ -90,6 +104,43 @@ describe("parseActiveListPage", () => {
     expect(parsed.listings.map((listing) => listing.itemId)).toEqual(["1001", "1002"]);
     expect(classifyShippingPolicy(parsed.listings[0], "222")).toBe("keep");
     expect(classifyShippingPolicy(parsed.listings[1], "222")).toBe("would_update");
+  });
+
+  test("excludes Media Mail Book by the shipping policy, not the item title", () => {
+    const bookTitleOtherPolicy = {
+      title: "Media Mail Book",
+      sku: "BOOK-1",
+      shippingPolicyId: "111",
+      shippingPolicyName: "USPS First",
+    };
+    expect(classifyShippingPolicy(bookTitleOtherPolicy, "222", undefined, ["555"])).toBe("would_update");
+    expect(
+      classifyShippingPolicy(
+        { shippingPolicyId: "555", shippingPolicyName: "Media Mail Book" },
+        "222",
+        undefined,
+        ["555"]
+      )
+    ).toBe("exclude_media_mail");
+    expect(
+      classifyShippingPolicy(
+        { shippingPolicyId: "555", shippingPolicyName: "" },
+        "222",
+        undefined,
+        ["555"]
+      )
+    ).toBe("exclude_media_mail");
+    expect(
+      classifyShippingPolicy(
+        { shippingPolicyId: "111", shippingPolicyName: "Media Mail Books" },
+        "222",
+        undefined,
+        ["555"]
+      )
+    ).toBe("would_update");
+    expect(
+      classifyShippingPolicy({ shippingPolicyId: "", shippingPolicyName: "" }, "222", undefined, ["555"])
+    ).toBe("unreadable");
   });
 });
 
