@@ -35,17 +35,20 @@ export function ebaySaleNotice(
   lookup: EbayNoticeLookup
 ): { sku: string; title: string } | null {
   if (!isConfirmedEbaySale(line)) return null;
-  if (lookup.kind === "ambiguous") return null;
+  if (lookup.kind === "ambiguous") {
+    const title = line.title.trim();
+    if (!title) return null;
+    return { sku: "", title };
+  }
 
   if (lookup.kind === "one") {
     const sku = lookup.row.sku.trim() || line.sku.trim();
     const title = (lookup.row.ebayTitle || lookup.row.vintedTitle || line.title).trim();
-    if (!sku || !title) return null;
+    if (!title) return null;
     return { sku, title };
   }
 
-  const sku = line.sku.trim();
   const title = line.title.trim();
-  if (!sku || !title) return null;
-  return { sku, title };
+  if (!title) return null;
+  return { sku: line.sku.trim(), title };
 }

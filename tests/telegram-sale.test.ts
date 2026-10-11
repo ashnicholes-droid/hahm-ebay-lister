@@ -21,26 +21,24 @@ describe("telegram connection test", () => {
 });
 
 describe("telegram sale message", () => {
-  test("renders the eBay premium layout with one large bold SKU and the full title", () => {
+  test("renders the sale layout with the platform, one large bold SKU, and the Vinted reminder", () => {
     const message = saleTelegramMessage("ebay", "2830", SAMPLE_TITLE);
-    expect(message).toContain("🎉 <b>¡VENTA CONFIRMADA!</b> 🎉");
-    expect(message).toContain("🛍️ <b>eBay Store</b>");
-    expect(message).not.toContain("Vinted Store");
-    expect(message).toContain("🏷️ <b>ARTÍCULO VENDIDO</b>");
-    expect(message).toContain(SAMPLE_TITLE);
-    expect(message).toContain("📦 <b>NÚMERO DE SKU</b>");
-    expect(message).toContain(`<b>${enlargeSkuDigits("2830")}</b>`);
+    expect(message).toContain("🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>");
+    expect(message).toContain("🛍️ Plataforma: <b>EBAY</b>");
+    expect(message).toContain(`👕 Artículo: ${SAMPLE_TITLE}`);
+    expect(message).toContain(`🔢 SKU: <b>${enlargeSkuDigits("2830")}</b>`);
     expect(message).not.toContain("\n2830");
     expect(message.match(/𝟮𝟴𝟯𝟬/g)).toHaveLength(1);
-    expect(message).toContain("✨ <b>¡Otra venta exitosa!</b>");
-    expect(message).toContain("━━━━━━━━━━━━━━━━━━━━");
+    expect(message).toContain("⚠️ <b>REVISAR VINTED</b>");
+    expect(message).toContain("🔍 Si sigue publicado, retirarlo manualmente.");
     expect(message).not.toMatch(/\$|price|buyer|comprador/i);
   });
 
-  test("uses the Vinted store line for Vinted sales", () => {
-    const message = saleTelegramMessage("vinted", "2830", SAMPLE_TITLE);
-    expect(message).toContain("💙 <b>Vinted Store</b>");
-    expect(message).not.toContain("eBay Store");
+  test("names Vinted, Poshmark, and Depop, and does not invent a missing SKU", () => {
+    expect(saleTelegramMessage("vinted", "2830", SAMPLE_TITLE)).toContain("🛍️ Plataforma: <b>VINTED</b>");
+    expect(saleTelegramMessage("poshmark", "2830", SAMPLE_TITLE)).toContain("🛍️ Plataforma: <b>POSHMARK</b>");
+    expect(saleTelegramMessage("depop", "", SAMPLE_TITLE)).toContain("🔢 SKU: <b>No encontrado</b>");
+    expect(saleTelegramMessage("depop", "", SAMPLE_TITLE)).not.toContain("2830");
   });
 
   test("keeps the full title and escapes HTML", () => {
@@ -100,8 +98,11 @@ describe("confirmed eBay sale selection", () => {
     });
   });
 
-  test("does not guess when several inventory rows match", () => {
-    expect(ebaySaleNotice(paid, { kind: "ambiguous" })).toBeNull();
+  test("does not guess a SKU when several inventory rows match", () => {
+    expect(ebaySaleNotice(paid, { kind: "ambiguous" })).toEqual({
+      sku: "",
+      title: "Order title",
+    });
   });
 
   test("does not notify a sale created before the Telegram cutoff", () => {

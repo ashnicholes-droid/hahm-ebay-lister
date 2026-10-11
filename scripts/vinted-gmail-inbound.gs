@@ -1,5 +1,5 @@
 /**
- * Lee ventas confirmadas de Vinted y las envía solo al endpoint de la aplicación.
+ * Lee ventas confirmadas de Vinted, Poshmark y Depop y las envía solo al endpoint de la aplicación.
  * No envía, reenvía, modifica ni elimina correos.
  *
  * Permisos que debe pedir Google:
@@ -21,7 +21,8 @@
  *      DRY_RUN          true
  *    No escribas el secreto en este archivo.
  * 7. Ejecuta baselineExistingSales. Solo guarda la hora de activación; no lee correos antiguos.
- * 8. No crees el activador ni pongas DRY_RUN en false hasta publicar la ruta en Production.
+ * 8. El activador de checkVintedSales cada 10 minutos se crea solo después de confirmar
+ *    la publicación. DRY_RUN debe seguir en true hasta esa confirmación.
  *    previewNewestVintedEmail siempre usa simulación y no envía Telegram.
  */
 
@@ -161,8 +162,8 @@ function readMessage_(id) {
     id: message.id,
     from: headerValue_(message, "from"),
     subject: headerValue_(message, "subject"),
-    text: String(bodies["text/plain"] || "").slice(0, 100000),
-    html: String(bodies["text/html"] || "").slice(0, 100000),
+    text: String(bodies["text/plain"] || "").slice(0, 20000),
+    html: bodies["text/plain"] ? "" : String(bodies["text/html"] || "").slice(0, 20000),
     receivedMs: Number(message.internalDate || "0"),
   };
 }
@@ -217,7 +218,11 @@ function scriptConfig_() {
 
 function vintedSearchQuery_(activatedAt) {
   var day = Utilities.formatDate(new Date(activatedAt - 86400000), "America/New_York", "yyyy/MM/dd");
-  return "from:vinted (sold OR vendido OR vendiste) after:" + day;
+  return (
+    "after:" +
+    day +
+    " ((from:vinted.com (sold OR vendido OR vendiste)) OR (from:poshmark.com (sold OR \"made a sale\" OR \"you sold\")) OR (from:depop.com (sold OR \"you sold\" OR \"you've sold\")))"
+  );
 }
 
 function loadIdSet_(key) {

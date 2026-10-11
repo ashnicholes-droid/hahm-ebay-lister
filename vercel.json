@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/ebay-sales",
-      "schedule": "0 13 * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/ebay-ended",

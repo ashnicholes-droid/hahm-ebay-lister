@@ -118,6 +118,26 @@ export async function listListings(workspace: string): Promise<PlatformListing[]
   return rows.map((row) => mapListing(row as Record<string, unknown>));
 }
 
+export async function listSaleTitleCandidates(): Promise<
+  Array<{ sku: string; vintedTitle: string | null; ebayTitle: string | null }>
+> {
+  const sql = getSql();
+  await ensureInventoryTables();
+  const rows = await sql`
+    SELECT sku, vinted_title, ebay_title
+    FROM platform_listings
+    WHERE sku IS NOT NULL AND btrim(sku) <> ''
+  `;
+  return rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      sku: String(record.sku ?? "").trim(),
+      vintedTitle: record.vinted_title == null ? null : String(record.vinted_title),
+      ebayTitle: record.ebay_title == null ? null : String(record.ebay_title),
+    };
+  });
+}
+
 export async function listPublishedVinted(): Promise<PlatformListing[]> {
   const sql = getSql();
   await ensureInventoryTables();

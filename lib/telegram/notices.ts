@@ -85,6 +85,7 @@ async function finishTelegramNotice(
 }
 
 async function skuAlreadyAnnounced(sku: string): Promise<boolean> {
+  if (!sku) return false;
   const sql = getSql();
   await ensureInventoryTables();
   const rows = await sql`
@@ -147,7 +148,7 @@ export async function deliverConfirmedSale(input: {
   const sku = input.sku.trim();
   const title = input.title.trim();
   const externalEventId = input.externalEventId.trim();
-  if (!sku || !title || !externalEventId) return "missing";
+  if (!title || !externalEventId) return "missing";
   if (await skuAlreadyAnnounced(sku)) {
     await suppressTelegramSale({ platform: input.platform, externalEventId, sku, title });
     return "duplicate";

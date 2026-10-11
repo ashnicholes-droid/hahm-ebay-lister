@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@/lib/inventory/links", () => ({
-  listPublishedVinted: vi.fn(),
+  listSaleTitleCandidates: vi.fn(),
 }));
 vi.mock("@/lib/inventory/sale-events", () => ({
   claimSaleEvent: vi.fn(),
@@ -15,13 +15,13 @@ vi.mock("@/lib/whatsapp/send", () => ({
 }));
 
 import { POST } from "@/app/api/vinted/inbound/route";
-import { listPublishedVinted } from "@/lib/inventory/links";
+import { listSaleTitleCandidates } from "@/lib/inventory/links";
 import { claimSaleEvent, finishSaleEvent } from "@/lib/inventory/sale-events";
 import { deliverConfirmedSale } from "@/lib/telegram/notices";
 import { handleVintedSaleEmail } from "@/lib/vinted/handle-inbound";
 import { sendPlatformSaleAlert } from "@/lib/whatsapp/send";
 
-const listPublished = vi.mocked(listPublishedVinted);
+const listPublished = vi.mocked(listSaleTitleCandidates);
 const claim = vi.mocked(claimSaleEvent);
 const finish = vi.mocked(finishSaleEvent);
 const deliver = vi.mocked(deliverConfirmedSale);
@@ -61,7 +61,7 @@ describe("vinted inbound", () => {
         vintedTitle: "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit",
         ebayTitle: "Levi's 550 Jeans",
       },
-    ] as Awaited<ReturnType<typeof listPublishedVinted>>);
+    ] as Awaited<ReturnType<typeof listSaleTitleCandidates>>);
     claim.mockResolvedValue({ action: "owned", id: "sale-1" });
     finish.mockResolvedValue();
     deliver.mockResolvedValue("sent");
@@ -91,6 +91,7 @@ describe("vinted inbound", () => {
       ok: true,
       dryRun: true,
       status: "would_send",
+      platform: "vinted",
       sku: "2830",
       title: "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit",
       telegram: "not_sent",
@@ -140,6 +141,33 @@ describe("vinted inbound", () => {
       sku: "2830",
       title: "Levi's 550 Jeans Mens 34x29 Blue Relaxed Fit",
     });
+  });
+
+  test("dry run of a Poshmark sale does not invent a SKU or record the sale", async () => {
+    listPublished.mockResolvedValue([]);
+    const result = await handleVintedSaleEmail(
+      {
+        from: "support@poshmark.com",
+        subject: "You made a sale!",
+        text: "You made a sale!\n\nNavy Wool Coat\n",
+        html: "",
+        messageId: "posh-1",
+        date: "2026-10-11T15:00:00.000Z",
+      },
+      { dryRun: true }
+    );
+    expect(result.body).toEqual({
+      ok: true,
+      dryRun: true,
+      status: "would_send",
+      platform: "poshmark",
+      sku: null,
+      title: "Navy Wool Coat",
+      telegram: "not_sent",
+    });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(whatsapp).not.toHaveBeenCalled();
   });
 
   test("does not send Telegram again for a sale that was already claimed", async () => {

@@ -71,10 +71,9 @@ export async function sendTelegramSale(
   sku: string,
   title: string
 ): Promise<{ messageId: number }> {
-  const cleanSku = sku.trim();
   const cleanTitle = title.trim();
-  if (!cleanSku || !cleanTitle) {
-    throw new Error("Telegram alert is missing the SKU or title.");
+  if (!cleanTitle) {
+    throw new Error("Telegram alert is missing the title.");
   }
-  return sendTelegramHtml(saleTelegramMessage(platform, cleanSku, cleanTitle));
+  return sendTelegramHtml(saleTelegramMessage(platform, sku.trim(), cleanTitle));
 }

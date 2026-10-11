@@ -1,24 +1,18 @@
 import type { InboundEmail } from "@/lib/vinted/email";
-import { classifyVintedEmail } from "@/lib/vinted/email";
-import { listPublishedVinted } from "@/lib/inventory/links";
+import { listSaleTitleCandidates } from "@/lib/inventory/links";
 import { claimSaleEvent, finishSaleEvent } from "@/lib/inventory/sale-events";
-import { matchSoldTitle, type TitleMatch } from "@/lib/vinted/match";
+import { classifyMailboxEmail } from "@/lib/mailbox/sale-email";
+import { matchSoldTitle } from "@/lib/vinted/match";
 import { isNewTelegramSale } from "@/lib/telegram/ebay-sale";
 import { deliverConfirmedSale, type TelegramDelivery } from "@/lib/telegram/notices";
 import { sendPlatformSaleAlert } from "@/lib/whatsapp/send";
-
-function reviewDetail(title: string, match: TitleMatch): string {
-  if (!title) return "Sale email had no item title";
-  if (match.kind === "ambiguous") return `Ambiguous SKUs: ${match.skus.join(", ")}`;
-  return "No published Vinted listing matched this title";
-}
 
 export async function handleVintedSaleEmail(
   email: InboundEmail,
   options?: { dryRun?: boolean }
 ): Promise<{ httpStatus: number; body: Record<string, unknown> }> {
   const dryRun = options?.dryRun === true;
-  const classification = classifyVintedEmail(email);
+  const classification = classifyMailboxEmail(email);
   if (classification.kind === "ignore") {
     return {
       httpStatus: 200,
@@ -40,7 +34,7 @@ export async function handleVintedSaleEmail(
     };
   }
 
-  const published = await listPublishedVinted();
+  const published = await listSaleTitleCandidates();
   const match = classification.title
     ? matchSoldTitle(
         classification.title,
@@ -51,24 +45,17 @@ export async function handleVintedSaleEmail(
         }))
       )
     : ({ kind: "none" } as const);
-
-  if (!classification.title || match.kind !== "unique") {
-    const detail = reviewDetail(classification.title, match);
-    if (dryRun) {
-      return { httpStatus: 200, body: { ok: true, dryRun: true, status: "needs_review", detail } };
-    }
-    await claimSaleEvent({
-      platform: "vinted",
-      externalEventId: email.messageId,
-      sku: null,
-      title: classification.title || null,
-      workspaceKey: null,
-      detail,
-      initialStatus: "needs_review",
-    });
+  const sku = match.kind === "unique" ? match.sku : "";
+  const title = match.kind === "unique" ? match.title : classification.title;
+  if (!title) {
     return {
       httpStatus: 200,
-      body: { ok: true, status: "needs_review" },
+      body: {
+        ok: true,
+        ignored: true,
+        reason: "sale email had no item title",
+        ...(dryRun ? { dryRun: true } : {}),
+      },
     };
   }
 
@@ -79,9 +66,29 @@ export async function handleVintedSaleEmail(
         ok: true,
         dryRun: true,
         status: "would_send",
-        sku: match.sku,
-        title: match.title,
+        platform: classification.platform,
+        sku: sku || null,
+        title,
         telegram: "not_sent",
+      },
+    };
+  }
+
+  if (classification.platform !== "vinted" || !sku) {
+    const telegram = await notifySale(email.messageId, classification.platform, sku, title);
+    if (telegram === "failed") {
+      return { httpStatus: 500, body: { ok: false, error: "Telegram send failed", platform: classification.platform } };
+    }
+    return {
+      httpStatus: 200,
+      body: {
+        ok: true,
+        status: telegram === "duplicate" ? undefined : "sent",
+        duplicate: telegram === "duplicate" ? true : undefined,
+        platform: classification.platform,
+        sku: sku || null,
+        title,
+        telegram,
       },
     };
   }
@@ -89,26 +96,14 @@ export async function handleVintedSaleEmail(
   const claim = await claimSaleEvent({
     platform: "vinted",
     externalEventId: email.messageId,
-    sku: match.sku,
-    title: match.title,
+    sku,
+    title,
     workspaceKey: null,
     detail: null,
     initialStatus: "pending",
   });
 
-  let telegram: TelegramDelivery = "missing";
-  try {
-    telegram = await deliverConfirmedSale({
-      platform: "vinted",
-      externalEventId: email.messageId,
-      sku: match.sku,
-      title: match.title,
-    });
-  } catch (error) {
-    console.error("[vinted/inbound] Telegram failed", email.messageId, error);
-    telegram = "failed";
-  }
-
+  const telegram = await notifySale(email.messageId, "vinted", sku, title);
   if (claim.action === "done") {
     if (telegram === "failed") {
       return { httpStatus: 500, body: { ok: false, error: "Telegram send failed", duplicate: true } };
@@ -118,12 +113,12 @@ export async function handleVintedSaleEmail(
 
   let whatsapp: "sent" | "failed" = "sent";
   try {
-    await sendPlatformSaleAlert("vinted", match.sku, match.title);
+    await sendPlatformSaleAlert("vinted", sku, title);
     await finishSaleEvent(claim.id, {
       status: "sent",
       whatsappSent: true,
-      sku: match.sku,
-      title: match.title,
+      sku,
+      title,
     });
   } catch (error) {
     whatsapp = "failed";
@@ -133,8 +128,8 @@ export async function handleVintedSaleEmail(
       status: telegramOk ? "sent" : "failed",
       whatsappSent: false,
       detail: "WhatsApp send failed",
-      sku: match.sku,
-      title: match.title,
+      sku,
+      title,
     });
     if (!telegramOk) {
       return { httpStatus: 500, body: { ok: false, error: "WhatsApp send failed" } };
@@ -142,10 +137,29 @@ export async function handleVintedSaleEmail(
   }
 
   if (telegram === "failed") {
-    return { httpStatus: 500, body: { ok: false, error: "Telegram send failed", sku: match.sku } };
+    return { httpStatus: 500, body: { ok: false, error: "Telegram send failed", sku } };
   }
   return {
     httpStatus: 200,
-    body: { ok: true, status: "sent", sku: match.sku, telegram, ...(whatsapp === "failed" ? { whatsapp: "failed" } : {}) },
+    body: { ok: true, status: "sent", sku, telegram, ...(whatsapp === "failed" ? { whatsapp: "failed" } : {}) },
   };
+}
+
+async function notifySale(
+  messageId: string,
+  platform: "ebay" | "vinted" | "poshmark" | "depop",
+  sku: string,
+  title: string
+): Promise<TelegramDelivery> {
+  try {
+    return await deliverConfirmedSale({
+      platform,
+      externalEventId: messageId,
+      sku,
+      title,
+    });
+  } catch (error) {
+    console.error("[mailbox/inbound] Telegram failed", messageId, error);
+    return "failed";
+  }
 }

@@ -1,4 +1,4 @@
-export type SalePlatform = "ebay" | "vinted";
+export type SalePlatform = "ebay" | "vinted" | "poshmark" | "depop";
 
 const SEPARATOR = "━━━━━━━━━━━━━━━━━━━━";
 const SANS_BOLD_ZERO = 0x1d7ec;
@@ -54,36 +54,27 @@ export function connectionTestMessage(): string {
   ].join("\n");
 }
 
-export function platformStoreLine(platform: SalePlatform): string {
-  if (platform === "vinted") return "💙 <b>Vinted Store</b>";
-  return "🛍️ <b>eBay Store</b>";
+export function platformLabel(platform: SalePlatform): string {
+  if (platform === "vinted") return "VINTED";
+  if (platform === "poshmark") return "POSHMARK";
+  if (platform === "depop") return "DEPOP";
+  return "EBAY";
 }
 
 function skuBlock(sku: string): string {
   const exact = sku.trim();
-  if (!exact) return "";
+  if (!exact) return "<b>No encontrado</b>";
   return `<b>${escapeTelegramHtml(enlargeSkuDigits(exact))}</b>`;
 }
 
 export function saleTelegramMessage(platform: SalePlatform, sku: string, title: string): string {
   const item = escapeTelegramHtml(displayTitle(title));
   return [
-    "🎉 <b>¡VENTA CONFIRMADA!</b> 🎉",
-    "",
-    platformStoreLine(platform),
-    "",
-    SEPARATOR,
-    "",
-    "🏷️ <b>ARTÍCULO VENDIDO</b>",
-    item,
-    "",
-    SEPARATOR,
-    "",
-    "📦 <b>NÚMERO DE SKU</b>",
-    skuBlock(sku),
-    "",
-    SEPARATOR,
-    "",
-    "✨ <b>¡Otra venta exitosa!</b>",
+    "🟢 📦 <b>¡ARTÍCULO VENDIDO!</b>",
+    `🛍️ Plataforma: <b>${platformLabel(platform)}</b>`,
+    `👕 Artículo: ${item}`,
+    `🔢 SKU: ${skuBlock(sku)}`,
+    "⚠️ <b>REVISAR VINTED</b>",
+    "🔍 Si sigue publicado, retirarlo manualmente.",
   ].join("\n");
 }
