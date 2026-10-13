@@ -1,5 +1,5 @@
 import type { AspectMeta } from "./taxonomy";
-import { isPlaceholderValue } from "./aspects";
+import { isPlaceholderValue, isStandardSizeAspect } from "./aspects";
 // Validation never alters the reviewed values. Formatting/enrichment happens earlier.
 export function validateAspects(
   aspects: Record<string, string[]>,
@@ -19,7 +19,10 @@ export function validateAspects(
       issues.push(`${key} is too long`);
     if (a?.cardinality === "SINGLE" && vals.length > 1)
       issues.push(`Choose one ${key}`);
-    if (a?.mode === "SELECTION_ONLY" && vals.some((v) => !a.values.includes(v)))
+    if (
+      (a?.mode === "SELECTION_ONLY" || (a && isStandardSizeAspect(a))) &&
+      vals.some((v) => !a.values.includes(v))
+    )
       issues.push(`Choose an allowed value for ${key}`);
     if (
       a?.dataType === "NUMBER" &&

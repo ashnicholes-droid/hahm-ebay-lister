@@ -183,3 +183,55 @@ export function canonicalizeAspectKeys(
     }
   }
 }
+
+// eBay now restricts apparel/footwear size specifics to its own standard
+// values (error 25129: "no longer support custom values for UK Shoe Size")
+// even where the Taxonomy API still reports the aspect as FREE_TEXT. Size
+// aspects that come with a value list are therefore treated as selection-only.
+const STANDARD_SIZE_ASPECT_RE = /\bshoe size\b/i;
+
+export function isStandardSizeAspect(a: AspectMeta): boolean {
+  return STANDARD_SIZE_ASPECT_RE.test(a.name) && a.values.length > 0;
+}
+
+// "UK 7" → "7", "EU 40.0" → "40", "7 1/2" → "7.5", "Women's US 8" → "8".
+function normalizeSizeToken(value: string): string {
+  return value
+    .trim()
+    .replace(/^(?:(?:wo)?men'?s|w|m)\s+/i, "")
+    .replace(/^(?:uk|eu|us)\s*/i, "")
+    .replace(/^(\d+)\s+1\/2\b/, "$1.5")
+    .replace(/^(\d+)\.0\b/, "$1")
+    .trim();
+}
+
+export function snapStandardSize(value: string, allowed: string[]): string | null {
+  const exact = matchAllowed(value, allowed);
+  if (exact) return exact;
+  const norm = normalizeSizeToken(value);
+  return norm ? matchAllowed(norm, allowed) : null;
+}
+
+// Snap size specifics onto eBay's standard values; drop an OPTIONAL size we
+// can't map (a missing UK size beats a rejected listing). Required sizes are
+// left for validateAspects to flag so the seller picks a value. Returns the
+// names of aspects that were dropped.
+export function snapStandardSizes(
+  aspects: Record<string, string[]>,
+  meta: AspectMeta[],
+): string[] {
+  const dropped: string[] = [];
+  for (const a of meta) {
+    const vals = aspects[a.name];
+    if (!vals?.length || !isStandardSizeAspect(a)) continue;
+    const snapped = vals
+      .map((v) => snapStandardSize(v, a.values))
+      .filter((v): v is string => Boolean(v));
+    if (snapped.length) aspects[a.name] = [...new Set(snapped)];
+    else if (!a.required) {
+      delete aspects[a.name];
+      dropped.push(a.name);
+    }
+  }
+  return dropped;
+}
