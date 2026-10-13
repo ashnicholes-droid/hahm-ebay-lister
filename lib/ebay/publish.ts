@@ -28,6 +28,7 @@ import {
   canonicalizeAspectKeys,
   enforceCardinality,
   sanitizeNumericAspects,
+  snapStandardSizes,
 } from "./aspects";
 import { fillRecommendedAspects } from "./aspectFill";
 import { applyShoeSize } from "./shoe-size";
@@ -621,6 +622,8 @@ async function withTransientRetry(
 const EBAY_ERROR_HINTS: Record<number, string> = {
   25001:
     "This is a temporary glitch on eBay's side (we already retried automatically). Wait a minute and hit Post again — the listing data itself is fine.",
+  25129:
+    "eBay only accepts its own standard values for this size field now. Open the listing, pick a size from the dropdown (or clear it if it's optional), and post again.",
   25019:
     "eBay rejected the listing's content — usually a restricted or trademarked word in the title/description, or the item is already listed. Edit the title/description and try again.",
 };
@@ -1129,6 +1132,12 @@ export async function publishListing(
       .filter(([, v]) => v.trim())
       .map(([k, v]) => [k, v.split(" | ").map((x) => x.trim())]),
   );
+  // Drafts prepared before eBay locked size specifics to standard values may
+  // still carry a custom one ("UK 7"); snap it, or drop it if optional.
+  for (const name of snapStandardSizes(aspects, meta))
+    console.warn(
+      `[ebay/publish] sku=${sku} dropped optional "${name}" — not one of eBay's standard values`,
+    );
   const issues = validateAspects(aspects, meta);
   if (issues.length) throw new Error(issues.join("; "));
   const existing = await findPublishedOffer(accessToken, sku);

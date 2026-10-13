@@ -17,7 +17,11 @@ import {
   reconcileAspects,
   CONDITION_ID_ENUM,
 } from "@/lib/ebay/publish";
-import { enforceCardinality, sanitizeNumericAspects } from "@/lib/ebay/aspects";
+import {
+  enforceCardinality,
+  sanitizeNumericAspects,
+  snapStandardSizes,
+} from "@/lib/ebay/aspects";
 import { fillRecommendedAspects } from "@/lib/ebay/aspectFill";
 import { validateAspects } from "@/lib/ebay/draft";
 import { EBAY_COOKIE, accessTokenFromCookie } from "@/lib/ebay/session";
@@ -79,6 +83,7 @@ export async function prepareListing(body: any, sealedConnection?: string) {
             );
           enforceCardinality(aspects, meta);
           sanitizeNumericAspects(aspects, meta);
+          snapStandardSizes(aspects, meta);
           const conditions = [...ids]
             .filter((id) => CONDITION_ID_ENUM[id])
             .map((id) => ({

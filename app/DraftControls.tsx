@@ -7,6 +7,7 @@ import { requestText } from "@/lib/text-dialog";
 import { loadAccountOptions } from "@/lib/account-options-client";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
+import { isStandardSizeAspect } from "@/lib/ebay/aspects";
 interface Props {
   group: ItemGroup;
   photoById: (id: string) => Photo | undefined;
@@ -259,7 +260,8 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
                 </span>
               ) : null}
               {meta?.required ? " *" : ""}
-              {meta?.mode === "SELECTION_ONLY" &&
+              {meta &&
+              (meta.mode === "SELECTION_ONLY" || isStandardSizeAspect(meta)) &&
               meta.cardinality !== "MULTI" ? (
                 <select
                   aria-label={name}
