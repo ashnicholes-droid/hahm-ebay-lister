@@ -59,7 +59,7 @@ export const PROFILE_PROMPT_ADDONS: Record<string, string> = {
   clothing: `\n\nPROFILE: CLOTHING / SHOES / ACCESSORIES
 Prioritize garment and fashion resale details. Read every tag and measurement photo.
 For clothing: capture exact brand, printed size, size type, department, fabric/material percentages, care/country tag, style, type, pattern, neckline, sleeve length, fit, closure, rise, inseam, waist, dress/skirt length, lining, hood, and condition flaws.
-For shoes: capture US/UK/EU size, width, upper/sole material, style, toe shape, heel height, closure, model, and condition of soles/insoles.
+For shoes: capture US/UK/EU size, width, upper/sole material, style, toe shape, heel height, closure, model, and condition of soles/insoles. Write size with every printed size system and the department, e.g. "US M 10 D / UK 9 / EU 44" or "US Men 4.5 / Women 6 / EU 36"; if only EU or UK is printed, write that (e.g. "EU 38") and do not guess a US size.
 For bags/accessories: capture style/type, exterior/interior material, closure, strap type/drop, hardware color, lining, pockets, dimensions, and flaws.
 Do not fill hard-good fields unless they are actually relevant.`,
   hard_goods: `\n\nPROFILE: HARD GOODS

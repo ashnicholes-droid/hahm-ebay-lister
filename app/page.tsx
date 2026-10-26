@@ -26,6 +26,7 @@ import {
   getSortModel,
 } from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
+import { syncShoeSizeSpecifics } from "@/lib/ebay/shoe-size";
 import { buildSku } from "@/lib/sku";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
 import { EbayConnect } from "./EbayConnect";
@@ -693,10 +694,19 @@ export default function Home() {
                 ...patch,
                 ...(patch.size !== undefined
                   ? {
-                      item_specifics: {
-                        ...g.listing.item_specifics,
-                        Size: patch.size,
-                      },
+                      // Shoe categories: US Shoe Size / Shoe Width follow the
+                      // edited size (EU/UK converted to US).
+                      item_specifics: syncShoeSizeSpecifics(
+                        {
+                          ...g.listing,
+                          size: patch.size,
+                          item_specifics: {
+                            ...g.listing.item_specifics,
+                            Size: patch.size,
+                          },
+                        },
+                        g.preparation?.aspects ?? [],
+                      ),
                       evidence: {},
                     }
                   : {}),
@@ -948,7 +958,7 @@ export default function Home() {
       </main>
     );
   return (
-    <main className="wrap">
+    <main className={step === "listings" ? "wrap wrap-wide" : "wrap"}>
       <div className="save-bar">
         <p role="status">{saveStatus}</p>
         {hasWork && (
