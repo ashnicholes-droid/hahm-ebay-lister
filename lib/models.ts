@@ -1,6 +1,11 @@
 // Exact model IDs prevent browser requests from selecting arbitrary billed models.
 // Deployment owners can override this list with ANTHROPIC_ALLOWED_MODELS.
 const DEFAULT_MODELS = [
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  "claude-opus-5",
+  "claude-sonnet-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
