@@ -25,7 +25,7 @@ import {
 import { toImageBlock, type ImageBlock } from "@/lib/images";
 import { optimizeTitle } from "@/lib/titleOptimizer";
 import { applyPriceMarkup, priceMarkupPercent } from "@/lib/pricing";
-import { resolveModel } from "@/lib/models";
+import { resolveEffort, resolveModel, thinksByDefault } from "@/lib/models";
 import type { AnalyzeRequestBody, ListingResult } from "@/lib/types";
 
 // Analysis takes 20-40s for a multi-photo item on a good day — and far longer
@@ -126,6 +126,10 @@ async function handle(input: unknown) {
   // premium model to the owner's key).
   const analysisModel = resolveModel(body.analysisModel, ANALYSIS_MODEL);
   const routerModel = resolveModel(body.routerModel, ROUTER_MODEL);
+  // Only 5.x models take the user's effort choice; 4.x requests stay unchanged.
+  const analysisEffort = thinksByDefault(analysisModel)
+    ? { effort: resolveEffort(body.analysisEffort) }
+    : {};
 
   if (!Array.isArray(body.images) || body.images.length === 0) {
     return NextResponse.json(
@@ -183,6 +187,7 @@ async function handle(input: unknown) {
             max_tokens: 5000,
             output_config: {
               format: { type: "json_schema", schema: AI_LISTING_SCHEMA },
+              ...analysisEffort,
             },
             // System prompt is large and identical across requests for the same
             // profile — cache it to cut cost and latency.

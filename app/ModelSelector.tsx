@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import {
+  getAnalysisEffort,
   getAnalysisModel,
   getSortModel,
+  saveAnalysisEffort,
   saveAnalysisModel,
   saveSortModel,
 } from "@/lib/model-preferences";
+import { resolveEffort, thinksByDefault, type ListingEffort } from "@/lib/models";
 import type { ModelOption } from "@/app/api/models/route";
 
 interface ModelsPayload {
@@ -20,8 +23,10 @@ export function ModelSelector() {
   const [loadError, setLoadError] = useState(false);
   const [sortModel, setSortModel] = useState("");
   const [analysisModel, setAnalysisModel] = useState("");
+  const [analysisEffort, setAnalysisEffort] = useState<ListingEffort>("low");
 
   useEffect(() => {
+    setAnalysisEffort(resolveEffort(getAnalysisEffort()));
     const savedSort = getSortModel();
     const savedAnalysis = getAnalysisModel();
 
@@ -65,7 +70,13 @@ export function ModelSelector() {
     saveAnalysisModel(id);
   };
 
-  const sortDesc = models?.sortModels.find((m) => m.id === sortModel)?.description;
+  const handleEffortChange = (effort: string) => {
+    const next = resolveEffort(effort);
+    setAnalysisEffort(next);
+    saveAnalysisEffort(next);
+  };
+
+  const sortDesc =models?.sortModels.find((m) => m.id === sortModel)?.description;
   const analysisDesc = models?.analysisModels.find((m) => m.id === analysisModel)?.description;
 
   return (
@@ -136,6 +147,26 @@ export function ModelSelector() {
             )}
             {analysisDesc && <span className="field-hint model-hint">{analysisDesc}</span>}
           </div>
+
+          {thinksByDefault(analysisModel) && (
+            <div className="field">
+              <label htmlFor="analysis-effort">Listing Thinking Effort</label>
+              <select
+                id="analysis-effort"
+                value={analysisEffort}
+                onChange={(e) => handleEffortChange(e.target.value)}
+                className="model-select"
+              >
+                <option value="low">Low (default)</option>
+                <option value="medium">Medium</option>
+              </select>
+              <span className="field-hint model-hint">
+                {analysisEffort === "medium"
+                  ? "Thinks more carefully before writing. Slower and uses more tokens."
+                  : "Quick reasoning before writing. Fastest and cheapest."}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </>

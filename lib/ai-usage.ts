@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type Anthropic from "@anthropic-ai/sdk";
+import { DEFAULT_EFFORT, thinksByDefault } from "./models";
 export interface AiUsage {
   stage: string;
   model: string;
@@ -21,22 +22,22 @@ export async function collectUsage<T>(
 export function currentUsage(): AiUsage[] {
   return scope.getStore() ?? [];
 }
-// Claude 5.x models think by default (Opus 5.5 can't turn it off), and thinking
-// tokens count against max_tokens. The call sites size max_tokens for the answer
-// alone, so give these models low effort (keeps latency near the 4.x models) plus
-// extra room for thinking, instead of tripping the truncation error below.
-const THINKS_BY_DEFAULT = /^claude-(opus|sonnet|haiku)-5(-|$)/;
-const THINKING_HEADROOM = 8000;
+// Thinking tokens count against max_tokens, and the call sites size max_tokens
+// for the answer alone. For 5.x models, default effort to low (keeps latency
+// near the 4.x models) unless the caller chose one, and add room for thinking
+// so it doesn't trip the truncation error below. Merges into any existing
+// output_config so a JSON schema `format` is kept.
+const THINKING_HEADROOM: Record<string, number> = { low: 8000, medium: 12000 };
 export function withThinkingHeadroom(
   params: Anthropic.MessageCreateParamsNonStreaming,
 ): Anthropic.MessageCreateParamsNonStreaming {
-  if (!THINKS_BY_DEFAULT.test(params.model)) return params;
-  // output_config isn't typed in SDK 0.69; the SDK passes it through as-is.
+  if (!thinksByDefault(params.model)) return params;
+  const effort = params.output_config?.effort ?? DEFAULT_EFFORT;
   return {
     ...params,
-    max_tokens: params.max_tokens + THINKING_HEADROOM,
-    output_config: { effort: "low" },
-  } as Anthropic.MessageCreateParamsNonStreaming;
+    max_tokens: params.max_tokens + (THINKING_HEADROOM[effort] ?? THINKING_HEADROOM.medium),
+    output_config: { ...params.output_config, effort },
+  };
 }
 export async function measuredMessage(
   stage: string,

@@ -20,7 +20,11 @@ import {
 import { processFiles } from "@/lib/intake";
 import { draftIssues } from "@/lib/client-review";
 import { apiPost } from "@/lib/api-client";
-import { getAnalysisModel, getSortModel } from "@/lib/model-preferences";
+import {
+  getAnalysisEffort,
+  getAnalysisModel,
+  getSortModel,
+} from "@/lib/model-preferences";
 import { resizeImage } from "@/lib/resize";
 import { buildSku } from "@/lib/sku";
 import { chunkImagesForUpload } from "@/lib/uploadBatches";
@@ -537,6 +541,7 @@ export default function Home() {
           images: imgs,
           analysisModel: getAnalysisModel() ?? undefined,
           routerModel: getSortModel() ?? undefined,
+          analysisEffort: getAnalysisEffort() ?? undefined,
         });
         const data = (await readJson(res)) as AnalyzeResponse;
         if (!data.ok || !data.listing) {

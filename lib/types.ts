@@ -37,6 +37,8 @@ export interface AnalyzeRequestBody {
   // Optional model overrides; server falls back to its defaults when omitted.
   analysisModel?: string;
   routerModel?: string;
+  // Thinking effort for the listing step on Claude 5.x models ("low" | "medium").
+  analysisEffort?: string;
 }
 
 export interface AnalyzeResponse {
