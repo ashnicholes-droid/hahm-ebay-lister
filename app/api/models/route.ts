@@ -9,6 +9,11 @@ const ANALYSIS_EXCLUDED = /^claude-haiku/;
 
 const DESCRIPTIONS: Record<string, string> = {
   "claude-fable-5":    "Most capable model — best for rare or complex items. Premium pricing.",
+  "claude-opus-5-5":   "Newest Opus — top listing quality at a lower price than Opus 4.8.",
+  "claude-sonnet-5-5": "Newest Sonnet — fast, strong, and affordable for sorting and listings.",
+  "claude-haiku-5-5":  "Newest Haiku — very fast and very cheap. Best for photo sorting only.",
+  "claude-opus-5":     "Previous-generation Opus 5. Excellent quality.",
+  "claude-sonnet-5":   "Previous-generation Sonnet 5. Fast and capable.",
   "claude-opus-4-8":   "Excellent quality. Recommended for detailed listing generation.",
   "claude-opus-4-7":   "High quality with strong reasoning. Good all-around choice.",
   "claude-opus-4-6":   "Solid quality and great value.",
@@ -34,11 +39,16 @@ interface ModelsPayload {
 // Hardcoded fallback when the Anthropic models API call fails.
 const FALLBACK: ModelsPayload = {
   sortModels: [
+    { id: "claude-opus-5-5",   displayName: "Claude Opus 5.5",   description: DESCRIPTIONS["claude-opus-5-5"],   isDefault: false },
+    { id: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", description: DESCRIPTIONS["claude-sonnet-5-5"], isDefault: false },
+    { id: "claude-haiku-5-5",  displayName: "Claude Haiku 5.5",  description: DESCRIPTIONS["claude-haiku-5-5"],  isDefault: false },
     { id: "claude-opus-4-8",   displayName: "Claude Opus 4.8",   description: DESCRIPTIONS["claude-opus-4-8"],   isDefault: false },
     { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", description: DESCRIPTIONS["claude-sonnet-4-6"], isDefault: true  },
     { id: "claude-haiku-4-5",  displayName: "Claude Haiku 4.5",  description: DESCRIPTIONS["claude-haiku-4-5"],  isDefault: false },
   ],
   analysisModels: [
+    { id: "claude-opus-5-5",   displayName: "Claude Opus 5.5",   description: DESCRIPTIONS["claude-opus-5-5"],   isDefault: false },
+    { id: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", description: DESCRIPTIONS["claude-sonnet-5-5"], isDefault: false },
     { id: "claude-opus-4-8",   displayName: "Claude Opus 4.8",   description: DESCRIPTIONS["claude-opus-4-8"],   isDefault: true  },
     { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", description: DESCRIPTIONS["claude-sonnet-4-6"], isDefault: false },
   ],

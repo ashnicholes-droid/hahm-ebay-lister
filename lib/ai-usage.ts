@@ -21,6 +21,23 @@ export async function collectUsage<T>(
 export function currentUsage(): AiUsage[] {
   return scope.getStore() ?? [];
 }
+// Claude 5.x models think by default (Opus 5.5 can't turn it off), and thinking
+// tokens count against max_tokens. The call sites size max_tokens for the answer
+// alone, so give these models low effort (keeps latency near the 4.x models) plus
+// extra room for thinking, instead of tripping the truncation error below.
+const THINKS_BY_DEFAULT = /^claude-(opus|sonnet|haiku)-5(-|$)/;
+const THINKING_HEADROOM = 8000;
+export function withThinkingHeadroom(
+  params: Anthropic.MessageCreateParamsNonStreaming,
+): Anthropic.MessageCreateParamsNonStreaming {
+  if (!THINKS_BY_DEFAULT.test(params.model)) return params;
+  // output_config isn't typed in SDK 0.69; the SDK passes it through as-is.
+  return {
+    ...params,
+    max_tokens: params.max_tokens + THINKING_HEADROOM,
+    output_config: { effort: "low" },
+  } as Anthropic.MessageCreateParamsNonStreaming;
+}
 export async function measuredMessage(
   stage: string,
   client: Anthropic,
@@ -39,7 +56,7 @@ export async function measuredMessage(
     ok: false,
   };
   try {
-    const r = await client.messages.create(params, options);
+    const r = await client.messages.create(withThinkingHeadroom(params), options);
     const u = r.usage ?? { input_tokens: 0, output_tokens: 0 };
     row = {
       ...row,
@@ -52,6 +69,11 @@ export async function measuredMessage(
     };
     // Estimates use standard global list rates; raw counts are authoritative.
     const rates: Record<string, [number, number]> = {
+      "claude-opus-5-5": [4, 20],
+      "claude-sonnet-5-5": [2, 10],
+      "claude-haiku-5-5": [0.1, 0.5],
+      "claude-opus-5": [5, 25],
+      "claude-sonnet-5": [2, 10],
       "claude-sonnet-4-6": [3, 15],
       "claude-opus-4-8": [5, 25],
       "claude-opus-4-7": [5, 25],
