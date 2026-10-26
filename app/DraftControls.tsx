@@ -254,7 +254,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
           Editable item specifics — AI estimates are marked; check them before posting
         </summary>
         {(missingRequired.length > 0 || missingRecommended.length > 0) && (
-          <p className="specifics-missing-summary" role="status">
+          <p className="specifics-missing-summary">
             {missingRequired.length > 0 && (
               <span className="missing-required">
                 Required, still empty: {missingRequired.join(", ")}.
