@@ -359,6 +359,15 @@ export function ListingsView(props: ListingsViewProps) {
       {table ? (
         <div className="batch-table-scroll">
           <table className="batch-table">
+            <colgroup>
+              <col className="col-photo" />
+              <col className="col-title" />
+              <col className="col-size" />
+              <col className="col-condition" />
+              <col className="col-price" />
+              <col className="col-shipping" />
+              <col className="col-status" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Select / photo</th>
@@ -418,6 +427,7 @@ export function ListingsView(props: ListingsViewProps) {
                       <td>
                         <input
                           aria-label={`Size ${g.sku}`}
+                          title={l?.size ?? ""}
                           value={l?.size ?? ""}
                           disabled={locked}
                           onChange={(e) =>
@@ -425,6 +435,14 @@ export function ListingsView(props: ListingsViewProps) {
                           }
                         />
                         <small>{l?.item_specifics?.["Size Type"]}</small>
+                        {l?.item_specifics?.["US Shoe Size"] && (
+                          <small>
+                            eBay: US {l.item_specifics["US Shoe Size"]}
+                            {l.item_specifics["Shoe Width"]
+                              ? ` · ${l.item_specifics["Shoe Width"]}`
+                              : ""}
+                          </small>
+                        )}
                       </td>
                       <td>
                         <select

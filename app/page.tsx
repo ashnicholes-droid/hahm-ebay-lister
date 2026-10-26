@@ -955,7 +955,7 @@ export default function Home() {
       </main>
     );
   return (
-    <main className="wrap">
+    <main className={step === "listings" ? "wrap wrap-wide" : "wrap"}>
       <div className="save-bar">
         <p role="status">{saveStatus}</p>
         {hasWork && (

@@ -17,6 +17,7 @@
   --color-border: oklch(88% 0.012 80);
   --color-danger: oklch(55% 0.18 25);
   --color-danger-soft: oklch(94% 0.04 25);
+  --color-warn: oklch(48% 0.12 65);
 
   --radius-sm: 8px;
   --radius: 14px;
@@ -68,6 +69,11 @@ body {
   max-width: 880px;
   margin: 0 auto;
   padding: clamp(1.25rem, 1rem + 2vw, 3rem) clamp(1rem, 0.5rem + 2vw, 2rem) 5rem;
+}
+
+/* The listings table needs room for every column at once. */
+.wrap.wrap-wide {
+  max-width: 1280px;
 }
 
 /* ── Header ─────────────────────────────────────────────── */
@@ -875,6 +881,50 @@ textarea {
   font-style: italic;
 }
 
+/* Empty item specifics: red for required (blocks posting), amber for
+   recommended (hurts search). */
+.specifics-missing-summary {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-danger-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+.specifics-missing-summary .missing-required {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+.specifics-missing-summary .missing-recommended {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.specific-missing-required .specific-name,
+.specific-missing-required .missing-tag {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+.specific-missing-recommended .specific-name,
+.specific-missing-recommended .missing-tag {
+  color: var(--color-warn);
+  font-weight: 700;
+}
+.missing-tag {
+  font-size: 0.78rem;
+}
+.specific-head {
+  display: block;
+}
+.specific-missing-required :is(input, select) {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+.specific-missing-recommended :is(input, select) {
+  border-color: var(--color-warn);
+}
+
 .save-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1223,15 +1273,19 @@ textarea {
 .batch-table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 1060px;
+  /* Fixed layout + the colgroup widths keep every column, photo through
+     status, on screen; below this width (phones) the wrapper scrolls. */
+  table-layout: fixed;
+  min-width: 760px;
   font-size: 0.9rem;
 }
 .batch-table th,
 .batch-table td {
-  padding: 0.65rem;
+  padding: 0.6rem 0.45rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid #cbd8d0;
+  overflow-wrap: break-word;
 }
 .batch-table th {
   background: #eef5f1;
@@ -1240,19 +1294,24 @@ textarea {
   display: block;
   margin-top: 0.35rem;
 }
-.batch-table td:first-child {
-  width: 90px;
+.batch-table .col-photo {
+  width: 76px;
 }
-.batch-table td:nth-child(2) {
-  min-width: 250px;
+.batch-table .col-title {
+  width: 25%;
 }
-.batch-table td:nth-child(3),
-.batch-table td:nth-child(5) {
-  width: 90px;
+.batch-table .col-size {
+  width: 11%;
 }
-.batch-table td:nth-child(4),
-.batch-table td:nth-child(6) {
-  max-width: 190px;
+.batch-table .col-price {
+  width: 9%;
+}
+.batch-table .col-condition,
+.batch-table .col-shipping {
+  width: 15%;
+}
+.batch-table .col-status {
+  width: 16%;
 }
 .batch-table input:not([type="checkbox"]),
 .batch-table select,
