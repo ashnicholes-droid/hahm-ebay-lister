@@ -852,7 +852,7 @@ async function uploadPhoto(
   base64: string,
   mediaType: string,
   name: string,
-): Promise<string | null> {
+): Promise<PhotoUpload> {
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <PictureName>${name.slice(0, 50)}</PictureName>
@@ -885,7 +885,18 @@ async function uploadPhoto(
   });
   const text = await resp.text();
   const m = text.match(/<FullURL>([^<]+)<\/FullURL>/);
-  return m ? m[1] : null;
+  if (m) return { url: m[1] };
+  // Keep eBay's reason so the seller (and the logs) can see why it failed.
+  const tag = (t: string) => text.match(new RegExp(`<${t}>([^<]+)</${t}>`))?.[1];
+  const message = tag("LongMessage") ?? tag("ShortMessage");
+  const code = tag("ErrorCode");
+  if (message) return { error: `eBay error${code ? ` ${code}` : ""}: ${message}` };
+  return { error: `eBay returned HTTP ${resp.status}.` };
+}
+
+interface PhotoUpload {
+  url?: string;
+  error?: string;
 }
 
 // ── Policies & location ──────────────────────────────────────────────────────
@@ -1052,25 +1063,29 @@ export async function uploadPhotos(
   // Photo numbering offset, so batched uploads name photos K72-O-1 … K72-O-12
   // across batches instead of restarting at 1 in each.
   nameOffset = 0,
-): Promise<string[]> {
-  const results: (string | null)[] = new Array(images.length).fill(null);
+): Promise<{ urls: string[]; errors: string[] }> {
+  const results: PhotoUpload[] = new Array(images.length).fill({});
   let cursor = 0;
   const workers = Array.from(
     { length: Math.min(4, images.length) },
     async () => {
       while (cursor < images.length) {
         const i = cursor++;
-        results[i] = await uploadPhoto(
-          accessToken,
-          images[i].data,
-          images[i].mediaType,
-          `${sku}-${nameOffset + i + 1}.jpg`,
-        );
+        const name = `${sku}-${nameOffset + i + 1}.jpg`;
+        // One retry: eBay Picture Services has occasional transient failures.
+        let r = await uploadPhoto(accessToken, images[i].data, images[i].mediaType, name);
+        if (!r.url)
+          r = await uploadPhoto(accessToken, images[i].data, images[i].mediaType, name);
+        if (!r.url) console.error(`[ebay/upload-photos] ${name} failed: ${r.error}`);
+        results[i] = r;
       }
     },
   );
   await Promise.all(workers);
-  return results.filter((u): u is string => Boolean(u));
+  return {
+    urls: results.flatMap((r) => (r.url ? [r.url] : [])),
+    errors: [...new Set(results.flatMap((r) => (r.url ? [] : [r.error ?? "Unknown error."])))],
+  };
 }
 
 export async function publishListing(
