@@ -12,7 +12,7 @@ import {
   EBAY_CURRENCY,
   EBAY_INV_BASE,
   EBAY_MARKETPLACE_ID,
-  EBAY_TRADING,
+  EBAY_MEDIA_BASE,
 } from "./config";
 import {
   suggestLeafCategories,
@@ -845,7 +845,10 @@ function updateOfferBody(
   );
 }
 
-// ── Photo upload to eBay Picture Services (Trading API, XML) ──────────────────
+// ── Photo upload to eBay Picture Services (Media API) ─────────────────────────
+// eBay decommissioned the Trading API's UploadSiteHostedPictures on
+// 2026-09-30 (it now 404s); createImageFromFile is the replacement. It needs
+// the sell.inventory scope, which the app's OAuth consent already includes.
 
 async function uploadPhoto(
   accessToken: string,
@@ -853,45 +856,44 @@ async function uploadPhoto(
   mediaType: string,
   name: string,
 ): Promise<PhotoUpload> {
-  const xml = `<?xml version="1.0" encoding="utf-8"?>
-<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <PictureName>${name.slice(0, 50)}</PictureName>
-  <PictureUploadPolicy>ClearAndNew</PictureUploadPolicy>
-</UploadSiteHostedPicturesRequest>`;
-
   const data = base64.includes(",") ? base64.split(",")[1] : base64;
   const bytes = Buffer.from(data, "base64");
   const form = new FormData();
-  form.append(
-    "XML Payload",
-    new Blob([xml], { type: "text/xml;charset=utf-8" }),
-    "payload.xml",
-  );
   form.append(
     "image",
     new Blob([new Uint8Array(bytes)], { type: mediaType }),
     name,
   );
-
-  const resp = await boundedFetch(EBAY_TRADING, {
+  // fetch sets the multipart Content-Type (with boundary) from the FormData.
+  const auth = { Authorization: `Bearer ${accessToken}` };
+  const resp = await boundedFetch(`${EBAY_MEDIA_BASE}/image/create_image_from_file`, {
     method: "POST",
-    headers: {
-      "X-EBAY-API-SITEID": "0",
-      "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-      "X-EBAY-API-CALL-NAME": "UploadSiteHostedPictures",
-      "X-EBAY-API-IAF-TOKEN": accessToken,
-    },
+    headers: auth,
     body: form,
   });
-  const text = await resp.text();
-  const m = text.match(/<FullURL>([^<]+)<\/FullURL>/);
-  if (m) return { url: m[1] };
-  // Keep eBay's reason so the seller (and the logs) can see why it failed.
-  const tag = (t: string) => text.match(new RegExp(`<${t}>([^<]+)</${t}>`))?.[1];
-  const message = tag("LongMessage") ?? tag("ShortMessage");
-  const code = tag("ErrorCode");
-  if (message) return { error: `eBay error${code ? ` ${code}` : ""}: ${message}` };
-  return { error: `eBay returned HTTP ${resp.status}.` };
+  if (resp.status !== 201) return { error: await mediaError(resp) };
+  const created = (await resp.json().catch(() => ({}))) as { imageUrl?: string };
+  if (created.imageUrl) return { url: created.imageUrl };
+  // The body can omit the URL; the Location header points at getImage.
+  const location = resp.headers.get("Location");
+  if (!location) return { error: "eBay did not return the uploaded photo's location." };
+  const image = await boundedFetch(location, { headers: auth });
+  if (!image.ok) return { error: await mediaError(image) };
+  const details = (await image.json().catch(() => ({}))) as { imageUrl?: string };
+  return details.imageUrl
+    ? { url: details.imageUrl }
+    : { error: "eBay did not return the uploaded photo's URL." };
+}
+
+// Keep eBay's reason so the seller (and the logs) can see why it failed.
+async function mediaError(resp: Response): Promise<string> {
+  const body = (await resp.json().catch(() => null)) as {
+    errors?: { errorId?: number; message?: string; longMessage?: string }[];
+  } | null;
+  const e = body?.errors?.[0];
+  const message = e?.longMessage || e?.message;
+  if (message) return `eBay error${e?.errorId ? ` ${e.errorId}` : ""}: ${message}`;
+  return `eBay returned HTTP ${resp.status}.`;
 }
 
 interface PhotoUpload {
