@@ -85,9 +85,10 @@ async function runStage(jobId: string, stage: "analysis" | "prepared") {
   const result = await response.json();
   if (!response.ok || !result.ok)
     throw new Error(
-      stage === "analysis"
-        ? "Analysis failed. Retry this item."
-        : "Category preparation failed. Reconnect eBay if needed, then retry.",
+      result?.error ||
+        (stage === "analysis"
+          ? "Analysis failed. Retry this item."
+          : "Category preparation failed. Reconnect eBay if needed, then retry."),
     );
   // Persist before completing the Inngest step; a redelivery reuses this output.
   checked(
@@ -106,16 +107,16 @@ export const generateDraft = inngest.createFunction(
     triggers: { event: "lister/draft.requested" },
     retries: 2,
     concurrency: [{ limit: 3 }, { limit: 1, key: "event.data.jobId" }],
-    onFailure: async ({ event }) => {
+    onFailure: async ({ event, error }) => {
       const id = event.data.event.data.jobId;
+      const reason = error?.message ? ` (${error.message.slice(0, 160)})` : "";
       if (typeof id === "string")
         checked(
           await db()
             .from("lister_jobs")
             .update({
               status: "failed",
-              error:
-                "Background draft failed. Retry to resume completed stages.",
+              error: `Background draft failed${reason}. Retry to resume completed stages.`,
             })
             .eq("id", id)
             .neq("status", "succeeded"),

@@ -3,6 +3,7 @@ import { acceptedPhotoFact, isEstimate } from "@/lib/photo-facts";
 import { AI_LISTING_SCHEMA } from "@/lib/ai-schema";
 import {
   parseListing,
+  boundModelListing,
   imagesSchema,
   validationMessage,
 } from "@/lib/validation";
@@ -221,12 +222,14 @@ async function handle(input: unknown) {
         const supported = specifics.filter((s) =>
           acceptedPhotoFact(s, imageBlocks.length),
         );
-        const listing = parseListing({
-          ...raw,
-          item_specifics: Object.fromEntries(
-            supported.map((s: any) => [s.name, s.value]),
-          ),
-        });
+        const listing = parseListing(
+          boundModelListing({
+            ...raw,
+            item_specifics: Object.fromEntries(
+              supported.map((s: any) => [s.name, s.value]),
+            ),
+          }),
+        );
         listing.description = cleanGeneratedDescription(listing.description);
         listing.item_profile = profile;
         listing.evidence = Object.fromEntries(
@@ -263,10 +266,11 @@ async function handle(input: unknown) {
         { status: e.status },
       );
     }
+    // Name the cause so a repeat failure can be diagnosed from the card.
     return safeErrorResponse(
       "analyze",
       e,
-      "Something went wrong analyzing photos — please try again.",
+      `Something went wrong analyzing photos (${validationMessage(e).slice(0, 140)}) — please try again.`,
     );
   }
 }

@@ -72,3 +72,18 @@ it("always accepts a best guess for Upper Material, whatever the confidence", ()
   expect(acceptedPhotoFact(fact({ confidence: undefined }), 2)).toBe(false);
   expect(acceptedPhotoFact(fact({ name: "Lining Material", confidence: 20 }), 2)).toBe(false);
 });
+
+it("accepts a label size the model wrote with department words added", () => {
+  const size = (value: string, quote: string) =>
+    acceptedPhotoFact(fact({ name: "US Shoe Size", value, basis: "label", quote }), 2);
+  expect(size("US Men's 10 D", "US M 10 D UK 9 EU 44")).toBe(true);
+  expect(size("Men's 10", "US 10 UK 9 EU 44")).toBe(true);
+  // The numbers must still line up with the same size system.
+  expect(size("US Men's 10", "US 9 UK 10")).toBe(false);
+  // A unisex tag can't confirm either department's size.
+  expect(size("US Women's 9", "US M 9 W 10.5")).toBe(false);
+  // Department words alone never pass as label evidence.
+  expect(
+    acceptedPhotoFact(fact({ name: "Department", value: "Men", basis: "label", quote: "M" }), 2),
+  ).toBe(false);
+});

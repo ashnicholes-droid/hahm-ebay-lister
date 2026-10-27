@@ -101,6 +101,26 @@ export type ShippingSelection = z.infer<typeof shippingSchema>;
 export function parseListing(raw: unknown): ListingResult {
   return listingSchema.parse(raw);
 }
+// The structured-output schema can't cap array lengths, so one extra search
+// term from the model would otherwise fail the whole listing.
+const MODEL_LIST_CAPS: Record<string, number> = {
+  color: 10,
+  search_terms: 4,
+  seo_keywords: 10,
+  key_features: 10,
+};
+export function boundModelListing(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [
+      k,
+      k in MODEL_LIST_CAPS && Array.isArray(v)
+        ? v.slice(0, MODEL_LIST_CAPS[k])
+        : v,
+    ]),
+  );
+}
 export function validationMessage(error: unknown): string {
   if (error instanceof z.ZodError)
     return error.issues
