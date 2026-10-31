@@ -70,7 +70,11 @@ export async function prepareListing(body: any, sealedConnection?: string) {
             throw new Error(
               `This category does not accept Department ${expected}. Choose the correct category.`,
             );
-          applyListingDefaults(listing, meta, ids);
+          applyListingDefaults(
+            listing,
+            meta,
+            [...ids].map((id) => CONDITION_ID_ENUM[id]).filter(Boolean),
+          );
           const aspects = buildAspects(listing, listing.category || "");
           reconcileAspects(aspects, meta, listing, listing.category || "");
           if (body.enrich === true)

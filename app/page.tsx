@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { withConditionDefaults } from "@/lib/listing-defaults";
 import { runBatch, type QueueProgress } from "@/lib/batch-queue";
 import {
   loadDraft,
@@ -160,7 +161,7 @@ export default function Home() {
         const d = await loadDraft(true);
         if (d && active) {
           setPhotos(d.photos);
-          setGroups(d.groups);
+          setGroups(withConditionDefaults(d.groups));
           setOrphanIds(d.orphanIds);
           setBinPrefix(d.binPrefix);
           setSkuStart(d.skuStart);

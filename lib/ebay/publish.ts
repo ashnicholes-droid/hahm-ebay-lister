@@ -125,6 +125,7 @@ const CONDITION_ALIASES: Record<string, string> = {
   NEW_WITHOUT_TAGS: "NEW_NO_TAGS",
   NEW_WITHOUT_BOX: "NEW_NO_TAGS",
   NEW_NO_TAGS: "NEW_NO_TAGS",
+  NEW_WITH_DEFECTS: "NEW_WITH_DEFECTS",
   NEW_OTHER: "NEW_NO_TAGS",
   OPEN_BOX: "NEW_NO_TAGS",
   LIKE_NEW: "EXCELLENT",
@@ -389,6 +390,7 @@ function conditionIdsForGrade(
   if (grade === "FOR_PARTS_OR_NOT_WORKING") id = 7000;
   else if (grade === "NEW_WITH_TAGS") id = 1000;
   else if (grade === "NEW_NO_TAGS") id = 1500;
+  else if (grade === "NEW_WITH_DEFECTS") id = 1750;
   else if (isApparelConditionPolicy(acceptedIds))
     id = (
       { EXCELLENT: 2990, VERY_GOOD: 3000, GOOD: 3000, FAIR: 3010 } as Record<

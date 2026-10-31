@@ -225,11 +225,14 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
             onChange={(e) =>
               edit({
                 ebay_condition: e.target.value,
-                condition: e.target.value.startsWith("NEW")
-                  ? "NEW_WITH_TAGS"
-                  : e.target.value === "FOR_PARTS_OR_NOT_WORKING"
-                    ? "FOR_PARTS_OR_NOT_WORKING"
-                    : "GOOD",
+                condition:
+                  e.target.value === "NEW_WITH_DEFECTS"
+                    ? "NEW_WITH_DEFECTS"
+                    : e.target.value.startsWith("NEW")
+                      ? "NEW_WITH_TAGS"
+                      : e.target.value === "FOR_PARTS_OR_NOT_WORKING"
+                        ? "FOR_PARTS_OR_NOT_WORKING"
+                        : "GOOD",
               })
             }
           >
