@@ -192,13 +192,14 @@ it("keeps collaboration and graphic identity without duplicate brand phrases", a
     }),
   ).toEqual(["100% Cotton", "burger"]);
 });
-it("photo-only output cannot claim a new sale condition or tape measurements", async () => {
+it("photo analysis grades tagged, sealed and damaged-box items but no tape measurements", async () => {
   const { AI_LISTING_SCHEMA } = await import("@/lib/ai-schema");
-  expect(
-    AI_LISTING_SCHEMA.properties.condition.enum.some((c) =>
-      c.startsWith("NEW"),
-    ),
-  ).toBe(false);
+  expect(AI_LISTING_SCHEMA.properties.condition.enum).toEqual([
+    "NEW_WITH_TAGS",
+    "NEW_WITH_DEFECTS",
+    "EXCELLENT",
+    "FOR_PARTS_OR_NOT_WORKING",
+  ]);
   expect(AI_LISTING_SCHEMA.properties.measurements.enum).toEqual([""]);
 });
 

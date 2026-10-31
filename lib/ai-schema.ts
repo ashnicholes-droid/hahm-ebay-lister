@@ -17,10 +17,9 @@ export const AI_LISTING_SCHEMA = {
     condition: {
       type: "string",
       enum: [
+        "NEW_WITH_TAGS",
+        "NEW_WITH_DEFECTS",
         "EXCELLENT",
-        "VERY_GOOD",
-        "GOOD",
-        "FAIR",
         "FOR_PARTS_OR_NOT_WORKING",
       ],
     },

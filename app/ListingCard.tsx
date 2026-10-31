@@ -12,6 +12,7 @@ const TITLE_LIMIT = 80;
 const CONDITIONS: { value: string; label: string }[] = [
   { value: "NEW_WITH_TAGS", label: "New with tags" },
   { value: "NEW_NO_TAGS", label: "New without tags" },
+  { value: "NEW_WITH_DEFECTS", label: "New with defects" },
   { value: "EXCELLENT", label: "Pre-owned · Excellent" },
   { value: "VERY_GOOD", label: "Pre-owned · Very good" },
   { value: "GOOD", label: "Pre-owned · Good" },

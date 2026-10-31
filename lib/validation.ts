@@ -8,6 +8,7 @@ const scalar = z
 export const CONDITIONS = [
   "NEW_WITH_TAGS",
   "NEW_NO_TAGS",
+  "NEW_WITH_DEFECTS",
   "EXCELLENT",
   "VERY_GOOD",
   "GOOD",
