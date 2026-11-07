@@ -8,11 +8,13 @@ import { loadAccountOptions } from "@/lib/account-options-client";
 import { apiPost } from "@/lib/api-client";
 import { draftIssues } from "@/lib/client-review";
 import { isStandardSizeAspect } from "@/lib/ebay/aspects";
+
 interface Props {
   group: ItemGroup;
   photoById: (id: string) => Photo | undefined;
   onGroupEdit: (id: string, patch: Partial<ItemGroup>) => void;
 }
+
 export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
   const [busy, setBusy] = useState(false);
   const [options, setOptions] = useState<AccountOptions>();
@@ -20,14 +22,71 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
   const latest = useRef(g);
   latest.current = g;
   const defaultsRequested = useRef(false);
+
+  // Hardcoded environment variable defaults for policies and package specs
+  const ENV_SHIPPING_POLICY = process.env.NEXT_PUBLIC_SHIPPING_POLICY_ID ?? "";
+  const ENV_PAYMENT_POLICY = process.env.NEXT_PUBLIC_PAYMENT_POLICY_ID ?? "";
+  const ENV_RETURN_POLICY = process.env.NEXT_PUBLIC_RETURN_POLICY_ID ?? "";
+  const ENV_SHIPPING_ORIGIN = process.env.NEXT_PUBLIC_SHIPPING_ORIGIN ?? "";
+
+  const ENV_WEIGHT_OZ = process.env.NEXT_PUBLIC_DEFAULT_WEIGHT_OZ ? Number(process.env.NEXT_PUBLIC_DEFAULT_WEIGHT_OZ) : undefined;
+  const ENV_LENGTH_IN = process.env.NEXT_PUBLIC_DEFAULT_LENGTH_IN ? Number(process.env.NEXT_PUBLIC_DEFAULT_LENGTH_IN) : undefined;
+  const ENV_WIDTH_IN = process.env.NEXT_PUBLIC_DEFAULT_WIDTH_IN ? Number(process.env.NEXT_PUBLIC_DEFAULT_WIDTH_IN) : undefined;
+  const ENV_HEIGHT_IN = process.env.NEXT_PUBLIC_DEFAULT_HEIGHT_IN ? Number(process.env.NEXT_PUBLIC_DEFAULT_HEIGHT_IN) : undefined;
+
   useEffect(() => {
     if (g.listing && !defaultsRequested.current) {
       defaultsRequested.current = true;
       void loadOptions();
     }
   }, [Boolean(g.listing)]);
+
+  // Automatically apply env variable defaults if not already set on the group shipping state
+  useEffect(() => {
+    if (!g.listing) return;
+    const currentShipping = g.shipping ?? {};
+    const needsUpdate =
+      !currentShipping.fulfillmentPolicyId ||
+      !currentShipping.paymentPolicyId ||
+      !currentShipping.returnPolicyId ||
+      !currentShipping.locationKey ||
+      currentShipping.weightOz === undefined ||
+      currentShipping.lengthIn === undefined ||
+      currentShipping.widthIn === undefined ||
+      currentShipping.heightIn === undefined;
+
+    if (needsUpdate) {
+      onGroupEdit(g.id, {
+        shipping: {
+          ...currentShipping,
+          fulfillmentPolicyId: currentShipping.fulfillmentPolicyId || ENV_SHIPPING_POLICY,
+          paymentPolicyId: currentShipping.paymentPolicyId || ENV_PAYMENT_POLICY,
+          returnPolicyId: currentShipping.returnPolicyId || ENV_RETURN_POLICY,
+          locationKey: currentShipping.locationKey || ENV_SHIPPING_ORIGIN,
+          weightOz: currentShipping.weightOz ?? ENV_WEIGHT_OZ,
+          lengthIn: currentShipping.lengthIn ?? ENV_LENGTH_IN,
+          widthIn: currentShipping.widthIn ?? ENV_WIDTH_IN,
+          heightIn: currentShipping.heightIn ?? ENV_HEIGHT_IN,
+        },
+      });
+    }
+  }, [
+    g.id,
+    g.listing,
+    g.shipping,
+    ENV_SHIPPING_POLICY,
+    ENV_PAYMENT_POLICY,
+    ENV_RETURN_POLICY,
+    ENV_SHIPPING_ORIGIN,
+    ENV_WEIGHT_OZ,
+    ENV_LENGTH_IN,
+    ENV_WIDTH_IN,
+    ENV_HEIGHT_IN,
+  ]);
+
   if (!g.listing) return null;
   const l = g.listing;
+
   const edit = (patch: Partial<typeof l>) => {
     const next = { ...l, ...patch };
     if (patch.item_specifics) {
@@ -54,9 +113,8 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       comps: undefined,
     });
   };
+
   const specifics = l.item_specifics ?? {};
-  // Empty required specifics block publishing; empty recommended ones hurt
-  // search. Both are flagged and listed first so they're easy to find.
   const missingLevel = (name: string): "required" | "recommended" | "" => {
     if ((specifics[name] ?? "").trim()) return "";
     const meta = g.preparation?.aspects.find((a) => a.name === name);
@@ -76,6 +134,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
   const missingRecommended = names.filter(
     (n) => missingLevel(n) === "recommended",
   );
+
   async function prepare() {
     setBusy(true);
     setError("");
@@ -109,6 +168,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       setBusy(false);
     }
   }
+
   async function loadOptions(refresh = false) {
     setBusy(true);
     setError("");
@@ -125,6 +185,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       setBusy(false);
     }
   }
+
   async function research() {
     setBusy(true);
     setError("");
@@ -145,6 +206,7 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       setBusy(false);
     }
   }
+
   return (
     <fieldset
       disabled={busy || g.postStatus === "posted" || g.postStatus === "posting"}
@@ -401,64 +463,12 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
       <details open>
         <summary>Shipping and returns</summary>
         <p className="note">
-          USPS Ground Advantage · flat buyer charge · 2 business days handling.
-          Usually $7.95 for tees, shirts, blouses, lightweight pants, sandals
-          and light shoes without boxes; $9.95 for heavier shoes, sweaters,
-          jackets and jeans. Select the existing eBay policy you want for this
-          item.
+          Policies (shipping, payment, returns, and origin) are configured via environment defaults.
         </p>
-        <p className="note">
-          Your usual $7.95 shipping, Managed Payments, returns-accepted policy
-          and shipping origin are selected automatically when available. Change
-          any selection for this item.
-        </p>
-        {options && options.returns.length === 0 && (
-          <p className="note-error">
-            No returns-accepted policy was found. Check your eBay return policy,
-            then reload policies here.
-          </p>
-        )}
-        <button type="button" onClick={() => void loadOptions(true)}>
-          Load my eBay policies and locations
-        </button>
-        {(
-          [
-            ["fulfillment", "fulfillmentPolicyId", "Shipping policy"],
-            ["payment", "paymentPolicyId", "Payment policy"],
-            ["returns", "returnPolicyId", "Return policy"],
-            ["locations", "locationKey", "Shipping origin"],
-          ] as const
-        ).map(([kind, key, label]) => (
-          <label key={key}>
-            {label}
-            <select
-              aria-label={label}
-              value={g.shipping?.[key] ?? ""}
-              onChange={(e) =>
-                onGroupEdit(g.id, {
-                  shipping: { ...g.shipping, [key]: e.target.value },
-                })
-              }
-            >
-              <option value="">Select…</option>
-              {!options && g.shipping?.[key] && (
-                <option value={g.shipping[key]}>
-                  {g.shipping[key]} (saved)
-                </option>
-              )}
-              {options?.[kind].map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-        <details>
-          <summary>Package weight and dimensions (optional)</summary>
+        <details open>
+          <summary>Package weight and dimensions</summary>
           <p className="note">
-            Leave blank for your flat-fee shipping. No package measurements will
-            be sent unless you enter them.
+            Default measurements are preloaded from environment configuration and can be edited below.
           </p>
           {(
             [
@@ -491,12 +501,6 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
             </label>
           ))}
         </details>
-        {!options?.locations.length && options && (
-          <p>
-            Create an inventory location with your real address in eBay before
-            publishing.
-          </p>
-        )}
       </details>
       <button type="button" onClick={research}>
         Refresh comparable asking prices
