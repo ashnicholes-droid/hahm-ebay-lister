@@ -185,13 +185,14 @@ export function canonicalizeAspectKeys(
 }
 
 // eBay now restricts apparel/footwear size specifics to its own standard
-// values (error 25129: "no longer support custom values for UK Shoe Size")
-// even where the Taxonomy API still reports the aspect as FREE_TEXT. Size
-// aspects that come with a value list are therefore treated as selection-only.
-const STANDARD_SIZE_ASPECT_RE = /\bshoe size\b/i;
+// values (error 25129: "no longer support custom values for Size" / "…for UK
+// Shoe Size") even where the Taxonomy API still reports the aspect as
+// FREE_TEXT. Size aspects that come with a value list are therefore treated as
+// selection-only. Covers the plain apparel "Size" and every "* Shoe Size".
+const STANDARD_SIZE_ASPECT_RE = /^size$|\bshoe size\b/i;
 
 export function isStandardSizeAspect(a: AspectMeta): boolean {
-  return STANDARD_SIZE_ASPECT_RE.test(a.name) && a.values.length > 0;
+  return STANDARD_SIZE_ASPECT_RE.test(a.name.trim()) && a.values.length > 0;
 }
 
 // "UK 7" → "7", "EU 40.0" → "40", "7 1/2" → "7.5", "Women's US 8" → "8".
@@ -205,11 +206,73 @@ function normalizeSizeToken(value: string): string {
     .trim();
 }
 
-export function snapStandardSize(value: string, allowed: string[]): string | null {
+// Spellings of the same letter size; eBay's list uses one of them per category.
+const LETTER_SIZE_ALIASES: string[][] = [
+  ["XXS", "2XS", "XX-Small", "XX Small", "Extra Extra Small"],
+  ["XS", "X-Small", "X Small", "Extra Small"],
+  ["S", "Small", "SM"],
+  ["M", "Medium", "Med", "MD"],
+  ["L", "Large", "LG"],
+  ["XL", "X-Large", "X Large", "Extra Large", "1X", "1XL"],
+  ["XXL", "2XL", "2X", "XX-Large", "XX Large", "Extra Extra Large"],
+  ["XXXL", "3XL", "3X", "XXX-Large"],
+  ["XXXXL", "4XL", "4X"],
+  ["One Size", "OS", "O/S", "OSFA", "OSFM", "One Size Fits All", "One Size Fits Most"],
+];
+
+function matchSizeToken(value: string, allowed: string[]): string | null {
   const exact = matchAllowed(value, allowed);
   if (exact) return exact;
   const norm = normalizeSizeToken(value);
-  return norm ? matchAllowed(norm, allowed) : null;
+  if (!norm) return null;
+  const hit = matchAllowed(norm, allowed);
+  if (hit) return hit;
+  const key = norm.toLowerCase();
+  const group = LETTER_SIZE_ALIASES.find((g) =>
+    g.some((v) => v.toLowerCase() === key),
+  );
+  for (const alias of group ?? []) {
+    const m = allowed.find((v) => v.toLowerCase() === alias.toLowerCase());
+    if (m) return m;
+  }
+  return null;
+}
+
+// `region` is the size system the aspect wants ("US" for plain Size on eBay US,
+// "UK" for UK Shoe Size…). A label printed in several systems
+// ("US M / UK M / EU M", "US 8 / UK 12 / EU 40") is reduced to that system's
+// part; a part with no system prefix is assumed to already be in it. Another
+// system's part is only used for letter sizes — UK 12 is not US 12.
+export function snapStandardSize(
+  value: string,
+  allowed: string[],
+  region = "US",
+): string | null {
+  const whole = matchSizeToken(value, allowed);
+  if (whole) return whole;
+  const parts = value
+    .split(/\s*(?:\/|\||,|;)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const system = (p: string) =>
+    /^(?:(?:wo)?men'?s\s+)?(uk|eu|us)\b/i.exec(p)?.[1].toUpperCase() ?? "";
+  const ordered = [
+    ...parts.filter((p) => system(p) === region),
+    ...parts.filter((p) => !system(p)),
+    ...parts.filter(
+      (p) => system(p) && system(p) !== region && !/\d/.test(p),
+    ),
+  ];
+  for (const p of ordered) {
+    const m = matchSizeToken(p, allowed);
+    if (m) return m;
+  }
+  return null;
+}
+
+function sizeRegion(aspectName: string): string {
+  return /^(uk|eu|us)\b/i.exec(aspectName.trim())?.[1].toUpperCase() ?? "US";
 }
 
 // Snap size specifics onto eBay's standard values; drop an OPTIONAL size we
@@ -225,7 +288,7 @@ export function snapStandardSizes(
     const vals = aspects[a.name];
     if (!vals?.length || !isStandardSizeAspect(a)) continue;
     const snapped = vals
-      .map((v) => snapStandardSize(v, a.values))
+      .map((v) => snapStandardSize(v, a.values, sizeRegion(a.name)))
       .filter((v): v is string => Boolean(v));
     if (snapped.length) aspects[a.name] = [...new Set(snapped)];
     else if (!a.required) {
