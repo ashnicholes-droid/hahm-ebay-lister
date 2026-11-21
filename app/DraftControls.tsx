@@ -306,7 +306,8 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
                 ) : null}
               </span>
               {meta &&
-              (meta.mode === "SELECTION_ONLY" || isStandardSizeAspect(meta)) &&
+              (meta.mode === "SELECTION_ONLY" ||
+                isStandardSizeAspect(meta, g.preparation?.aspects ?? [])) &&
               meta.cardinality !== "MULTI" ? (
                 <select
                   aria-label={name}
@@ -318,6 +319,11 @@ export function DraftControls({ group: g, photoById, onGroupEdit }: Props) {
                   }
                 >
                   <option value="">Unknown — leave empty</option>
+                  {specifics[name] && !meta.values.includes(specifics[name]) ? (
+                    <option value={specifics[name]}>
+                      {specifics[name]} — not accepted by eBay, pick the closest
+                    </option>
+                  ) : null}
                   {meta.values.map((v) => (
                     <option key={v}>{v}</option>
                   ))}
