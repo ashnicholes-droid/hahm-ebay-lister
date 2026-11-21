@@ -50,3 +50,31 @@ it("leaves size aspects without a value list alone", () => {
   expect(snapStandardSizes(aspects, meta)).toEqual([]);
   expect(validateAspects(aspects, meta)).toEqual([]);
 });
+
+// Apparel "Size" is locked the same way (25129: "…custom values for Size").
+const LETTERS = ["XS", "S", "M", "L", "XL", "2XL"];
+const NUMS = ["4", "6", "8", "10", "12"];
+
+it("reduces a multi-system clothing size to eBay's single standard value", () => {
+  expect(snapStandardSize("US M / UK M / EU M", LETTERS)).toBe("M");
+  expect(snapStandardSize("US M", LETTERS)).toBe("M");
+  expect(snapStandardSize("Medium", LETTERS)).toBe("M");
+  expect(snapStandardSize("Women's XXL", LETTERS)).toBe("2XL");
+  expect(snapStandardSize("M", ["Small", "Medium", "Large"])).toBe("Medium");
+  expect(snapStandardSize("US 8 / UK 12 / EU 40", NUMS)).toBe("8");
+  // Another system's number is never passed off as the US size.
+  expect(snapStandardSize("UK 12 / EU 40", NUMS)).toBeNull();
+  expect(snapStandardSize("UK M / EU M", LETTERS)).toBe("M");
+  expect(snapStandardSize("US 9 / UK 7 / EU 40", UK, "UK")).toBe("7");
+});
+
+it("treats plain Size as selection-only when eBay supplies a value list", () => {
+  const meta = [free("Size", LETTERS, true)];
+  const aspects = { Size: ["US M / UK M / EU M"] };
+  expect(snapStandardSizes(aspects, meta)).toEqual([]);
+  expect(aspects).toEqual({ Size: ["M"] });
+  expect(validateAspects(aspects, meta)).toEqual([]);
+  const odd = { Size: ["Fits like a 10"] };
+  snapStandardSizes(odd, meta);
+  expect(validateAspects(odd, meta)).toContain("Choose an allowed value for Size");
+});
